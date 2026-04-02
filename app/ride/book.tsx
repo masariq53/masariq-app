@@ -1,479 +1,331 @@
-import React, { useState } from "react";
+import { useState, useRef } from "react";
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
-  ScrollView,
   TextInput,
   Dimensions,
+  Platform,
+  ScrollView,
 } from "react-native";
 import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import MapView, { Marker, Polyline, PROVIDER_DEFAULT } from "react-native-maps";
 
-const { height } = Dimensions.get("window");
+const { height, width } = Dimensions.get("window");
+
+// موقع الموصل — ساحة الحدباء
+const MOSUL_CENTER = {
+  latitude: 36.3392,
+  longitude: 43.1289,
+  latitudeDelta: 0.05,
+  longitudeDelta: 0.05,
+};
 
 const rideTypes = [
-  {
-    id: "economy",
-    icon: "🚗",
-    label: "اقتصادي",
-    desc: "أسرع وصول",
-    price: "3,500",
-    time: "3 دقائق",
-    capacity: "4",
-  },
-  {
-    id: "comfort",
-    icon: "🚙",
-    label: "مريح",
-    desc: "سيارات فاخرة",
-    price: "5,500",
-    time: "5 دقائق",
-    capacity: "4",
-  },
-  {
-    id: "xl",
-    icon: "🚐",
-    label: "XL",
-    desc: "للمجموعات",
-    price: "7,000",
-    time: "7 دقائق",
-    capacity: "6",
-  },
-  {
-    id: "women",
-    icon: "👩",
-    label: "سائقة",
-    desc: "للسيدات فقط",
-    price: "4,000",
-    time: "8 دقائق",
-    capacity: "4",
-  },
+  { id: "economy", icon: "🚗", label: "اقتصادي", desc: "أسرع وصول", price: "3,500", time: "3 دقائق", capacity: "4" },
+  { id: "comfort", icon: "🚙", label: "مريح", desc: "سيارات فاخرة", price: "5,500", time: "5 دقائق", capacity: "4" },
+  { id: "xl", icon: "🚐", label: "XL", desc: "للمجموعات", price: "7,000", time: "7 دقائق", capacity: "6" },
+  { id: "women", icon: "👩", label: "سائقة", desc: "للسيدات فقط", price: "4,000", time: "8 دقائق", capacity: "4" },
 ];
 
-const paymentMethods = [
-  { id: "cash", icon: "💵", label: "نقداً" },
-  { id: "wallet", icon: "💰", label: "المحفظة" },
+// نقاط مقترحة في الموصل
+const MOSUL_PLACES = [
+  { id: "1", name: "المستشفى الجمهوري", lat: 36.3350, lng: 43.1210 },
+  { id: "2", name: "جامعة الموصل", lat: 36.3600, lng: 43.1450 },
+  { id: "3", name: "سوق الشعارين", lat: 36.3420, lng: 43.1320 },
+  { id: "4", name: "مطار الموصل", lat: 36.3058, lng: 43.1474 },
+  { id: "5", name: "جسر الحرية", lat: 36.3380, lng: 43.1380 },
 ];
 
 export default function BookRideScreen() {
   const insets = useSafeAreaInsets();
-  const [fromAddress, setFromAddress] = useState("موقعي الحالي 📍");
-  const [toAddress, setToAddress] = useState("");
+  const [from, setFrom] = useState("موقعي الحالي");
+  const [to, setTo] = useState("");
   const [selectedRide, setSelectedRide] = useState("economy");
-  const [selectedPayment, setSelectedPayment] = useState("cash");
-  const [step, setStep] = useState<"address" | "ride_type" | "confirm">("address");
+  const [step, setStep] = useState<"map" | "confirm">("map");
+  const [pickupPin, setPickupPin] = useState({ latitude: 36.3392, longitude: 43.1289 });
+  const [dropPin, setDropPin] = useState<{ latitude: number; longitude: number } | null>(null);
+  const mapRef = useRef<MapView>(null);
 
-  const selectedRideData = rideTypes.find((r) => r.id === selectedRide);
+  const handleMapPress = (e: any) => {
+    const coord = e.nativeEvent.coordinate;
+    if (!dropPin) {
+      setDropPin(coord);
+      setTo("الوجهة المحددة");
+    }
+  };
 
   const handleConfirm = () => {
     router.push("/ride/tracking" as any);
   };
 
+  const selectedType = rideTypes.find((r) => r.id === selectedRide)!;
+
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      <StatusBar style="dark" />
+    <View style={styles.container}>
+      <StatusBar style="light" />
 
-      {/* Map Placeholder */}
-      <View style={styles.mapPlaceholder}>
-        <Text style={styles.mapText}>🗺️</Text>
-        <Text style={styles.mapLabel}>خريطة الموصل</Text>
-        <View style={styles.mapPin}>
-          <Text style={styles.mapPinText}>📍</Text>
+      {/* خريطة الموصل */}
+      {Platform.OS !== "web" ? (
+        <MapView
+          ref={mapRef}
+          style={styles.map}
+          provider={PROVIDER_DEFAULT}
+          initialRegion={MOSUL_CENTER}
+          onPress={handleMapPress}
+          showsUserLocation
+          showsMyLocationButton={false}
+          mapType="standard"
+        >
+          {/* علامة نقطة الانطلاق */}
+          <Marker coordinate={pickupPin} title="نقطة الانطلاق">
+            <View style={styles.pickupMarker}>
+              <Text style={{ fontSize: 20 }}>📍</Text>
+            </View>
+          </Marker>
+
+          {/* علامة الوجهة */}
+          {dropPin && (
+            <Marker coordinate={dropPin} title="الوجهة">
+              <View style={styles.dropMarker}>
+                <Text style={{ fontSize: 20 }}>🏁</Text>
+              </View>
+            </Marker>
+          )}
+
+          {/* خط المسار */}
+          {dropPin && (
+            <Polyline
+              coordinates={[pickupPin, dropPin]}
+              strokeColor="#FFD700"
+              strokeWidth={3}
+              lineDashPattern={[8, 4]}
+            />
+          )}
+
+          {/* علامات مواقع الموصل */}
+          {MOSUL_PLACES.map((place) => (
+            <Marker
+              key={place.id}
+              coordinate={{ latitude: place.lat, longitude: place.lng }}
+              title={place.name}
+            >
+              <View style={styles.placeMarker}>
+                <Text style={styles.placeMarkerText}>📌</Text>
+              </View>
+            </Marker>
+          ))}
+        </MapView>
+      ) : (
+        // Web fallback - خريطة ثابتة
+        <View style={[styles.map, styles.webMap]}>
+          <Text style={styles.webMapText}>🗺️</Text>
+          <Text style={styles.webMapLabel}>خريطة الموصل</Text>
+          <Text style={styles.webMapSub}>36.3392° N, 43.1289° E</Text>
         </View>
-      </View>
+      )}
 
-      {/* Back Button */}
+      {/* زر الرجوع */}
       <TouchableOpacity
-        style={[styles.backBtn, { top: insets.top + 16 }]}
+        style={[styles.backBtn, { top: insets.top + 12 }]}
         onPress={() => router.back()}
       >
-        <Text style={styles.backText}>→</Text>
+        <Text style={styles.backIcon}>←</Text>
       </TouchableOpacity>
 
-      {/* Bottom Sheet */}
+      {/* تلميح الخريطة */}
+      {!dropPin && (
+        <View style={[styles.mapHint, { top: insets.top + 60 }]}>
+          <Text style={styles.mapHintText}>اضغط على الخريطة لتحديد وجهتك</Text>
+        </View>
+      )}
+
+      {/* لوحة الحجز السفلية */}
       <View style={styles.bottomSheet}>
-        {step === "address" && (
-          <>
-            <View style={styles.sheetHandle} />
-            <Text style={styles.sheetTitle}>إلى أين؟</Text>
+        {/* مؤشر السحب */}
+        <View style={styles.handle} />
 
-            <View style={styles.addressCard}>
-              <View style={styles.addressRow}>
-                <View style={[styles.dot, { backgroundColor: "#22C55E" }]} />
-                <TextInput
-                  style={styles.addressInput}
-                  value={fromAddress}
-                  onChangeText={setFromAddress}
-                  textAlign="right"
-                />
-              </View>
-              <View style={styles.addressDivider} />
-              <View style={styles.addressRow}>
-                <View style={[styles.dot, { backgroundColor: "#EF4444" }]} />
-                <TextInput
-                  style={styles.addressInput}
-                  placeholder="وجهتك؟"
-                  placeholderTextColor="#9BA1A6"
-                  value={toAddress}
-                  onChangeText={setToAddress}
-                  autoFocus
-                  textAlign="right"
-                />
-              </View>
-            </View>
-
-            {/* Quick Destinations */}
-            <View style={styles.quickRow}>
-              {["المستشفى 🏥", "الجامعة 🎓", "السوق 🛒"].map((dest) => (
-                <TouchableOpacity
-                  key={dest}
-                  style={styles.quickChip}
-                  onPress={() => {
-                    setToAddress(dest);
-                    setStep("ride_type");
-                  }}
-                >
-                  <Text style={styles.quickChipText}>{dest}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <TouchableOpacity
-              style={[styles.btn, !toAddress && styles.btnDisabled]}
-              onPress={() => toAddress && setStep("ride_type")}
-              disabled={!toAddress}
-            >
-              <Text style={styles.btnText}>اختر نوع الرحلة</Text>
+        {/* حقول الموقع */}
+        <View style={styles.locationRow}>
+          <View style={styles.locationDots}>
+            <View style={styles.dotGreen} />
+            <View style={styles.dotLine} />
+            <View style={styles.dotRed} />
+          </View>
+          <View style={styles.locationInputs}>
+            <TouchableOpacity style={styles.locationInput}>
+              <Text style={styles.locationLabel}>من</Text>
+              <Text style={styles.locationValue} numberOfLines={1}>{from}</Text>
             </TouchableOpacity>
-          </>
-        )}
-
-        {step === "ride_type" && (
-          <>
-            <View style={styles.sheetHandle} />
-            <View style={styles.routeHeader}>
-              <TouchableOpacity onPress={() => setStep("address")}>
-                <Text style={styles.editText}>تعديل</Text>
-              </TouchableOpacity>
-              <View style={styles.routeSummary}>
-                <Text style={styles.routeTo}>{toAddress}</Text>
-                <Text style={styles.routeArrow}>←</Text>
-                <Text style={styles.routeFrom}>موقعي</Text>
-              </View>
-            </View>
-
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={styles.rideScroll}
-            >
-              {rideTypes.map((ride) => (
-                <TouchableOpacity
-                  key={ride.id}
-                  style={[
-                    styles.rideCard,
-                    selectedRide === ride.id && styles.rideCardActive,
-                  ]}
-                  onPress={() => setSelectedRide(ride.id)}
-                >
-                  <Text style={styles.rideIcon}>{ride.icon}</Text>
-                  <Text style={[styles.rideLabel, selectedRide === ride.id && styles.rideLabelActive]}>
-                    {ride.label}
-                  </Text>
-                  <Text style={styles.rideTime}>⏱ {ride.time}</Text>
-                  <Text style={[styles.ridePrice, selectedRide === ride.id && styles.ridePriceActive]}>
-                    {ride.price} د.ع
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-
-            {/* Payment */}
-            <View style={styles.paymentRow}>
-              {paymentMethods.map((pm) => (
-                <TouchableOpacity
-                  key={pm.id}
-                  style={[
-                    styles.paymentChip,
-                    selectedPayment === pm.id && styles.paymentChipActive,
-                  ]}
-                  onPress={() => setSelectedPayment(pm.id)}
-                >
-                  <Text style={styles.paymentIcon}>{pm.icon}</Text>
-                  <Text
-                    style={[
-                      styles.paymentLabel,
-                      selectedPayment === pm.id && styles.paymentLabelActive,
-                    ]}
-                  >
-                    {pm.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <TouchableOpacity style={styles.btn} onPress={handleConfirm}>
-              <Text style={styles.btnText}>
-                احجز الآن — {selectedRideData?.price} د.ع
+            <View style={styles.inputDivider} />
+            <TouchableOpacity style={styles.locationInput} onPress={() => setDropPin(null)}>
+              <Text style={styles.locationLabel}>إلى</Text>
+              <Text
+                style={[styles.locationValue, !to && styles.locationPlaceholder]}
+                numberOfLines={1}
+              >
+                {to || "اختر وجهتك..."}
               </Text>
             </TouchableOpacity>
-          </>
-        )}
+          </View>
+        </View>
+
+        {/* أنواع الرحلات */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.ridesScroll}
+        >
+          {rideTypes.map((ride) => (
+            <TouchableOpacity
+              key={ride.id}
+              style={[styles.rideCard, selectedRide === ride.id && styles.rideCardActive]}
+              onPress={() => setSelectedRide(ride.id)}
+            >
+              <Text style={styles.rideIcon}>{ride.icon}</Text>
+              <Text style={[styles.rideLabel, selectedRide === ride.id && styles.rideLabelActive]}>
+                {ride.label}
+              </Text>
+              <Text style={[styles.ridePrice, selectedRide === ride.id && styles.ridePriceActive]}>
+                {ride.price} د
+              </Text>
+              <Text style={styles.rideTime}>{ride.time}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
+        {/* زر التأكيد */}
+        <TouchableOpacity
+          style={[styles.confirmBtn, !dropPin && styles.confirmBtnDisabled]}
+          onPress={handleConfirm}
+          disabled={!dropPin && Platform.OS !== "web"}
+        >
+          <Text style={styles.confirmText}>
+            {dropPin || Platform.OS === "web"
+              ? `تأكيد الرحلة — ${selectedType.price} دينار`
+              : "حدد وجهتك على الخريطة"}
+          </Text>
+        </TouchableOpacity>
+
+        <View style={{ height: insets.bottom + 8 }} />
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#F5F7FA",
-  },
-  mapPlaceholder: {
-    flex: 1,
-    backgroundColor: "#D4E8F0",
+  container: { flex: 1, backgroundColor: "#1A0533" },
+  map: { flex: 1 },
+  webMap: {
+    backgroundColor: "#2D1B4E",
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
   },
-  mapText: {
-    fontSize: 64,
-  },
-  mapLabel: {
-    color: "#1A0533",
-    fontSize: 16,
-    fontWeight: "600",
-    opacity: 0.6,
-  },
-  mapPin: {
-    position: "absolute",
-    top: "40%",
-    left: "50%",
-    marginLeft: -16,
-  },
-  mapPinText: {
-    fontSize: 32,
-  },
+  webMapText: { fontSize: 64, marginBottom: 12 },
+  webMapLabel: { color: "#FFD700", fontSize: 20, fontWeight: "bold" },
+  webMapSub: { color: "#9B8EC4", fontSize: 14, marginTop: 4 },
   backBtn: {
     position: "absolute",
     left: 16,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: "#FFFFFF",
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(26,5,51,0.85)",
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 4,
+    borderWidth: 1,
+    borderColor: "#FFD700",
   },
-  backText: {
-    fontSize: 20,
-    color: "#1A0533",
-    fontWeight: "700",
+  backIcon: { color: "#FFD700", fontSize: 18, fontWeight: "bold" },
+  mapHint: {
+    position: "absolute",
+    alignSelf: "center",
+    backgroundColor: "rgba(26,5,51,0.88)",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#FFD700",
   },
+  mapHintText: { color: "#FFD700", fontSize: 13, fontWeight: "600" },
+  pickupMarker: { alignItems: "center" },
+  dropMarker: { alignItems: "center" },
+  placeMarker: { alignItems: "center" },
+  placeMarkerText: { fontSize: 16 },
   bottomSheet: {
-    backgroundColor: "#FFFFFF",
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    padding: 20,
-    paddingBottom: 36,
+    backgroundColor: "#1A0533",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderColor: "#3D2070",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.3,
     shadowRadius: 12,
     elevation: 10,
-    maxHeight: height * 0.55,
   },
-  sheetHandle: {
+  handle: {
     width: 40,
     height: 4,
+    backgroundColor: "#3D2070",
     borderRadius: 2,
-    backgroundColor: "#E2E8F0",
     alignSelf: "center",
     marginBottom: 16,
   },
-  sheetTitle: {
-    color: "#1A0533",
-    fontSize: 20,
-    fontWeight: "800",
-    textAlign: "right",
+  locationRow: {
+    flexDirection: "row",
+    alignItems: "center",
     marginBottom: 16,
   },
-  addressCard: {
-    backgroundColor: "#F5F7FA",
-    borderRadius: 16,
-    padding: 12,
-    marginBottom: 14,
-  },
-  addressRow: {
-    flexDirection: "row-reverse",
-    alignItems: "center",
-    gap: 12,
-    paddingVertical: 8,
-  },
-  dot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-  },
-  addressInput: {
+  locationDots: { alignItems: "center", marginRight: 12, paddingVertical: 4 },
+  dotGreen: { width: 12, height: 12, borderRadius: 6, backgroundColor: "#22C55E" },
+  dotLine: { width: 2, height: 28, backgroundColor: "#3D2070", marginVertical: 4 },
+  dotRed: { width: 12, height: 12, borderRadius: 6, backgroundColor: "#EF4444" },
+  locationInputs: {
     flex: 1,
-    color: "#1A0533",
-    fontSize: 14,
-    fontWeight: "500",
-  },
-  addressDivider: {
-    height: 1,
-    backgroundColor: "#E2E8F0",
-    marginVertical: 4,
-  },
-  quickRow: {
-    flexDirection: "row",
-    gap: 8,
-    marginBottom: 16,
-    justifyContent: "flex-end",
-  },
-  quickChip: {
-    backgroundColor: "#F5F7FA",
-    borderRadius: 20,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    backgroundColor: "#2D1B4E",
+    borderRadius: 12,
+    overflow: "hidden",
     borderWidth: 1,
-    borderColor: "#E2E8F0",
+    borderColor: "#3D2070",
   },
-  quickChipText: {
-    color: "#1A0533",
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  btn: {
-    backgroundColor: "#FFD700",
-    borderRadius: 16,
-    paddingVertical: 16,
-    alignItems: "center",
-    shadowColor: "#FFD700",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  btnDisabled: {
-    opacity: 0.5,
-  },
-  btnText: {
-    color: "#1A0533",
-    fontSize: 16,
-    fontWeight: "800",
-  },
-  routeHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 14,
-  },
-  editText: {
-    color: "#FFD700",
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  routeSummary: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  routeFrom: {
-    color: "#6B7A8D",
-    fontSize: 13,
-  },
-  routeArrow: {
-    color: "#C0C8D4",
-    fontSize: 14,
-  },
-  routeTo: {
-    color: "#1A0533",
-    fontSize: 13,
-    fontWeight: "700",
-  },
-  rideScroll: {
-    marginHorizontal: -20,
-    paddingHorizontal: 20,
-    marginBottom: 14,
-  },
+  locationInput: { paddingHorizontal: 14, paddingVertical: 10 },
+  inputDivider: { height: 1, backgroundColor: "#3D2070" },
+  locationLabel: { color: "#9B8EC4", fontSize: 11, marginBottom: 2 },
+  locationValue: { color: "#FFFFFF", fontSize: 14, fontWeight: "500" },
+  locationPlaceholder: { color: "#6B5B8A" },
+  ridesScroll: { paddingBottom: 4, gap: 10, paddingRight: 4 },
   rideCard: {
-    backgroundColor: "#F5F7FA",
-    borderRadius: 16,
-    padding: 14,
-    marginRight: 12,
+    backgroundColor: "#2D1B4E",
+    borderRadius: 14,
+    padding: 12,
     alignItems: "center",
-    width: 110,
-    borderWidth: 2,
-    borderColor: "transparent",
-    gap: 4,
+    minWidth: 90,
+    borderWidth: 1.5,
+    borderColor: "#3D2070",
   },
   rideCardActive: {
     borderColor: "#FFD700",
-    backgroundColor: "#FFF8EC",
+    backgroundColor: "#3D2070",
   },
-  rideIcon: {
-    fontSize: 28,
-  },
-  rideLabel: {
-    color: "#1A0533",
-    fontSize: 13,
-    fontWeight: "700",
-  },
-  rideLabelActive: {
-    color: "#FFD700",
-  },
-  rideTime: {
-    color: "#6B7A8D",
-    fontSize: 11,
-  },
-  ridePrice: {
-    color: "#1A0533",
-    fontSize: 13,
-    fontWeight: "800",
-  },
-  ridePriceActive: {
-    color: "#FFD700",
-  },
-  paymentRow: {
-    flexDirection: "row",
-    gap: 10,
-    marginBottom: 16,
-    justifyContent: "flex-end",
-  },
-  paymentChip: {
-    flexDirection: "row",
+  rideIcon: { fontSize: 28, marginBottom: 4 },
+  rideLabel: { color: "#9B8EC4", fontSize: 12, fontWeight: "600", marginBottom: 2 },
+  rideLabelActive: { color: "#FFD700" },
+  ridePrice: { color: "#FFFFFF", fontSize: 13, fontWeight: "bold" },
+  ridePriceActive: { color: "#FFD700" },
+  rideTime: { color: "#6B5B8A", fontSize: 11, marginTop: 2 },
+  confirmBtn: {
+    backgroundColor: "#FFD700",
+    borderRadius: 14,
+    paddingVertical: 16,
     alignItems: "center",
-    gap: 6,
-    backgroundColor: "#F5F7FA",
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderWidth: 1.5,
-    borderColor: "transparent",
+    marginTop: 14,
   },
-  paymentChipActive: {
-    borderColor: "#1A0533",
-    backgroundColor: "#E8F0FE",
-  },
-  paymentIcon: {
-    fontSize: 16,
-  },
-  paymentLabel: {
-    color: "#6B7A8D",
-    fontSize: 13,
-    fontWeight: "600",
-  },
-  paymentLabelActive: {
-    color: "#1A0533",
-    fontWeight: "700",
-  },
+  confirmBtnDisabled: { backgroundColor: "#3D2070" },
+  confirmText: { color: "#1A0533", fontSize: 15, fontWeight: "bold" },
 });

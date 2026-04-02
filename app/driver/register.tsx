@@ -39,7 +39,7 @@ export default function DriverRegisterScreen() {
     } else {
       Alert.alert(
         "تم التسجيل!",
-        "شكراً لتسجيلك كسائق في موصل رايد. سيتم مراجعة طلبك خلال 24 ساعة وسنتواصل معك.",
+        "شكراً لتسجيلك كسائق في مسار. سيتم مراجعة طلبك خلال 24 ساعة وسنتواصل معك.",
         [{ text: "حسناً", onPress: () => router.replace("/auth/login" as any) }]
       );
     }

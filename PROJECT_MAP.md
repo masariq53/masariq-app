@@ -95,6 +95,7 @@
 | `react-native-safe-area-context` | SafeArea للـ notch |
 | `@react-native-async-storage/async-storage` | تخزين بيانات المستخدم |
 | `expo-haptics` | الاهتزاز عند الضغط |
+| `react-native-maps` | خرائط الموصل الحقيقية |
 | `react-native-gesture-handler` | الإيماءات |
 | `nativewind` | Tailwind CSS للموبايل |
 
@@ -121,4 +122,19 @@
 
 ---
 
-*آخر تحديث: إبريل 2026 | الإصدار: 1.0.0*
+## 🗺️ الخرائط الحقيقية
+
+| الملف | نوع الخريطة |
+|-------|------------|
+| `app/ride/book.tsx` | خريطة اختيار الموقع والوجهة |
+| `app/ride/tracking.tsx` | تتبع السائق لحظة بلحظة + مسار ذهبي |
+| `app/captain/home.tsx` | خريطة الكابتن + دائرة النطاق + Modal الطلب |
+| `app/captain/active-trip.tsx` | تتبع الرحلة النشطة + 3 مراحل |
+
+- **مركز الموصل:** `{ latitude: 36.3392, longitude: 43.1289 }`
+- **المزود:** `PROVIDER_DEFAULT` (Apple Maps على iOS)
+- **لتغيير مركز الخريطة:** ابحث عن `MOSUL_CENTER` في الملف المطلوب
+
+---
+
+*آخر تحديث: إبريل 2026 | الإصدار: 1.1.0 — تمت إضافة الخرائط الحقيقية*

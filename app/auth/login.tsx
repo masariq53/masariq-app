@@ -47,7 +47,7 @@ export default function LoginScreen() {
             style={styles.logo}
             resizeMode="contain"
           />
-          <Text style={styles.appName}>موصل رايد</Text>
+          <Text style={styles.appName}>مسار</Text>
           <Text style={styles.tagline}>تنقل بأمان وراحة</Text>
         </View>
 

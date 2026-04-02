@@ -1,51 +1,49 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  ScrollView,
-  Dimensions,
   Modal,
+  Platform,
+  Animated,
+  Dimensions,
 } from "react-native";
 import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import MapView, { Marker, Circle, PROVIDER_DEFAULT } from "react-native-maps";
 
 const { width } = Dimensions.get("window");
 
-// Simulated map background with Mosul streets
-const MapBackground = () => (
-  <View style={styles.mapContainer}>
-    <View style={styles.mapBg}>
-      {/* Simulated street grid */}
-      {[...Array(8)].map((_, i) => (
-        <View key={`h${i}`} style={[styles.streetH, { top: 40 + i * 60 }]} />
-      ))}
-      {[...Array(6)].map((_, i) => (
-        <View key={`v${i}`} style={[styles.streetV, { left: 20 + i * 65 }]} />
-      ))}
-      {/* Tigris river */}
-      <View style={styles.river} />
-      {/* Location markers */}
-      <View style={[styles.marker, { top: 120, left: 80 }]}>
-        <Text style={styles.markerText}>📍</Text>
-      </View>
-      <View style={[styles.marker, { top: 200, left: 180 }]}>
-        <Text style={styles.markerText}>🚗</Text>
-      </View>
-      <View style={[styles.marker, { top: 80, left: 250 }]}>
-        <Text style={styles.markerText}>🚗</Text>
-      </View>
-      {/* Captain marker */}
-      <View style={[styles.captainMarker, { top: 160, left: 150 }]}>
-        <Text style={styles.captainMarkerText}>⭐</Text>
-      </View>
-    </View>
-    {/* Map overlay gradient */}
-    <View style={styles.mapOverlay} />
-  </View>
-);
+// موقع الموصل المركزي
+const MOSUL_CENTER = {
+  latitude: 36.3392,
+  longitude: 43.1289,
+  latitudeDelta: 0.06,
+  longitudeDelta: 0.06,
+};
+
+// سيارات الكباتن القريبين (محاكاة)
+const NEARBY_CAPTAINS = [
+  { id: "1", lat: 36.3350, lng: 43.1250, name: "كابتن 1" },
+  { id: "2", lat: 36.3420, lng: 43.1350, name: "كابتن 2" },
+  { id: "3", lat: 36.3480, lng: 43.1200, name: "كابتن 3" },
+  { id: "4", lat: 36.3300, lng: 43.1400, name: "كابتن 4" },
+];
+
+// طلب رحلة وهمي للعرض
+const DEMO_REQUEST = {
+  passenger: "محمد علي",
+  rating: "4.8",
+  from: "ساحة الحدباء",
+  to: "جامعة الموصل",
+  distance: "4.2 كم",
+  price: "5,500",
+  time: "12 دقيقة",
+  fromCoord: { latitude: 36.3392, longitude: 43.1289 },
+  toCoord: { latitude: 36.3600, longitude: 43.1450 },
+};
 
 export default function CaptainHomeScreen() {
   const insets = useSafeAreaInsets();
@@ -55,218 +53,242 @@ export default function CaptainHomeScreen() {
   const [todayEarnings] = useState(47500);
   const [todayTrips] = useState(8);
   const [rating] = useState(4.9);
+  const timerAnim = useRef(new Animated.Value(1)).current;
+  const mapRef = useRef<MapView>(null);
 
-  // Demo: show request after going online
   useEffect(() => {
-    if (isOnline) {
-      const timeout = setTimeout(() => setShowRequest(true), 3000);
-      return () => clearTimeout(timeout);
-    }
+    if (!isOnline) return;
+    const t = setTimeout(() => setShowRequest(true), 3000);
+    return () => clearTimeout(t);
   }, [isOnline]);
 
-  // Request timer countdown
   useEffect(() => {
-    if (!showRequest) {
-      setRequestTimer(25);
-      return;
-    }
-    const interval = setInterval(() => {
-      setRequestTimer((prev) => {
-        if (prev <= 1) {
-          clearInterval(interval);
-          setShowRequest(false);
-          return 25;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [showRequest]);
+    if (!showRequest) { setRequestTimer(25); return; }
+    if (requestTimer <= 0) { setShowRequest(false); return; }
+    const t = setTimeout(() => setRequestTimer((v) => v - 1), 1000);
+    return () => clearTimeout(t);
+  }, [showRequest, requestTimer]);
 
-  const handleAccept = () => {
-    setShowRequest(false);
-    router.push("/captain/active-trip" as any);
-  };
+  // نبضة عند الاتصال
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    if (!isOnline) return;
+    const pulse = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, { toValue: 1.15, duration: 900, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 900, useNativeDriver: true }),
+      ])
+    );
+    pulse.start();
+    return () => pulse.stop();
+  }, [isOnline]);
 
-  const handleReject = () => {
-    setShowRequest(false);
-  };
+  const timerPercent = requestTimer / 25;
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View style={styles.container}>
       <StatusBar style="light" />
 
+      {/* خريطة الموصل الحقيقية */}
+      {Platform.OS !== "web" ? (
+        <MapView
+          ref={mapRef}
+          style={styles.map}
+          provider={PROVIDER_DEFAULT}
+          initialRegion={MOSUL_CENTER}
+          showsUserLocation
+          showsMyLocationButton={false}
+        >
+          {/* موقع الكابتن الحالي */}
+          <Marker
+            coordinate={{ latitude: 36.3392, longitude: 43.1289 }}
+            title="موقعي"
+          >
+            <Animated.View style={[styles.myMarker, { transform: [{ scale: pulseAnim }] }]}>
+              <Text style={{ fontSize: 24 }}>⭐</Text>
+            </Animated.View>
+          </Marker>
+
+          {/* دائرة نطاق الاستقبال */}
+          {isOnline && (
+            <Circle
+              center={{ latitude: 36.3392, longitude: 43.1289 }}
+              radius={1500}
+              fillColor="rgba(255,215,0,0.08)"
+              strokeColor="rgba(255,215,0,0.3)"
+              strokeWidth={1.5}
+            />
+          )}
+
+          {/* الكباتن القريبون */}
+          {NEARBY_CAPTAINS.map((c) => (
+            <Marker
+              key={c.id}
+              coordinate={{ latitude: c.lat, longitude: c.lng }}
+              title={c.name}
+            >
+              <View style={styles.nearbyMarker}>
+                <Text style={{ fontSize: 16 }}>🚗</Text>
+              </View>
+            </Marker>
+          ))}
+
+          {/* موقع الطلب الجديد */}
+          {showRequest && (
+            <Marker coordinate={DEMO_REQUEST.fromCoord} title={DEMO_REQUEST.from}>
+              <View style={styles.requestMarker}>
+                <Text style={{ fontSize: 20 }}>📍</Text>
+              </View>
+            </Marker>
+          )}
+        </MapView>
+      ) : (
+        <View style={[styles.map, styles.webMap]}>
+          <Animated.Text style={[{ fontSize: 56 }, isOnline && { transform: [{ scale: pulseAnim }] }]}>
+            {isOnline ? "⭐" : "🚗"}
+          </Animated.Text>
+          <Text style={styles.webMapLabel}>
+            {isOnline ? "أنت متاح — الموصل" : "غير متاح"}
+          </Text>
+          <Text style={styles.webMapCoords}>36.3392° N, 43.1289° E</Text>
+        </View>
+      )}
+
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { top: insets.top + 8 }]}>
         <View style={styles.headerLeft}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>أ</Text>
+          <View style={styles.logoSmall}>
+            <Text style={styles.logoText}>م</Text>
           </View>
           <View>
-            <Text style={styles.captainLabel}>الكابتن</Text>
-            <Text style={styles.captainName}>أحمد محمد</Text>
+            <Text style={styles.headerName}>كابتن أحمد</Text>
+            <View style={styles.ratingRow}>
+              <Text style={styles.star}>⭐</Text>
+              <Text style={styles.ratingText}>{rating}</Text>
+            </View>
           </View>
         </View>
-        <View style={styles.headerRight}>
-          <View style={styles.ratingBadge}>
-            <Text style={styles.ratingIcon}>⭐</Text>
-            <Text style={styles.ratingText}>{rating}</Text>
-          </View>
-          <TouchableOpacity
-            style={styles.menuBtn}
-            onPress={() => router.push("/captain/profile" as any)}
-          >
-            <Text style={styles.menuIcon}>☰</Text>
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity
+          style={styles.earningsBtn}
+          onPress={() => router.push("/captain/earnings" as any)}
+        >
+          <Text style={styles.earningsLabel}>اليوم</Text>
+          <Text style={styles.earningsValue}>{todayEarnings.toLocaleString()} د</Text>
+        </TouchableOpacity>
       </View>
 
-      {/* Map */}
-      <MapBackground />
-
-      {/* Online/Offline Toggle */}
-      <View style={styles.toggleContainer}>
+      {/* زر الحالة */}
+      <View style={styles.onlineContainer}>
         <TouchableOpacity
-          style={[styles.toggleBtn, isOnline ? styles.toggleOnline : styles.toggleOffline]}
+          style={[styles.onlineBtn, isOnline && styles.onlineBtnActive]}
           onPress={() => setIsOnline(!isOnline)}
         >
-          <View style={[styles.toggleDot, isOnline ? styles.toggleDotOn : styles.toggleDotOff]} />
-          <Text style={[styles.toggleText, isOnline ? styles.toggleTextOn : styles.toggleTextOff]}>
-            {isOnline ? "متاح الآن" : "غير متاح"}
+          <Animated.View style={isOnline ? { transform: [{ scale: pulseAnim }] } : {}}>
+            <Text style={styles.onlineBtnIcon}>{isOnline ? "🟢" : "⚫"}</Text>
+          </Animated.View>
+          <Text style={[styles.onlineBtnText, isOnline && styles.onlineBtnTextActive]}>
+            {isOnline ? "متاح" : "غير متاح"}
           </Text>
         </TouchableOpacity>
-        {isOnline && (
-          <Text style={styles.waitingText}>في انتظار الطلبات...</Text>
-        )}
       </View>
 
-      {/* Stats Cards */}
-      <View style={styles.statsRow}>
-        <View style={styles.statCard}>
-          <Text style={styles.statValue}>{todayEarnings.toLocaleString()}</Text>
-          <Text style={styles.statCurrency}>د.ع</Text>
-          <Text style={styles.statLabel}>أرباح اليوم</Text>
-        </View>
-        <View style={[styles.statCard, styles.statCardMiddle]}>
+      {/* إحصائيات اليوم */}
+      <View style={[styles.statsBar, { bottom: insets.bottom + 16 }]}>
+        <View style={styles.statItem}>
           <Text style={styles.statValue}>{todayTrips}</Text>
-          <Text style={styles.statLabel}>رحلات اليوم</Text>
+          <Text style={styles.statLabel}>رحلة</Text>
         </View>
-        <View style={styles.statCard}>
+        <View style={styles.statDivider} />
+        <View style={styles.statItem}>
+          <Text style={styles.statValue}>{todayEarnings.toLocaleString()}</Text>
+          <Text style={styles.statLabel}>دينار</Text>
+        </View>
+        <View style={styles.statDivider} />
+        <View style={styles.statItem}>
           <Text style={styles.statValue}>{rating}</Text>
-          <Text style={styles.statLabel}>تقييمي</Text>
+          <Text style={styles.statLabel}>تقييم</Text>
         </View>
+        <View style={styles.statDivider} />
+        <TouchableOpacity
+          style={styles.statItem}
+          onPress={() => router.push("/captain/earnings" as any)}
+        >
+          <Text style={styles.statValue}>📊</Text>
+          <Text style={styles.statLabel}>الأرباح</Text>
+        </TouchableOpacity>
       </View>
 
-      {/* Quick Actions */}
-      <ScrollView style={styles.actionsScroll} contentContainerStyle={styles.actionsContent}>
-        <View style={styles.actionsGrid}>
-          <TouchableOpacity
-            style={styles.actionCard}
-            onPress={() => router.push("/captain/earnings" as any)}
-          >
-            <Text style={styles.actionIcon}>💰</Text>
-            <Text style={styles.actionLabel}>أرباحي</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.actionCard}
-            onPress={() => router.push("/captain/trips" as any)}
-          >
-            <Text style={styles.actionIcon}>📋</Text>
-            <Text style={styles.actionLabel}>رحلاتي</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.actionCard}
-            onPress={() => router.push("/captain/documents" as any)}
-          >
-            <Text style={styles.actionIcon}>📄</Text>
-            <Text style={styles.actionLabel}>وثائقي</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.actionCard}
-            onPress={() => router.push("/captain/support" as any)}
-          >
-            <Text style={styles.actionIcon}>🎧</Text>
-            <Text style={styles.actionLabel}>الدعم</Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={{ height: 20 }} />
-      </ScrollView>
-
-      {/* Incoming Request Modal */}
-      <Modal
-        visible={showRequest}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowRequest(false)}
-      >
+      {/* Modal طلب رحلة جديد */}
+      <Modal visible={showRequest} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={styles.requestCard}>
-            {/* Timer */}
-            <View style={styles.timerCircle}>
-              <Text style={styles.timerNumber}>{requestTimer}</Text>
-              <Text style={styles.timerLabel}>ثانية</Text>
+            {/* عداد الوقت */}
+            <View style={styles.timerRow}>
+              <View style={styles.timerCircle}>
+                <Text style={styles.timerText}>{requestTimer}</Text>
+              </View>
+              <View style={styles.timerBarBg}>
+                <Animated.View
+                  style={[styles.timerBarFill, { width: `${timerPercent * 100}%` }]}
+                />
+              </View>
             </View>
 
-            <Text style={styles.requestTitle}>طلب رحلة جديد!</Text>
+            <Text style={styles.requestTitle}>طلب رحلة جديد! 🚀</Text>
 
-            {/* Rider Info */}
-            <View style={styles.riderInfo}>
-              <View style={styles.riderAvatar}>
-                <Text style={styles.riderAvatarText}>م</Text>
+            {/* معلومات الراكب */}
+            <View style={styles.passengerRow}>
+              <View style={styles.passengerAvatar}>
+                <Text style={{ fontSize: 24 }}>👤</Text>
               </View>
-              <View>
-                <Text style={styles.riderName}>محمد علي</Text>
-                <View style={styles.riderRating}>
-                  <Text style={styles.riderRatingText}>⭐ 4.8</Text>
+              <View style={styles.passengerInfo}>
+                <Text style={styles.passengerName}>{DEMO_REQUEST.passenger}</Text>
+                <View style={styles.passengerRating}>
+                  <Text style={styles.star}>⭐</Text>
+                  <Text style={styles.passengerRatingText}>{DEMO_REQUEST.rating}</Text>
                 </View>
               </View>
-            </View>
-
-            {/* Trip Details */}
-            <View style={styles.tripDetails}>
-              <View style={styles.tripPoint}>
-                <View style={[styles.tripDot, { backgroundColor: "#22C55E" }]} />
-                <View style={styles.tripPointInfo}>
-                  <Text style={styles.tripPointLabel}>من</Text>
-                  <Text style={styles.tripPointName}>شارع النجار، الموصل الجديدة</Text>
-                </View>
-              </View>
-              <View style={styles.tripLine} />
-              <View style={styles.tripPoint}>
-                <View style={[styles.tripDot, { backgroundColor: "#FFD700" }]} />
-                <View style={styles.tripPointInfo}>
-                  <Text style={styles.tripPointLabel}>إلى</Text>
-                  <Text style={styles.tripPointName}>جامعة الموصل، الدندان</Text>
-                </View>
+              <View style={styles.priceTag}>
+                <Text style={styles.priceValue}>{DEMO_REQUEST.price}</Text>
+                <Text style={styles.priceCurrency}>دينار</Text>
               </View>
             </View>
 
-            {/* Trip Stats */}
-            <View style={styles.tripStats}>
-              <View style={styles.tripStat}>
-                <Text style={styles.tripStatValue}>3.2 كم</Text>
-                <Text style={styles.tripStatLabel}>المسافة</Text>
+            {/* المسار */}
+            <View style={styles.routeBox}>
+              <View style={styles.routeRow}>
+                <View style={styles.dotGreen} />
+                <Text style={styles.routeText}>{DEMO_REQUEST.from}</Text>
               </View>
-              <View style={styles.tripStatDivider} />
-              <View style={styles.tripStat}>
-                <Text style={styles.tripStatValue}>8 د</Text>
-                <Text style={styles.tripStatLabel}>الوقت</Text>
-              </View>
-              <View style={styles.tripStatDivider} />
-              <View style={styles.tripStat}>
-                <Text style={[styles.tripStatValue, { color: "#FFD700" }]}>8,000 د.ع</Text>
-                <Text style={styles.tripStatLabel}>الأجرة</Text>
+              <View style={styles.routeLine} />
+              <View style={styles.routeRow}>
+                <View style={styles.dotRed} />
+                <Text style={styles.routeText}>{DEMO_REQUEST.to}</Text>
               </View>
             </View>
 
-            {/* Action Buttons */}
-            <View style={styles.requestActions}>
-              <TouchableOpacity style={styles.rejectBtn} onPress={handleReject}>
+            {/* تفاصيل */}
+            <View style={styles.detailsRow}>
+              <Text style={styles.detailItem}>📏 {DEMO_REQUEST.distance}</Text>
+              <Text style={styles.detailItem}>⏱️ {DEMO_REQUEST.time}</Text>
+            </View>
+
+            {/* أزرار */}
+            <View style={styles.requestBtns}>
+              <TouchableOpacity
+                style={styles.rejectBtn}
+                onPress={() => setShowRequest(false)}
+              >
                 <Text style={styles.rejectText}>رفض</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.acceptBtn} onPress={handleAccept}>
-                <Text style={styles.acceptText}>قبول الرحلة</Text>
+              <TouchableOpacity
+                style={styles.acceptBtn}
+                onPress={() => {
+                  setShowRequest(false);
+                  router.push("/captain/active-trip" as any);
+                }}
+              >
+                <Text style={styles.acceptText}>قبول الرحلة ✓</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -277,245 +299,95 @@ export default function CaptainHomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#1A0533",
+  container: { flex: 1, backgroundColor: "#1A0533" },
+  map: { flex: 1 },
+  webMap: {
+    backgroundColor: "#2D1B4E",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 12,
   },
+  webMapLabel: { color: "#FFD700", fontSize: 18, fontWeight: "bold" },
+  webMapCoords: { color: "#9B8EC4", fontSize: 13 },
   header: {
+    position: "absolute",
+    left: 16,
+    right: 16,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    zIndex: 10,
+    backgroundColor: "rgba(26,5,51,0.9)",
+    borderRadius: 16,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#3D2070",
   },
-  headerLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: "#FFD700",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  avatarText: {
-    color: "#1A0533",
-    fontSize: 18,
-    fontWeight: "bold",
-  },
-  captainLabel: {
-    color: "#9B8AB0",
-    fontSize: 11,
-  },
-  captainName: {
-    color: "#FFFFFF",
-    fontSize: 15,
-    fontWeight: "bold",
-  },
-  headerRight: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  ratingBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#2D1B69",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 20,
-    gap: 4,
-  },
-  ratingIcon: { fontSize: 12 },
-  ratingText: {
-    color: "#FFD700",
-    fontSize: 13,
-    fontWeight: "bold",
-  },
-  menuBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#2D1B69",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  menuIcon: {
-    color: "#FFD700",
-    fontSize: 18,
-  },
-  // Map
-  mapContainer: {
-    height: 220,
-    overflow: "hidden",
-  },
-  mapBg: {
-    flex: 1,
-    backgroundColor: "#1E0F4A",
-    position: "relative",
-  },
-  streetH: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    height: 2,
-    backgroundColor: "#2D1B69",
-  },
-  streetV: {
-    position: "absolute",
-    top: 0,
-    bottom: 0,
-    width: 2,
-    backgroundColor: "#2D1B69",
-  },
-  river: {
-    position: "absolute",
-    top: 80,
-    left: 0,
-    right: 0,
-    height: 30,
-    backgroundColor: "#1A3A6B",
-    opacity: 0.7,
-    transform: [{ rotate: "-3deg" }],
-  },
-  marker: {
-    position: "absolute",
-  },
-  markerText: { fontSize: 20 },
-  captainMarker: {
-    position: "absolute",
-    backgroundColor: "#FFD700",
-    borderRadius: 20,
+  headerLeft: { flexDirection: "row", alignItems: "center", gap: 10 },
+  logoSmall: {
     width: 36,
     height: 36,
+    borderRadius: 18,
+    backgroundColor: "#FFD700",
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#FFD700",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.5,
-    shadowRadius: 8,
-    elevation: 8,
   },
-  captainMarkerText: { fontSize: 16 },
-  mapOverlay: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 60,
-    backgroundColor: "#1A0533",
-    opacity: 0.3,
-  },
-  // Toggle
-  toggleContainer: {
-    alignItems: "center",
-    paddingVertical: 12,
-  },
-  toggleBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 30,
-    gap: 10,
-  },
-  toggleOnline: {
-    backgroundColor: "#22C55E",
-    shadowColor: "#22C55E",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 10,
-    elevation: 6,
-  },
-  toggleOffline: {
-    backgroundColor: "#2D1B69",
-    borderWidth: 1,
-    borderColor: "#3D2580",
-  },
-  toggleDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-  },
-  toggleDotOn: { backgroundColor: "#FFFFFF" },
-  toggleDotOff: { backgroundColor: "#9B8AB0" },
-  toggleText: {
-    fontSize: 16,
-    fontWeight: "bold",
-  },
-  toggleTextOn: { color: "#FFFFFF" },
-  toggleTextOff: { color: "#9B8AB0" },
-  waitingText: {
-    color: "#9B8AB0",
-    fontSize: 12,
-    marginTop: 6,
-  },
-  // Stats
-  statsRow: {
-    flexDirection: "row",
-    paddingHorizontal: 16,
-    gap: 10,
-    marginBottom: 12,
-  },
-  statCard: {
-    flex: 1,
-    backgroundColor: "#2D1B69",
-    borderRadius: 14,
-    padding: 14,
+  logoText: { color: "#1A0533", fontSize: 18, fontWeight: "bold" },
+  headerName: { color: "#FFFFFF", fontSize: 15, fontWeight: "bold" },
+  ratingRow: { flexDirection: "row", alignItems: "center", gap: 2, marginTop: 2 },
+  star: { fontSize: 11 },
+  ratingText: { color: "#FFD700", fontSize: 12, fontWeight: "600" },
+  earningsBtn: {
+    backgroundColor: "#2D1B4E",
+    borderRadius: 10,
+    padding: 8,
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#3D2580",
-  },
-  statCardMiddle: {
     borderColor: "#FFD700",
-    borderWidth: 1.5,
   },
-  statValue: {
-    color: "#FFD700",
-    fontSize: 18,
-    fontWeight: "bold",
+  earningsLabel: { color: "#9B8EC4", fontSize: 10 },
+  earningsValue: { color: "#FFD700", fontSize: 13, fontWeight: "bold" },
+  onlineContainer: {
+    position: "absolute",
+    bottom: 120,
+    alignSelf: "center",
   },
-  statCurrency: {
-    color: "#9B8AB0",
-    fontSize: 10,
-  },
-  statLabel: {
-    color: "#9B8AB0",
-    fontSize: 11,
-    marginTop: 2,
-  },
-  // Actions
-  actionsScroll: { flex: 1 },
-  actionsContent: { paddingHorizontal: 16 },
-  actionsGrid: {
+  onlineBtn: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 10,
-  },
-  actionCard: {
-    width: (width - 52) / 4,
-    backgroundColor: "#2D1B69",
-    borderRadius: 14,
-    padding: 14,
     alignItems: "center",
-    gap: 6,
+    gap: 8,
+    backgroundColor: "rgba(26,5,51,0.9)",
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderRadius: 30,
+    borderWidth: 2,
+    borderColor: "#3D2070",
+  },
+  onlineBtnActive: { borderColor: "#22C55E", backgroundColor: "rgba(34,197,94,0.15)" },
+  onlineBtnIcon: { fontSize: 18 },
+  onlineBtnText: { color: "#9B8EC4", fontSize: 16, fontWeight: "bold" },
+  onlineBtnTextActive: { color: "#22C55E" },
+  myMarker: { alignItems: "center" },
+  nearbyMarker: { alignItems: "center" },
+  requestMarker: { alignItems: "center" },
+  statsBar: {
+    position: "absolute",
+    left: 16,
+    right: 16,
+    flexDirection: "row",
+    backgroundColor: "rgba(26,5,51,0.95)",
+    borderRadius: 16,
+    padding: 14,
     borderWidth: 1,
-    borderColor: "#3D2580",
+    borderColor: "#3D2070",
+    justifyContent: "space-around",
   },
-  actionIcon: { fontSize: 24 },
-  actionLabel: {
-    color: "#C4B5D4",
-    fontSize: 11,
-    textAlign: "center",
-  },
-  // Modal
+  statItem: { alignItems: "center" },
+  statValue: { color: "#FFD700", fontSize: 16, fontWeight: "bold" },
+  statLabel: { color: "#9B8EC4", fontSize: 11, marginTop: 2 },
+  statDivider: { width: 1, backgroundColor: "#3D2070" },
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.7)",
+    backgroundColor: "rgba(0,0,0,0.6)",
     justifyContent: "flex-end",
   },
   requestCard: {
@@ -526,157 +398,81 @@ const styles = StyleSheet.create({
     borderTopWidth: 2,
     borderColor: "#FFD700",
   },
+  timerRow: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 16 },
   timerCircle: {
-    alignSelf: "center",
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: "#2D1B69",
-    borderWidth: 3,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: "#FFD700",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  timerText: { color: "#1A0533", fontSize: 18, fontWeight: "bold" },
+  timerBarBg: { flex: 1, height: 6, backgroundColor: "#3D2070", borderRadius: 3, overflow: "hidden" },
+  timerBarFill: { height: "100%", backgroundColor: "#FFD700", borderRadius: 3 },
+  requestTitle: { color: "#FFFFFF", fontSize: 20, fontWeight: "bold", marginBottom: 16 },
+  passengerRow: { flexDirection: "row", alignItems: "center", marginBottom: 16 },
+  passengerAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: "#2D1B4E",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+    borderWidth: 2,
     borderColor: "#FFD700",
+  },
+  passengerInfo: { flex: 1 },
+  passengerName: { color: "#FFFFFF", fontSize: 16, fontWeight: "bold" },
+  passengerRating: { flexDirection: "row", alignItems: "center", gap: 3, marginTop: 3 },
+  passengerRatingText: { color: "#FFD700", fontSize: 13 },
+  priceTag: {
+    backgroundColor: "#2D1B4E",
+    borderRadius: 10,
+    padding: 10,
     alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "#FFD700",
   },
-  timerNumber: {
-    color: "#FFD700",
-    fontSize: 20,
-    fontWeight: "bold",
-  },
-  timerLabel: {
-    color: "#9B8AB0",
-    fontSize: 9,
-  },
-  requestTitle: {
-    color: "#FFFFFF",
-    fontSize: 20,
-    fontWeight: "bold",
-    textAlign: "center",
-    marginBottom: 16,
-  },
-  riderInfo: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    backgroundColor: "#2D1B69",
-    borderRadius: 14,
-    padding: 12,
-    marginBottom: 16,
-  },
-  riderAvatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: "#3D2580",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  riderAvatarText: {
-    color: "#FFD700",
-    fontSize: 18,
-    fontWeight: "bold",
-  },
-  riderName: {
-    color: "#FFFFFF",
-    fontSize: 15,
-    fontWeight: "bold",
-  },
-  riderRating: { marginTop: 2 },
-  riderRatingText: {
-    color: "#9B8AB0",
-    fontSize: 12,
-  },
-  tripDetails: {
-    backgroundColor: "#2D1B69",
-    borderRadius: 14,
+  priceValue: { color: "#FFD700", fontSize: 16, fontWeight: "bold" },
+  priceCurrency: { color: "#9B8EC4", fontSize: 11 },
+  routeBox: {
+    backgroundColor: "#2D1B4E",
+    borderRadius: 12,
     padding: 14,
-    marginBottom: 14,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "#3D2070",
   },
-  tripPoint: {
+  routeRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  dotGreen: { width: 10, height: 10, borderRadius: 5, backgroundColor: "#22C55E" },
+  dotRed: { width: 10, height: 10, borderRadius: 5, backgroundColor: "#EF4444" },
+  routeLine: { width: 2, height: 20, backgroundColor: "#3D2070", marginLeft: 4, marginVertical: 4 },
+  routeText: { color: "#FFFFFF", fontSize: 14 },
+  detailsRow: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  tripDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-  },
-  tripPointInfo: { flex: 1 },
-  tripPointLabel: {
-    color: "#9B8AB0",
-    fontSize: 11,
-  },
-  tripPointName: {
-    color: "#FFFFFF",
-    fontSize: 13,
-    fontWeight: "600",
-  },
-  tripLine: {
-    width: 2,
-    height: 16,
-    backgroundColor: "#3D2580",
-    marginLeft: 5,
-    marginVertical: 4,
-  },
-  tripStats: {
-    flexDirection: "row",
-    backgroundColor: "#2D1B69",
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 20,
     justifyContent: "space-around",
-    alignItems: "center",
+    marginBottom: 20,
   },
-  tripStat: { alignItems: "center" },
-  tripStatValue: {
-    color: "#FFFFFF",
-    fontSize: 15,
-    fontWeight: "bold",
-  },
-  tripStatLabel: {
-    color: "#9B8AB0",
-    fontSize: 11,
-    marginTop: 2,
-  },
-  tripStatDivider: {
-    width: 1,
-    height: 30,
-    backgroundColor: "#3D2580",
-  },
-  requestActions: {
-    flexDirection: "row",
-    gap: 12,
-  },
+  detailItem: { color: "#9B8EC4", fontSize: 14 },
+  requestBtns: { flexDirection: "row", gap: 12 },
   rejectBtn: {
     flex: 1,
-    paddingVertical: 16,
+    backgroundColor: "#2D1B4E",
     borderRadius: 14,
+    paddingVertical: 16,
     alignItems: "center",
-    backgroundColor: "#2D1B69",
     borderWidth: 1,
     borderColor: "#EF4444",
   },
-  rejectText: {
-    color: "#EF4444",
-    fontSize: 16,
-    fontWeight: "bold",
-  },
+  rejectText: { color: "#EF4444", fontSize: 15, fontWeight: "bold" },
   acceptBtn: {
     flex: 2,
-    paddingVertical: 16,
-    borderRadius: 14,
-    alignItems: "center",
     backgroundColor: "#FFD700",
-    shadowColor: "#FFD700",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 10,
-    elevation: 6,
+    borderRadius: 14,
+    paddingVertical: 16,
+    alignItems: "center",
   },
-  acceptText: {
-    color: "#1A0533",
-    fontSize: 16,
-    fontWeight: "bold",
-  },
+  acceptText: { color: "#1A0533", fontSize: 15, fontWeight: "bold" },
 });

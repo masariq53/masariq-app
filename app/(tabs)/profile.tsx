@@ -83,7 +83,7 @@ export default function ProfileScreen() {
             <Text style={styles.avatarText}>م</Text>
           </View>
           <View style={styles.profileInfo}>
-            <Text style={styles.profileName}>مستخدم موصل رايد</Text>
+            <Text style={styles.profileName}>مستخدم مسار</Text>
             <Text style={styles.profilePhone}>+964 07XX XXX XXXX</Text>
             <View style={styles.ratingRow}>
               <Text style={styles.ratingText}>4.9 ★</Text>
@@ -165,7 +165,7 @@ export default function ProfileScreen() {
           <Text style={styles.logoutText}>🚪  تسجيل الخروج</Text>
         </TouchableOpacity>
 
-        <Text style={styles.version}>موصل رايد v1.0.0</Text>
+        <Text style={styles.version}>مسار v1.0.0</Text>
         <View style={{ height: 100 }} />
       </ScrollView>
     </ScreenContainer>

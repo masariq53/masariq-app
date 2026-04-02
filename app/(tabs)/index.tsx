@@ -26,7 +26,7 @@ const promos = [
   {
     id: "1",
     title: "أول رحلة مجانية!",
-    subtitle: "استخدم كود: MOSUL1",
+    subtitle: "استخدم كود: MASAR1",
     color: "#FFD700",
     textColor: "#1A0533",
     emoji: "🎉",
@@ -72,7 +72,7 @@ export default function HomeScreen() {
           </TouchableOpacity>
           <View>
             <Text style={styles.greeting}>مرحباً 👋</Text>
-            <Text style={styles.userName}>مستخدم موصل رايد</Text>
+            <Text style={styles.userName}>مستخدم مسار</Text>
           </View>
         </View>
         <TouchableOpacity style={styles.notifBtn}>

@@ -1,25 +1,29 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
   Animated,
+  Platform,
   Dimensions,
 } from "react-native";
 import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import MapView, { Marker, Polyline, PROVIDER_DEFAULT } from "react-native-maps";
 
 const { height } = Dimensions.get("window");
 
-const steps = [
-  { id: 0, label: "جاري البحث عن سائق...", icon: "🔍" },
-  { id: 1, label: "تم العثور على سائق!", icon: "✅" },
-  { id: 2, label: "السائق في طريقه إليك", icon: "🚗" },
-  { id: 3, label: "السائق وصل! ابحث عنه", icon: "📍" },
-  { id: 4, label: "في الطريق إلى وجهتك", icon: "🛣️" },
-  { id: 5, label: "وصلت! شكراً لاستخدامك موصل رايد", icon: "🎉" },
+// مسار تجريبي في الموصل — من ساحة الحدباء إلى جامعة الموصل
+const ROUTE_COORDS = [
+  { latitude: 36.3392, longitude: 43.1289 }, // ساحة الحدباء
+  { latitude: 36.3420, longitude: 43.1310 },
+  { latitude: 36.3450, longitude: 43.1350 },
+  { latitude: 36.3480, longitude: 43.1380 },
+  { latitude: 36.3520, longitude: 43.1410 },
+  { latitude: 36.3560, longitude: 43.1440 },
+  { latitude: 36.3600, longitude: 43.1450 }, // جامعة الموصل
 ];
 
 const driverInfo = {
@@ -28,364 +32,335 @@ const driverInfo = {
   car: "تويوتا كورولا - أبيض",
   plate: "م ٢٣٤٥ ن",
   phone: "07901234567",
+  avatar: "👨",
 };
+
+const steps = [
+  { id: 0, label: "جاري البحث عن سائق...", icon: "🔍" },
+  { id: 1, label: "تم العثور على سائق!", icon: "✅" },
+  { id: 2, label: "السائق في طريقه إليك", icon: "🚗" },
+  { id: 3, label: "السائق وصل! ابحث عنه", icon: "📍" },
+  { id: 4, label: "في الطريق إلى وجهتك", icon: "🛣️" },
+];
 
 export default function TrackingScreen() {
   const insets = useSafeAreaInsets();
   const [currentStep, setCurrentStep] = useState(0);
-  const pulseAnim = new Animated.Value(1);
+  const [driverPos, setDriverPos] = useState(0); // index in ROUTE_COORDS
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const mapRef = useRef<MapView>(null);
 
   useEffect(() => {
-    // Auto-advance steps for demo
+    // تقدم الخطوات تلقائياً للعرض
     const timers = [
       setTimeout(() => setCurrentStep(1), 2000),
-      setTimeout(() => setCurrentStep(2), 4000),
-      setTimeout(() => setCurrentStep(3), 8000),
-      setTimeout(() => setCurrentStep(4), 12000),
+      setTimeout(() => setCurrentStep(2), 4500),
+      setTimeout(() => setCurrentStep(3), 9000),
+      setTimeout(() => setCurrentStep(4), 13000),
     ];
 
-    // Pulse animation
+    // تحريك السائق على الخريطة
+    let posIndex = 0;
+    const moveDriver = setInterval(() => {
+      posIndex = Math.min(posIndex + 1, ROUTE_COORDS.length - 1);
+      setDriverPos(posIndex);
+      if (mapRef.current) {
+        mapRef.current.animateToRegion({
+          ...ROUTE_COORDS[posIndex],
+          latitudeDelta: 0.03,
+          longitudeDelta: 0.03,
+        }, 800);
+      }
+      if (posIndex === ROUTE_COORDS.length - 1) clearInterval(moveDriver);
+    }, 3000);
+
+    // نبضة
     const pulse = Animated.loop(
       Animated.sequence([
-        Animated.timing(pulseAnim, { toValue: 1.2, duration: 800, useNativeDriver: true }),
-        Animated.timing(pulseAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1.3, duration: 700, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 700, useNativeDriver: true }),
       ])
     );
     pulse.start();
 
     return () => {
       timers.forEach(clearTimeout);
+      clearInterval(moveDriver);
       pulse.stop();
     };
   }, []);
 
-  const handleCancel = () => {
-    router.back();
-  };
-
-  const handleComplete = () => {
-    router.replace("/(tabs)" as any);
-  };
-
-  const isCompleted = currentStep === 5;
+  const currentDriverCoord = ROUTE_COORDS[driverPos];
+  const step = steps[currentStep];
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      <StatusBar style="dark" />
+    <View style={styles.container}>
+      <StatusBar style="light" />
 
-      {/* Map Area */}
-      <View style={styles.mapArea}>
-        <View style={styles.mapBg}>
-          <Text style={styles.mapBgText}>🗺️</Text>
-        </View>
-
-        {/* Animated Car */}
-        <Animated.View
-          style={[
-            styles.carMarker,
-            { transform: [{ scale: pulseAnim }] },
-          ]}
+      {/* خريطة تتبع الموصل */}
+      {Platform.OS !== "web" ? (
+        <MapView
+          ref={mapRef}
+          style={styles.map}
+          provider={PROVIDER_DEFAULT}
+          initialRegion={{
+            latitude: 36.3500,
+            longitude: 43.1370,
+            latitudeDelta: 0.05,
+            longitudeDelta: 0.05,
+          }}
+          showsUserLocation
+          showsMyLocationButton={false}
         >
-          <Text style={styles.carEmoji}>🚗</Text>
-        </Animated.View>
+          {/* نقطة الراكب */}
+          <Marker coordinate={ROUTE_COORDS[ROUTE_COORDS.length - 1]} title="وجهتك">
+            <View style={styles.destMarker}>
+              <Text style={{ fontSize: 22 }}>🏁</Text>
+            </View>
+          </Marker>
 
-        {/* Destination Marker */}
-        <View style={styles.destMarker}>
-          <Text style={styles.destEmoji}>📍</Text>
+          {/* نقطة الانطلاق */}
+          <Marker coordinate={ROUTE_COORDS[0]} title="نقطة الانطلاق">
+            <View style={styles.originMarker}>
+              <Text style={{ fontSize: 18 }}>📍</Text>
+            </View>
+          </Marker>
+
+          {/* موقع السائق المتحرك */}
+          <Marker coordinate={currentDriverCoord} title={`السائق: ${driverInfo.name}`}>
+            <Animated.View style={[styles.driverMarker, { transform: [{ scale: pulseAnim }] }]}>
+              <Text style={{ fontSize: 22 }}>🚗</Text>
+            </Animated.View>
+          </Marker>
+
+          {/* مسار الرحلة */}
+          <Polyline
+            coordinates={ROUTE_COORDS}
+            strokeColor="#FFD700"
+            strokeWidth={4}
+            lineDashPattern={[10, 5]}
+          />
+
+          {/* المسار المقطوع */}
+          <Polyline
+            coordinates={ROUTE_COORDS.slice(0, driverPos + 1)}
+            strokeColor="#22C55E"
+            strokeWidth={4}
+          />
+        </MapView>
+      ) : (
+        <View style={[styles.map, styles.webMap]}>
+          <Animated.Text style={[styles.webMapCar, { transform: [{ scale: pulseAnim }] }]}>
+            🚗
+          </Animated.Text>
+          <Text style={styles.webMapLabel}>تتبع السائق — الموصل</Text>
+          <Text style={styles.webMapCoords}>
+            {currentDriverCoord.latitude.toFixed(4)}° N, {currentDriverCoord.longitude.toFixed(4)}° E
+          </Text>
         </View>
+      )}
 
-        {/* ETA Badge */}
-        {currentStep >= 2 && currentStep < 5 && (
-          <View style={styles.etaBadge}>
-            <Text style={styles.etaText}>⏱ {8 - currentStep * 2} دقائق</Text>
-          </View>
-        )}
+      {/* زر الرجوع */}
+      <TouchableOpacity
+        style={[styles.backBtn, { top: insets.top + 12 }]}
+        onPress={() => router.back()}
+      >
+        <Text style={styles.backIcon}>←</Text>
+      </TouchableOpacity>
+
+      {/* حالة الرحلة */}
+      <View style={[styles.statusBadge, { top: insets.top + 12 }]}>
+        <Text style={styles.statusIcon}>{step.icon}</Text>
+        <Text style={styles.statusText}>{step.label}</Text>
       </View>
 
-      {/* Bottom Sheet */}
-      <View style={styles.bottomSheet}>
-        <View style={styles.sheetHandle} />
+      {/* لوحة معلومات السائق */}
+      <View style={styles.driverSheet}>
+        <View style={styles.handle} />
 
-        {/* Status */}
-        <View style={styles.statusRow}>
-          <Text style={styles.statusIcon}>{steps[currentStep].icon}</Text>
-          <Text style={styles.statusText}>{steps[currentStep].label}</Text>
+        {/* معلومات السائق */}
+        <View style={styles.driverRow}>
+          <View style={styles.avatarCircle}>
+            <Text style={styles.avatarText}>{driverInfo.avatar}</Text>
+          </View>
+          <View style={styles.driverInfo}>
+            <Text style={styles.driverName}>{driverInfo.name}</Text>
+            <Text style={styles.driverCar}>{driverInfo.car}</Text>
+            <View style={styles.ratingRow}>
+              <Text style={styles.star}>⭐</Text>
+              <Text style={styles.rating}>{driverInfo.rating}</Text>
+              <Text style={styles.plate}> • {driverInfo.plate}</Text>
+            </View>
+          </View>
+          <View style={styles.driverActions}>
+            <TouchableOpacity style={styles.actionBtn}>
+              <Text style={styles.actionIcon}>📞</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.actionBtn}>
+              <Text style={styles.actionIcon}>💬</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
-        {/* Progress Bar */}
+        {/* شريط التقدم */}
         <View style={styles.progressBar}>
-          <View
-            style={[
-              styles.progressFill,
-              { width: `${(currentStep / (steps.length - 1)) * 100}%` },
-            ]}
-          />
+          {steps.map((s, i) => (
+            <View
+              key={s.id}
+              style={[
+                styles.progressDot,
+                i <= currentStep && styles.progressDotActive,
+                i < currentStep && styles.progressDotDone,
+              ]}
+            />
+          ))}
         </View>
 
-        {/* Driver Info */}
-        {currentStep >= 1 && (
-          <View style={styles.driverCard}>
-            <View style={styles.driverAvatar}>
-              <Text style={styles.driverAvatarText}>أ</Text>
-            </View>
-            <View style={styles.driverInfo}>
-              <Text style={styles.driverName}>{driverInfo.name}</Text>
-              <Text style={styles.driverCar}>{driverInfo.car}</Text>
-              <Text style={styles.driverPlate}>{driverInfo.plate}</Text>
-            </View>
-            <View style={styles.driverActions}>
-              <TouchableOpacity style={styles.driverActionBtn}>
-                <Text style={styles.driverActionIcon}>📞</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.driverActionBtn}>
-                <Text style={styles.driverActionIcon}>💬</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
-
-        {/* Rating (after completion) */}
-        {currentStep >= 1 && (
-          <View style={styles.ratingRow}>
-            <Text style={styles.ratingLabel}>تقييم السائق:</Text>
-            {[1, 2, 3, 4, 5].map((s) => (
-              <TouchableOpacity key={s}>
-                <Text style={styles.ratingStar}>⭐</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        )}
-
-        {/* Safety Button */}
-        <TouchableOpacity style={styles.safetyBtn}>
-          <Text style={styles.safetyBtnText}>🛡️  زر الطوارئ</Text>
-        </TouchableOpacity>
-
-        {/* Action Buttons */}
-        <View style={styles.actionRow}>
-          {!isCompleted ? (
-            <TouchableOpacity style={styles.cancelBtn} onPress={handleCancel}>
-              <Text style={styles.cancelBtnText}>إلغاء الرحلة</Text>
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity style={styles.doneBtn} onPress={handleComplete}>
-              <Text style={styles.doneBtnText}>🎉  تم! العودة للرئيسية</Text>
-            </TouchableOpacity>
-          )}
+        {/* زر الطوارئ */}
+        <View style={styles.bottomRow}>
+          <TouchableOpacity style={styles.sosBtn}>
+            <Text style={styles.sosBtnText}>🆘 طوارئ</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.cancelBtn}
+            onPress={() => router.back()}
+          >
+            <Text style={styles.cancelBtnText}>إلغاء الرحلة</Text>
+          </TouchableOpacity>
         </View>
+
+        <View style={{ height: insets.bottom + 8 }} />
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#F5F7FA",
-  },
-  mapArea: {
-    flex: 1,
-    position: "relative",
-  },
-  mapBg: {
-    flex: 1,
-    backgroundColor: "#C8DDE8",
+  container: { flex: 1, backgroundColor: "#1A0533" },
+  map: { flex: 1 },
+  webMap: {
+    backgroundColor: "#2D1B4E",
     alignItems: "center",
     justifyContent: "center",
   },
-  mapBgText: {
-    fontSize: 80,
-    opacity: 0.3,
-  },
-  carMarker: {
+  webMapCar: { fontSize: 64, marginBottom: 12 },
+  webMapLabel: { color: "#FFD700", fontSize: 18, fontWeight: "bold" },
+  webMapCoords: { color: "#9B8EC4", fontSize: 13, marginTop: 6 },
+  backBtn: {
     position: "absolute",
-    top: "40%",
-    left: "45%",
-  },
-  carEmoji: {
-    fontSize: 36,
-  },
-  destMarker: {
-    position: "absolute",
-    top: "25%",
-    right: "30%",
-  },
-  destEmoji: {
-    fontSize: 32,
-  },
-  etaBadge: {
-    position: "absolute",
-    top: 20,
-    right: 20,
-    backgroundColor: "#1A0533",
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-  },
-  etaText: {
-    color: "#FFD700",
-    fontSize: 14,
-    fontWeight: "700",
-  },
-  bottomSheet: {
-    backgroundColor: "#FFFFFF",
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    padding: 20,
-    paddingBottom: 36,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 10,
-  },
-  sheetHandle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: "#E2E8F0",
-    alignSelf: "center",
-    marginBottom: 16,
-  },
-  statusRow: {
-    flexDirection: "row-reverse",
-    alignItems: "center",
-    gap: 12,
-    marginBottom: 14,
-  },
-  statusIcon: {
-    fontSize: 24,
-  },
-  statusText: {
-    color: "#1A0533",
-    fontSize: 16,
-    fontWeight: "700",
-    flex: 1,
-    textAlign: "right",
-  },
-  progressBar: {
-    height: 6,
-    backgroundColor: "#F5F7FA",
-    borderRadius: 3,
-    marginBottom: 16,
-    overflow: "hidden",
-  },
-  progressFill: {
-    height: "100%",
-    backgroundColor: "#FFD700",
-    borderRadius: 3,
-  },
-  driverCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#F5F7FA",
-    borderRadius: 16,
-    padding: 14,
-    marginBottom: 12,
-    gap: 12,
-  },
-  driverAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: "#1A0533",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  driverAvatarText: {
-    color: "#FFD700",
-    fontSize: 20,
-    fontWeight: "800",
-  },
-  driverInfo: {
-    flex: 1,
-    alignItems: "flex-end",
-  },
-  driverName: {
-    color: "#1A0533",
-    fontSize: 15,
-    fontWeight: "700",
-  },
-  driverCar: {
-    color: "#6B7A8D",
-    fontSize: 12,
-    marginTop: 2,
-  },
-  driverPlate: {
-    color: "#FFD700",
-    fontSize: 13,
-    fontWeight: "700",
-    marginTop: 2,
-  },
-  driverActions: {
-    flexDirection: "row",
-    gap: 8,
-  },
-  driverActionBtn: {
+    left: 16,
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "rgba(26,5,51,0.85)",
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
+    borderWidth: 1,
+    borderColor: "#FFD700",
   },
-  driverActionIcon: {
-    fontSize: 18,
-  },
-  ratingRow: {
-    flexDirection: "row-reverse",
+  backIcon: { color: "#FFD700", fontSize: 18, fontWeight: "bold" },
+  statusBadge: {
+    position: "absolute",
+    alignSelf: "center",
+    flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    marginBottom: 12,
+    backgroundColor: "rgba(26,5,51,0.9)",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#FFD700",
+    gap: 8,
   },
-  ratingLabel: {
-    color: "#6B7A8D",
-    fontSize: 13,
+  statusIcon: { fontSize: 16 },
+  statusText: { color: "#FFD700", fontSize: 13, fontWeight: "600" },
+  driverMarker: { alignItems: "center" },
+  destMarker: { alignItems: "center" },
+  originMarker: { alignItems: "center" },
+  driverSheet: {
+    backgroundColor: "#1A0533",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderColor: "#3D2070",
   },
-  ratingStar: {
-    fontSize: 20,
+  handle: {
+    width: 40,
+    height: 4,
+    backgroundColor: "#3D2070",
+    borderRadius: 2,
+    alignSelf: "center",
+    marginBottom: 16,
   },
-  safetyBtn: {
-    backgroundColor: "#FEE2E2",
-    borderRadius: 14,
-    paddingVertical: 12,
+  driverRow: {
+    flexDirection: "row",
     alignItems: "center",
-    marginBottom: 12,
+    marginBottom: 16,
   },
-  safetyBtnText: {
-    color: "#EF4444",
-    fontSize: 14,
-    fontWeight: "700",
+  avatarCircle: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: "#2D1B4E",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: "#FFD700",
+    marginRight: 12,
   },
-  actionRow: {
-    gap: 10,
+  avatarText: { fontSize: 26 },
+  driverInfo: { flex: 1 },
+  driverName: { color: "#FFFFFF", fontSize: 16, fontWeight: "bold" },
+  driverCar: { color: "#9B8EC4", fontSize: 13, marginTop: 2 },
+  ratingRow: { flexDirection: "row", alignItems: "center", marginTop: 4 },
+  star: { fontSize: 12 },
+  rating: { color: "#FFD700", fontSize: 13, fontWeight: "bold", marginLeft: 2 },
+  plate: { color: "#6B5B8A", fontSize: 12 },
+  driverActions: { flexDirection: "row", gap: 8 },
+  actionBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#2D1B4E",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#3D2070",
   },
+  actionIcon: { fontSize: 18 },
+  progressBar: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 8,
+    marginBottom: 16,
+  },
+  progressDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: "#3D2070",
+  },
+  progressDotActive: { backgroundColor: "#FFD700" },
+  progressDotDone: { backgroundColor: "#22C55E" },
+  bottomRow: { flexDirection: "row", gap: 12, marginBottom: 8 },
+  sosBtn: {
+    flex: 1,
+    backgroundColor: "#EF4444",
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: "center",
+  },
+  sosBtnText: { color: "#FFFFFF", fontSize: 14, fontWeight: "bold" },
   cancelBtn: {
-    borderWidth: 1.5,
-    borderColor: "#E2E8F0",
-    borderRadius: 14,
+    flex: 2,
+    backgroundColor: "#2D1B4E",
+    borderRadius: 12,
     paddingVertical: 14,
     alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#3D2070",
   },
-  cancelBtnText: {
-    color: "#6B7A8D",
-    fontSize: 15,
-    fontWeight: "600",
-  },
-  doneBtn: {
-    backgroundColor: "#22C55E",
-    borderRadius: 14,
-    paddingVertical: 14,
-    alignItems: "center",
-  },
-  doneBtnText: {
-    color: "#FFFFFF",
-    fontSize: 15,
-    fontWeight: "700",
-  },
+  cancelBtnText: { color: "#9B8EC4", fontSize: 14, fontWeight: "600" },
 });
