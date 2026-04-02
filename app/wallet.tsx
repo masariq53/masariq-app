@@ -129,7 +129,7 @@ export default function WalletScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#1A2E4A",
+    backgroundColor: "#1A0533",
   },
   header: {
     flexDirection: "row",
@@ -171,7 +171,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   balanceAmount: {
-    color: "#F5A623",
+    color: "#FFD700",
     fontSize: 36,
     fontWeight: "800",
   },
@@ -181,13 +181,13 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   topupBtn: {
-    backgroundColor: "#F5A623",
+    backgroundColor: "#FFD700",
     borderRadius: 14,
     paddingHorizontal: 20,
     paddingVertical: 10,
   },
   topupBtnText: {
-    color: "#1A2E4A",
+    color: "#1A0533",
     fontSize: 14,
     fontWeight: "700",
   },
@@ -213,7 +213,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   topupTitle: {
-    color: "#1A2E4A",
+    color: "#1A0533",
     fontSize: 16,
     fontWeight: "800",
     textAlign: "right",
@@ -232,7 +232,7 @@ const styles = StyleSheet.create({
     borderColor: "transparent",
   },
   qaChipActive: {
-    borderColor: "#F5A623",
+    borderColor: "#FFD700",
     backgroundColor: "#FFF8EC",
   },
   qaText: {
@@ -241,26 +241,26 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   qaTextActive: {
-    color: "#F5A623",
+    color: "#FFD700",
   },
   amountInput: {
     backgroundColor: "#F5F7FA",
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 12,
-    color: "#1A2E4A",
+    color: "#1A0533",
     fontSize: 15,
     borderWidth: 1.5,
     borderColor: "#E2E8F0",
   },
   confirmTopupBtn: {
-    backgroundColor: "#F5A623",
+    backgroundColor: "#FFD700",
     borderRadius: 12,
     paddingVertical: 14,
     alignItems: "center",
   },
   confirmTopupText: {
-    color: "#1A2E4A",
+    color: "#1A0533",
     fontSize: 15,
     fontWeight: "800",
   },
@@ -273,7 +273,7 @@ const styles = StyleSheet.create({
     paddingTop: 20,
   },
   sectionTitle: {
-    color: "#1A2E4A",
+    color: "#1A0533",
     fontSize: 16,
     fontWeight: "800",
     textAlign: "right",
@@ -309,7 +309,7 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
   },
   txLabel: {
-    color: "#1A2E4A",
+    color: "#1A0533",
     fontSize: 14,
     fontWeight: "600",
   },

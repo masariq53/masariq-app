@@ -32,7 +32,7 @@ export default function DeliveryScreen() {
   };
 
   return (
-    <ScreenContainer containerClassName="bg-[#1A2E4A]" safeAreaClassName="bg-[#F5F7FA]">
+    <ScreenContainer containerClassName="bg-[#1A0533]" safeAreaClassName="bg-[#F5F7FA]">
       <StatusBar style="light" />
 
       {/* Header */}
@@ -147,7 +147,7 @@ export default function DeliveryScreen() {
 
 const styles = StyleSheet.create({
   header: {
-    backgroundColor: "#1A2E4A",
+    backgroundColor: "#1A0533",
     paddingHorizontal: 20,
     paddingBottom: 20,
     paddingTop: 10,
@@ -172,7 +172,7 @@ const styles = StyleSheet.create({
     paddingTop: 20,
   },
   sectionTitle: {
-    color: "#1A2E4A",
+    color: "#1A0533",
     fontSize: 16,
     fontWeight: "800",
     textAlign: "right",
@@ -199,7 +199,7 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   typeCardActive: {
-    borderColor: "#F5A623",
+    borderColor: "#FFD700",
     backgroundColor: "#FFF8EC",
   },
   typeIcon: {
@@ -207,29 +207,29 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   typeLabel: {
-    color: "#1A2E4A",
+    color: "#1A0533",
     fontSize: 14,
     fontWeight: "700",
   },
   typeLabelActive: {
-    color: "#F5A623",
+    color: "#FFD700",
   },
   typeSize: {
     color: "#6B7A8D",
     fontSize: 11,
   },
   typeSizeActive: {
-    color: "#F5A623",
+    color: "#FFD700",
     opacity: 0.8,
   },
   typePrice: {
-    color: "#1A2E4A",
+    color: "#1A0533",
     fontSize: 13,
     fontWeight: "800",
     marginTop: 4,
   },
   typePriceActive: {
-    color: "#F5A623",
+    color: "#FFD700",
   },
   addressCard: {
     backgroundColor: "#FFFFFF",
@@ -254,7 +254,7 @@ const styles = StyleSheet.create({
   },
   addressInput: {
     flex: 1,
-    color: "#1A2E4A",
+    color: "#1A0533",
     fontSize: 14,
     fontWeight: "500",
   },
@@ -274,7 +274,7 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   input: {
-    color: "#1A2E4A",
+    color: "#1A0533",
     fontSize: 14,
     paddingHorizontal: 16,
     paddingVertical: 14,
@@ -284,7 +284,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#F5F7FA",
   },
   summaryCard: {
-    backgroundColor: "#1A2E4A",
+    backgroundColor: "#1A0533",
     borderRadius: 18,
     padding: 20,
     margin: 16,
@@ -300,24 +300,24 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   summaryValue: {
-    color: "#F5A623",
+    color: "#FFD700",
     fontSize: 16,
     fontWeight: "800",
   },
   orderBtn: {
-    backgroundColor: "#F5A623",
+    backgroundColor: "#FFD700",
     borderRadius: 18,
     paddingVertical: 18,
     marginHorizontal: 16,
     alignItems: "center",
-    shadowColor: "#F5A623",
+    shadowColor: "#FFD700",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.35,
     shadowRadius: 10,
     elevation: 8,
   },
   orderBtnText: {
-    color: "#1A2E4A",
+    color: "#1A0533",
     fontSize: 17,
     fontWeight: "800",
   },

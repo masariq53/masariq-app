@@ -56,7 +56,7 @@ const mockHistory = [
     date: "01/04/2026",
     price: "50,000",
     status: "نشط",
-    statusColor: "#F5A623",
+    statusColor: "#FFD700",
     driver: "—",
     rating: 0,
   },
@@ -127,7 +127,7 @@ export default function HistoryScreen() {
       {item.rating > 0 && (
         <View style={styles.ratingRow}>
           {[1, 2, 3, 4, 5].map((s) => (
-            <Text key={s} style={{ fontSize: 14, color: s <= item.rating ? "#F5A623" : "#E2E8F0" }}>
+            <Text key={s} style={{ fontSize: 14, color: s <= item.rating ? "#FFD700" : "#E2E8F0" }}>
               ★
             </Text>
           ))}
@@ -137,7 +137,7 @@ export default function HistoryScreen() {
   );
 
   return (
-    <ScreenContainer containerClassName="bg-[#1A2E4A]" safeAreaClassName="bg-[#F5F7FA]">
+    <ScreenContainer containerClassName="bg-[#1A0533]" safeAreaClassName="bg-[#F5F7FA]">
       <StatusBar style="light" />
 
       {/* Header */}
@@ -180,7 +180,7 @@ export default function HistoryScreen() {
 
 const styles = StyleSheet.create({
   header: {
-    backgroundColor: "#1A2E4A",
+    backgroundColor: "#1A0533",
     paddingHorizontal: 20,
     paddingBottom: 20,
     paddingTop: 10,
@@ -208,7 +208,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#F5F7FA",
   },
   tabActive: {
-    backgroundColor: "#1A2E4A",
+    backgroundColor: "#1A0533",
   },
   tabText: {
     color: "#6B7A8D",
@@ -289,7 +289,7 @@ const styles = StyleSheet.create({
     alignSelf: "flex-end",
   },
   routeText: {
-    color: "#1A2E4A",
+    color: "#1A0533",
     fontSize: 14,
     fontWeight: "600",
     flex: 1,
@@ -308,7 +308,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   priceText: {
-    color: "#1A2E4A",
+    color: "#1A0533",
     fontSize: 16,
     fontWeight: "800",
   },

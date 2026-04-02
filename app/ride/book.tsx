@@ -243,7 +243,7 @@ const styles = StyleSheet.create({
     fontSize: 64,
   },
   mapLabel: {
-    color: "#1A2E4A",
+    color: "#1A0533",
     fontSize: 16,
     fontWeight: "600",
     opacity: 0.6,
@@ -274,7 +274,7 @@ const styles = StyleSheet.create({
   },
   backText: {
     fontSize: 20,
-    color: "#1A2E4A",
+    color: "#1A0533",
     fontWeight: "700",
   },
   bottomSheet: {
@@ -299,7 +299,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   sheetTitle: {
-    color: "#1A2E4A",
+    color: "#1A0533",
     fontSize: 20,
     fontWeight: "800",
     textAlign: "right",
@@ -324,7 +324,7 @@ const styles = StyleSheet.create({
   },
   addressInput: {
     flex: 1,
-    color: "#1A2E4A",
+    color: "#1A0533",
     fontSize: 14,
     fontWeight: "500",
   },
@@ -348,16 +348,16 @@ const styles = StyleSheet.create({
     borderColor: "#E2E8F0",
   },
   quickChipText: {
-    color: "#1A2E4A",
+    color: "#1A0533",
     fontSize: 12,
     fontWeight: "600",
   },
   btn: {
-    backgroundColor: "#F5A623",
+    backgroundColor: "#FFD700",
     borderRadius: 16,
     paddingVertical: 16,
     alignItems: "center",
-    shadowColor: "#F5A623",
+    shadowColor: "#FFD700",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
@@ -367,7 +367,7 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   btnText: {
-    color: "#1A2E4A",
+    color: "#1A0533",
     fontSize: 16,
     fontWeight: "800",
   },
@@ -378,7 +378,7 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   editText: {
-    color: "#F5A623",
+    color: "#FFD700",
     fontSize: 14,
     fontWeight: "600",
   },
@@ -396,7 +396,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   routeTo: {
-    color: "#1A2E4A",
+    color: "#1A0533",
     fontSize: 13,
     fontWeight: "700",
   },
@@ -417,31 +417,31 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   rideCardActive: {
-    borderColor: "#F5A623",
+    borderColor: "#FFD700",
     backgroundColor: "#FFF8EC",
   },
   rideIcon: {
     fontSize: 28,
   },
   rideLabel: {
-    color: "#1A2E4A",
+    color: "#1A0533",
     fontSize: 13,
     fontWeight: "700",
   },
   rideLabelActive: {
-    color: "#F5A623",
+    color: "#FFD700",
   },
   rideTime: {
     color: "#6B7A8D",
     fontSize: 11,
   },
   ridePrice: {
-    color: "#1A2E4A",
+    color: "#1A0533",
     fontSize: 13,
     fontWeight: "800",
   },
   ridePriceActive: {
-    color: "#F5A623",
+    color: "#FFD700",
   },
   paymentRow: {
     flexDirection: "row",
@@ -461,7 +461,7 @@ const styles = StyleSheet.create({
     borderColor: "transparent",
   },
   paymentChipActive: {
-    borderColor: "#1A2E4A",
+    borderColor: "#1A0533",
     backgroundColor: "#E8F0FE",
   },
   paymentIcon: {
@@ -473,7 +473,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   paymentLabelActive: {
-    color: "#1A2E4A",
+    color: "#1A0533",
     fontWeight: "700",
   },
 });

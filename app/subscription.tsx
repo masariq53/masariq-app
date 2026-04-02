@@ -28,7 +28,7 @@ const plans = [
     price: "45,000",
     period: "شهرياً",
     rides: "20",
-    color: "#1A2E4A",
+    color: "#1A0533",
     features: ["20 رحلة شهرياً", "خصم 20%", "أولوية قصوى", "دعم على مدار الساعة"],
     popular: true,
   },
@@ -38,7 +38,7 @@ const plans = [
     price: "80,000",
     period: "شهرياً",
     rides: "غير محدود",
-    color: "#F5A623",
+    color: "#FFD700",
     features: ["رحلات غير محدودة", "خصم 30%", "سيارات فاخرة", "سائق خاص", "أولوية قصوى"],
     popular: false,
   },
@@ -186,7 +186,7 @@ export default function SubscriptionScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#1A2E4A",
+    backgroundColor: "#1A0533",
   },
   header: {
     flexDirection: "row",
@@ -228,7 +228,7 @@ const styles = StyleSheet.create({
     fontSize: 48,
   },
   heroTitle: {
-    color: "#1A2E4A",
+    color: "#1A0533",
     fontSize: 22,
     fontWeight: "800",
   },
@@ -241,7 +241,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   sectionTitle: {
-    color: "#1A2E4A",
+    color: "#1A0533",
     fontSize: 16,
     fontWeight: "800",
     textAlign: "right",
@@ -263,22 +263,22 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   planCardActive: {
-    borderColor: "#F5A623",
+    borderColor: "#FFD700",
   },
   planCardPopular: {
-    borderColor: "#1A2E4A",
+    borderColor: "#1A0533",
   },
   popularBadge: {
     position: "absolute",
     top: 0,
     left: 0,
-    backgroundColor: "#1A2E4A",
+    backgroundColor: "#1A0533",
     paddingHorizontal: 12,
     paddingVertical: 4,
     borderBottomRightRadius: 12,
   },
   popularText: {
-    color: "#F5A623",
+    color: "#FFD700",
     fontSize: 11,
     fontWeight: "700",
   },
@@ -290,7 +290,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   planName: {
-    color: "#1A2E4A",
+    color: "#1A0533",
     fontSize: 18,
     fontWeight: "800",
     textAlign: "right",
@@ -321,13 +321,13 @@ const styles = StyleSheet.create({
     alignSelf: "flex-end",
   },
   selectCircleActive: {
-    borderColor: "#F5A623",
+    borderColor: "#FFD700",
   },
   selectDot: {
     width: 12,
     height: 12,
     borderRadius: 6,
-    backgroundColor: "#F5A623",
+    backgroundColor: "#FFD700",
   },
   featuresList: {
     gap: 8,
@@ -341,7 +341,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   featureText: {
-    color: "#1A2E4A",
+    color: "#1A0533",
     fontSize: 13,
     textAlign: "right",
   },
@@ -372,7 +372,7 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
   },
   corpName: {
-    color: "#1A2E4A",
+    color: "#1A0533",
     fontSize: 15,
     fontWeight: "700",
   },
@@ -385,17 +385,17 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
   },
   corpPrice: {
-    color: "#F5A623",
+    color: "#FFD700",
     fontSize: 13,
     fontWeight: "700",
   },
   subscribeBtn: {
-    backgroundColor: "#F5A623",
+    backgroundColor: "#FFD700",
     borderRadius: 18,
     paddingVertical: 18,
     marginHorizontal: 16,
     alignItems: "center",
-    shadowColor: "#F5A623",
+    shadowColor: "#FFD700",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.35,
     shadowRadius: 10,
@@ -403,7 +403,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   subscribeBtnText: {
-    color: "#1A2E4A",
+    color: "#1A0533",
     fontSize: 17,
     fontWeight: "800",
   },

@@ -248,7 +248,7 @@ export default function DriverRegisterScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#1A2E4A",
+    backgroundColor: "#1A0533",
   },
   header: {
     flexDirection: "row",
@@ -299,8 +299,8 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255,255,255,0.2)",
   },
   stepCircleActive: {
-    backgroundColor: "#F5A623",
-    borderColor: "#F5A623",
+    backgroundColor: "#FFD700",
+    borderColor: "#FFD700",
   },
   stepNum: {
     color: "rgba(255,255,255,0.5)",
@@ -308,7 +308,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   stepNumActive: {
-    color: "#1A2E4A",
+    color: "#1A0533",
   },
   stepLabel: {
     color: "rgba(255,255,255,0.4)",
@@ -317,7 +317,7 @@ const styles = StyleSheet.create({
     marginRight: 4,
   },
   stepLabelActive: {
-    color: "#F5A623",
+    color: "#FFD700",
     fontWeight: "600",
   },
   stepConnector: {
@@ -326,7 +326,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.15)",
   },
   stepConnectorActive: {
-    backgroundColor: "#F5A623",
+    backgroundColor: "#FFD700",
   },
   scroll: {
     flex: 1,
@@ -339,7 +339,7 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   formTitle: {
-    color: "#1A2E4A",
+    color: "#1A0533",
     fontSize: 20,
     fontWeight: "800",
     textAlign: "right",
@@ -354,7 +354,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   inputLabel: {
-    color: "#1A2E4A",
+    color: "#1A0533",
     fontSize: 14,
     fontWeight: "700",
     textAlign: "right",
@@ -364,7 +364,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingHorizontal: 16,
     paddingVertical: 14,
-    color: "#1A2E4A",
+    color: "#1A0533",
     fontSize: 15,
     borderWidth: 1.5,
     borderColor: "#E2E8F0",
@@ -405,7 +405,7 @@ const styles = StyleSheet.create({
     borderColor: "transparent",
   },
   carTypeBtnActive: {
-    borderColor: "#F5A623",
+    borderColor: "#FFD700",
     backgroundColor: "#FFF8EC",
   },
   carTypeIcon: {
@@ -417,7 +417,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   carTypeLabelActive: {
-    color: "#F5A623",
+    color: "#FFD700",
   },
   docCard: {
     flexDirection: "row",
@@ -449,7 +449,7 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
   },
   docLabel: {
-    color: "#1A2E4A",
+    color: "#1A0533",
     fontSize: 14,
     fontWeight: "700",
   },
@@ -482,18 +482,18 @@ const styles = StyleSheet.create({
     borderTopColor: "#E2E8F0",
   },
   nextBtn: {
-    backgroundColor: "#F5A623",
+    backgroundColor: "#FFD700",
     borderRadius: 16,
     paddingVertical: 16,
     alignItems: "center",
-    shadowColor: "#F5A623",
+    shadowColor: "#FFD700",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 6,
   },
   nextBtnText: {
-    color: "#1A2E4A",
+    color: "#1A0533",
     fontSize: 17,
     fontWeight: "800",
   },

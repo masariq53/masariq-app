@@ -68,7 +68,7 @@ export default function ProfileScreen() {
   };
 
   return (
-    <ScreenContainer containerClassName="bg-[#1A2E4A]" safeAreaClassName="bg-[#F5F7FA]">
+    <ScreenContainer containerClassName="bg-[#1A0533]" safeAreaClassName="bg-[#F5F7FA]">
       <StatusBar style="light" />
 
       {/* Header */}
@@ -141,7 +141,7 @@ export default function ProfileScreen() {
               <Switch
                 value={notificationsEnabled}
                 onValueChange={setNotificationsEnabled}
-                trackColor={{ false: "#E2E8F0", true: "#F5A623" }}
+                trackColor={{ false: "#E2E8F0", true: "#FFD700" }}
                 thumbColor="#FFFFFF"
               />
               <Text style={styles.menuLabel}>الإشعارات</Text>
@@ -151,7 +151,7 @@ export default function ProfileScreen() {
               <Switch
                 value={darkMode}
                 onValueChange={setDarkMode}
-                trackColor={{ false: "#E2E8F0", true: "#1A2E4A" }}
+                trackColor={{ false: "#E2E8F0", true: "#1A0533" }}
                 thumbColor="#FFFFFF"
               />
               <Text style={styles.menuLabel}>الوضع الداكن</Text>
@@ -174,7 +174,7 @@ export default function ProfileScreen() {
 
 const styles = StyleSheet.create({
   header: {
-    backgroundColor: "#1A2E4A",
+    backgroundColor: "#1A0533",
     paddingHorizontal: 20,
     paddingBottom: 20,
     paddingTop: 10,
@@ -203,12 +203,12 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: "#1A2E4A",
+    backgroundColor: "#1A0533",
     alignItems: "center",
     justifyContent: "center",
   },
   avatarText: {
-    color: "#F5A623",
+    color: "#FFD700",
     fontSize: 28,
     fontWeight: "800",
   },
@@ -217,7 +217,7 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
   },
   profileName: {
-    color: "#1A2E4A",
+    color: "#1A0533",
     fontSize: 16,
     fontWeight: "800",
   },
@@ -233,7 +233,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   ratingText: {
-    color: "#F5A623",
+    color: "#FFD700",
     fontSize: 13,
     fontWeight: "700",
   },
@@ -250,7 +250,7 @@ const styles = StyleSheet.create({
     borderColor: "#E2E8F0",
   },
   editBtnText: {
-    color: "#1A2E4A",
+    color: "#1A0533",
     fontSize: 13,
     fontWeight: "700",
   },
@@ -277,7 +277,7 @@ const styles = StyleSheet.create({
     fontSize: 22,
   },
   statValue: {
-    color: "#1A2E4A",
+    color: "#1A0533",
     fontSize: 20,
     fontWeight: "800",
   },
@@ -324,7 +324,7 @@ const styles = StyleSheet.create({
   },
   menuLabel: {
     flex: 1,
-    color: "#1A2E4A",
+    color: "#1A0533",
     fontSize: 15,
     fontWeight: "600",
     textAlign: "right",

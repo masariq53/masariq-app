@@ -21,24 +21,24 @@ const slides = [
     title: "توصيل سريع وآمن",
     subtitle: "احجز رحلتك في ثوانٍ مع سائقين موثوقين ومعتمدين في الموصل",
     emoji: "🚗",
-    bg: "#1A2E4A",
-    accent: "#F5A623",
+    bg: "#1A0533",
+    accent: "#FFD700",
   },
   {
     id: "2",
     title: "توصيل الطرود",
     subtitle: "أرسل وتسلّم طرودك داخل المدينة بسرعة وأمان تام",
     emoji: "📦",
-    bg: "#1A2E4A",
-    accent: "#F5A623",
+    bg: "#1A0533",
+    accent: "#FFD700",
   },
   {
     id: "3",
     title: "اشتراكات مرنة",
     subtitle: "خطط اشتراك خاصة للموظفين والطلاب بأسعار مناسبة",
     emoji: "⭐",
-    bg: "#1A2E4A",
-    accent: "#F5A623",
+    bg: "#1A0533",
+    accent: "#FFD700",
   },
 ];
 
@@ -52,14 +52,14 @@ export default function OnboardingScreen() {
       flatListRef.current?.scrollToIndex({ index: currentIndex + 1 });
       setCurrentIndex(currentIndex + 1);
     } else {
-      await AsyncStorage.setItem("onboarding_done", "true");
-      router.replace("/auth/login");
+      await AsyncStorage.setItem("@masar_onboarded", "true");
+      router.replace("/login");
     }
   };
 
   const handleSkip = async () => {
-    await AsyncStorage.setItem("onboarding_done", "true");
-    router.replace("/auth/login");
+    await AsyncStorage.setItem("@masar_onboarded", "true");
+    router.replace("/login");
   };
 
   const renderSlide = ({ item }: { item: (typeof slides)[0] }) => (
@@ -88,7 +88,7 @@ export default function OnboardingScreen() {
           style={styles.logo}
           resizeMode="contain"
         />
-        <Text style={styles.appName}>موصل رايد</Text>
+        <Text style={styles.appName}>مسار</Text>
       </View>
 
       {/* Slides */}
@@ -146,7 +146,7 @@ export default function OnboardingScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#1A2E4A",
+    backgroundColor: "#1A0533",
     alignItems: "center",
   },
   skipBtn: {
@@ -161,7 +161,7 @@ const styles = StyleSheet.create({
     borderColor: "rgba(245,166,35,0.5)",
   },
   skipText: {
-    color: "#F5A623",
+    color: "#FFD700",
     fontSize: 14,
     fontWeight: "600",
   },
@@ -227,22 +227,22 @@ const styles = StyleSheet.create({
   dot: {
     height: 8,
     borderRadius: 4,
-    backgroundColor: "#F5A623",
+    backgroundColor: "#FFD700",
   },
   nextBtn: {
-    backgroundColor: "#F5A623",
+    backgroundColor: "#FFD700",
     paddingHorizontal: 60,
     paddingVertical: 16,
     borderRadius: 30,
     marginBottom: 50,
-    shadowColor: "#F5A623",
+    shadowColor: "#FFD700",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.4,
     shadowRadius: 12,
     elevation: 8,
   },
   nextText: {
-    color: "#1A2E4A",
+    color: "#1A0533",
     fontSize: 18,
     fontWeight: "800",
   },

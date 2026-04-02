@@ -16,10 +16,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 const { width } = Dimensions.get("window");
 
 const services = [
-  { id: "ride", icon: "🚗", label: "توصيلة", color: "#1A2E4A", bg: "#E8F0FE" },
-  { id: "delivery", icon: "📦", label: "توصيل طرود", color: "#1A2E4A", bg: "#FEF3E8" },
-  { id: "subscription", icon: "⭐", label: "اشتراكات", color: "#1A2E4A", bg: "#E8FEF0" },
-  { id: "women", icon: "👩", label: "سائقة", color: "#1A2E4A", bg: "#FEE8F3" },
+  { id: "ride", icon: "🚗", label: "توصيلة", color: "#2D1B69", bg: "#E8E0F8" },
+  { id: "delivery", icon: "📦", label: "توصيل طرود", color: "#2D1B69", bg: "#FFF5D6" },
+  { id: "subscription", icon: "⭐", label: "اشتراكات", color: "#2D1B69", bg: "#E8F0FE" },
+  { id: "women", icon: "👩", label: "سائقة", color: "#2D1B69", bg: "#FDE8F8" },
 ];
 
 const promos = [
@@ -27,15 +27,15 @@ const promos = [
     id: "1",
     title: "أول رحلة مجانية!",
     subtitle: "استخدم كود: MOSUL1",
-    color: "#F5A623",
-    textColor: "#1A2E4A",
+    color: "#FFD700",
+    textColor: "#1A0533",
     emoji: "🎉",
   },
   {
     id: "2",
     title: "اشتراك شهري",
     subtitle: "وفّر حتى 40% على رحلاتك",
-    color: "#1A2E4A",
+    color: "#1A0533",
     textColor: "#FFFFFF",
     emoji: "💰",
   },
@@ -171,7 +171,7 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#1A2E4A",
+    backgroundColor: "#1A0533",
   },
   header: {
     flexDirection: "row",
@@ -189,17 +189,17 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: "#F5A623",
+    backgroundColor: "#FFD700",
     alignItems: "center",
     justifyContent: "center",
   },
   avatarText: {
-    color: "#1A2E4A",
+    color: "#1A0533",
     fontSize: 18,
     fontWeight: "800",
   },
   greeting: {
-    color: "rgba(255,255,255,0.7)",
+    color: "#C4B5D4",
     fontSize: 12,
   },
   userName: {
@@ -211,7 +211,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: "rgba(255,255,255,0.1)",
+    backgroundColor: "rgba(255,215,0,0.15)",
     alignItems: "center",
     justifyContent: "center",
     position: "relative",
@@ -228,11 +228,11 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     backgroundColor: "#EF4444",
     borderWidth: 2,
-    borderColor: "#1A2E4A",
+    borderColor: "#1A0533",
   },
   scroll: {
     flex: 1,
-    backgroundColor: "#F5F7FA",
+    backgroundColor: "#F0EBF8",
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
   },
@@ -256,7 +256,7 @@ const styles = StyleSheet.create({
   },
   searchInput: {
     flex: 1,
-    color: "#1A2E4A",
+    color: "#2D1B69",
     fontSize: 15,
     textAlign: "right",
   },
@@ -265,7 +265,7 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   sectionTitle: {
-    color: "#1A2E4A",
+    color: "#2D1B69",
     fontSize: 18,
     fontWeight: "800",
     marginBottom: 14,
@@ -282,9 +282,9 @@ const styles = StyleSheet.create({
     padding: 20,
     alignItems: "center",
     gap: 10,
-    shadowColor: "#000",
+    shadowColor: "#2D1B69",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
+    shadowOpacity: 0.15,
     shadowRadius: 6,
     elevation: 2,
   },
@@ -353,7 +353,7 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
   },
   destName: {
-    color: "#1A2E4A",
+    color: "#1A0533",
     fontSize: 15,
     fontWeight: "700",
   },
@@ -363,14 +363,14 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   destArrow: {
-    color: "#F5A623",
+    color: "#FFD700",
     fontSize: 20,
     fontWeight: "700",
   },
   safetyBanner: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#1A2E4A",
+    backgroundColor: "#1A0533",
     borderRadius: 18,
     padding: 18,
     marginHorizontal: 20,
@@ -395,7 +395,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   safetyArrow: {
-    color: "#F5A623",
+    color: "#FFD700",
     fontSize: 20,
     fontWeight: "700",
   },

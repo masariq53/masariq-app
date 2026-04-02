@@ -28,11 +28,11 @@ const schemeFromBundleId = `manus${timestamp}`;
 
 const env = {
   // App branding - update these values directly (do not use env vars)
-  appName: "موصل رايد",
+  appName: "مسار",
   appSlug: "mosul-ride-app",
   // S3 URL of the app logo - set this to the URL returned by generate_image when creating custom logo
   // Leave empty to use the default icon from assets/images/icon.png
-  logoUrl: "https://d2xsxph8kpxj0f.cloudfront.net/310419663030219218/jLhUqvseDGUrnnw2XKr64L/icon-PB6kbkqsbtM2wNL3yNat2f.png",
+  logoUrl: "https://d2xsxph8kpxj0f.cloudfront.net/310419663030219218/jLhUqvseDGUrnnw2XKr64L/icon-DS2MawwotwoHehDdPjr3ZW.png",
   scheme: schemeFromBundleId,
   iosBundleId: bundleId,
   androidPackage: bundleId,

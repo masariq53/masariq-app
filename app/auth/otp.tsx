@@ -52,8 +52,8 @@ export default function OTPScreen() {
     setError("");
     setLoading(true);
     await new Promise((r) => setTimeout(r, 1200));
-    await AsyncStorage.setItem("user_logged_in", "true");
-    await AsyncStorage.setItem("user_phone", phone || "");
+    await AsyncStorage.setItem("@masar_logged_in", "true");
+    await AsyncStorage.setItem("@masar_user_phone", phone || "");
     setLoading(false);
     router.replace("/(tabs)");
   };
@@ -97,7 +97,7 @@ export default function OTPScreen() {
               keyboardType="number-pad"
               maxLength={1}
               textAlign="center"
-              selectionColor="#F5A623"
+              selectionColor="#FFD700"
             />
           ))}
         </View>
@@ -111,7 +111,7 @@ export default function OTPScreen() {
           disabled={loading}
         >
           {loading ? (
-            <ActivityIndicator color="#1A2E4A" />
+            <ActivityIndicator color="#1A0533" />
           ) : (
             <Text style={styles.btnText}>تحقق والمتابعة</Text>
           )}
@@ -135,7 +135,7 @@ export default function OTPScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#1A2E4A",
+    backgroundColor: "#1A0533",
   },
   backBtn: {
     position: "absolute",
@@ -144,7 +144,7 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   backText: {
-    color: "#F5A623",
+    color: "#FFD700",
     fontSize: 16,
     fontWeight: "600",
   },
@@ -165,14 +165,14 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   subtitle: {
-    color: "rgba(255,255,255,0.7)",
+    color: "rgba(196,181,212,1)",
     fontSize: 15,
     textAlign: "center",
     lineHeight: 24,
     marginBottom: 36,
   },
   phone: {
-    color: "#F5A623",
+    color: "#FFD700",
     fontWeight: "700",
     fontSize: 16,
   },
@@ -185,16 +185,16 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 16,
-    backgroundColor: "rgba(255,255,255,0.1)",
+    backgroundColor: "rgba(45,27,105,0.8)",
     borderWidth: 2,
-    borderColor: "rgba(255,255,255,0.2)",
+    borderColor: "#3D2580",
     color: "#FFFFFF",
     fontSize: 28,
     fontWeight: "800",
   },
   otpInputFilled: {
-    borderColor: "#F5A623",
-    backgroundColor: "rgba(245,166,35,0.15)",
+    borderColor: "#FFD700",
+    backgroundColor: "rgba(255,215,0,0.15)",
   },
   errorText: {
     color: "#F87171",
@@ -202,14 +202,14 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   btn: {
-    backgroundColor: "#F5A623",
+    backgroundColor: "#FFD700",
     borderRadius: 16,
     paddingVertical: 16,
     paddingHorizontal: 60,
     alignItems: "center",
     marginTop: 16,
     marginBottom: 20,
-    shadowColor: "#F5A623",
+    shadowColor: "#FFD700",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.4,
     shadowRadius: 10,
@@ -217,20 +217,20 @@ const styles = StyleSheet.create({
   },
   btnDisabled: { opacity: 0.7 },
   btnText: {
-    color: "#1A2E4A",
+    color: "#1A0533",
     fontSize: 17,
     fontWeight: "800",
   },
   timerText: {
-    color: "rgba(255,255,255,0.5)",
+    color: "#9B8AB0",
     fontSize: 14,
   },
   timerNum: {
-    color: "#F5A623",
+    color: "#FFD700",
     fontWeight: "700",
   },
   resendText: {
-    color: "#F5A623",
+    color: "#FFD700",
     fontSize: 15,
     fontWeight: "700",
     textDecorationLine: "underline",

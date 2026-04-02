@@ -89,6 +89,7 @@ export default function RootLayout() {
             <Stack.Screen name="(tabs)" />
             <Stack.Screen name="onboarding" />
             <Stack.Screen name="auth/login" />
+            <Stack.Screen name="login" />
             <Stack.Screen name="auth/otp" />
             <Stack.Screen name="ride/book" />
             <Stack.Screen name="ride/tracking" />
@@ -97,6 +98,14 @@ export default function RootLayout() {
             <Stack.Screen name="subscription" />
             <Stack.Screen name="wallet" />
             <Stack.Screen name="driver/register" />
+            <Stack.Screen name="captain/home" />
+            <Stack.Screen name="captain/earnings" />
+            <Stack.Screen name="captain/active-trip" />
+            <Stack.Screen name="captain/trip-summary" />
+            <Stack.Screen name="captain/profile" />
+            <Stack.Screen name="captain/trips" />
+            <Stack.Screen name="captain/documents" />
+            <Stack.Screen name="captain/support" />
             <Stack.Screen name="oauth/callback" />
           </Stack>
           <StatusBar style="auto" />

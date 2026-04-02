@@ -217,13 +217,13 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: 20,
     right: 20,
-    backgroundColor: "#1A2E4A",
+    backgroundColor: "#1A0533",
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 8,
   },
   etaText: {
-    color: "#F5A623",
+    color: "#FFD700",
     fontSize: 14,
     fontWeight: "700",
   },
@@ -257,7 +257,7 @@ const styles = StyleSheet.create({
     fontSize: 24,
   },
   statusText: {
-    color: "#1A2E4A",
+    color: "#1A0533",
     fontSize: 16,
     fontWeight: "700",
     flex: 1,
@@ -272,7 +272,7 @@ const styles = StyleSheet.create({
   },
   progressFill: {
     height: "100%",
-    backgroundColor: "#F5A623",
+    backgroundColor: "#FFD700",
     borderRadius: 3,
   },
   driverCard: {
@@ -288,12 +288,12 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: "#1A2E4A",
+    backgroundColor: "#1A0533",
     alignItems: "center",
     justifyContent: "center",
   },
   driverAvatarText: {
-    color: "#F5A623",
+    color: "#FFD700",
     fontSize: 20,
     fontWeight: "800",
   },
@@ -302,7 +302,7 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
   },
   driverName: {
-    color: "#1A2E4A",
+    color: "#1A0533",
     fontSize: 15,
     fontWeight: "700",
   },
@@ -312,7 +312,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   driverPlate: {
-    color: "#F5A623",
+    color: "#FFD700",
     fontSize: 13,
     fontWeight: "700",
     marginTop: 2,
