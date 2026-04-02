@@ -8,23 +8,52 @@ import { OpaqueColorValue, type StyleProp, type TextStyle } from "react-native";
 type IconMapping = Record<SymbolViewProps["name"], ComponentProps<typeof MaterialIcons>["name"]>;
 type IconSymbolName = keyof typeof MAPPING;
 
-/**
- * Add your SF Symbols to Material Icons mappings here.
- * - see Material Icons in the [Icons Directory](https://icons.expo.fyi).
- * - see SF Symbols in the [SF Symbols](https://developer.apple.com/sf-symbols/) app.
- */
 const MAPPING = {
+  // Navigation tabs
   "house.fill": "home",
+  "car.fill": "directions-car",
+  "clock.fill": "history",
+  "person.fill": "person",
+  "bag.fill": "local-shipping",
+  // Actions
   "paperplane.fill": "send",
   "chevron.left.forwardslash.chevron.right": "code",
   "chevron.right": "chevron-right",
+  "chevron.left": "chevron-left",
+  "xmark": "close",
+  "checkmark": "check",
+  "star.fill": "star",
+  "star": "star-outline",
+  "location.fill": "location-on",
+  "location": "location-off",
+  "magnifyingglass": "search",
+  "bell.fill": "notifications",
+  "creditcard.fill": "credit-card",
+  "wallet.pass.fill": "account-balance-wallet",
+  "phone.fill": "phone",
+  "shield.fill": "security",
+  "map.fill": "map",
+  "arrow.right": "arrow-forward",
+  "arrow.left": "arrow-back",
+  "plus": "add",
+  "minus": "remove",
+  "info.circle.fill": "info",
+  "exclamationmark.triangle.fill": "warning",
+  "hand.thumbsup.fill": "thumb-up",
+  "hand.thumbsdown.fill": "thumb-down",
+  "doc.text.fill": "description",
+  "gear": "settings",
+  "power": "power-settings-new",
+  "person.badge.plus": "person-add",
+  "car.2.fill": "directions-car",
+  "bicycle": "directions-bike",
+  "truck.box.fill": "local-shipping",
+  "calendar": "calendar-today",
+  "clock": "access-time",
+  "mappin.and.ellipse": "place",
+  "arrow.triangle.turn.up.right.diamond.fill": "navigation",
 } as IconMapping;
 
-/**
- * An icon component that uses native SF Symbols on iOS, and Material Icons on Android and web.
- * This ensures a consistent look across platforms, and optimal resource usage.
- * Icon `name`s are based on SF Symbols and require manual mapping to Material Icons.
- */
 export function IconSymbol({
   name,
   size = 24,
