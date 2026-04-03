@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>مسار — لوحة التحكم</title>
+<meta name="robots" content="noindex, nofollow"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0F0A1E;--surface:#1A0533;--surface2:#1E1035;
+  --border:#2D1B4E;--primary:#6C3FC5;--primary-light:#8B5CF6;
+  --gold:#FFD700;--text:#FFF;--text-muted:#9B8EC4;--text-dim:#6B7280;
+  --success:#22C55E;--warning:#F59E0B;--error:#EF4444;--info:#3B82F6;
+}
+html,body{height:100%;font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);direction:rtl}
+a{color:inherit;text-decoration:none}
+button{cursor:pointer;border:none;outline:none;font-family:inherit}
+input{outline:none;font-family:inherit}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:var(--surface)}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+
+/* ── Login ── */
+#login-page{display:flex;align-items:center;justify-content:center;min-height:100vh;position:relative;overflow:hidden;padding:20px}
+.bg-c1{position:absolute;width:500px;height:500px;border-radius:50%;background:radial-gradient(circle,rgba(108,63,197,.15) 0%,transparent 70%);top:-100px;right:-100px;pointer-events:none}
+.bg-c2{position:absolute;width:400px;height:400px;border-radius:50%;background:radial-gradient(circle,rgba(255,215,0,.08) 0%,transparent 70%);bottom:-100px;left:-100px;pointer-events:none}
+.login-card{background:var(--surface);border:1px solid var(--border);border-radius:24px;padding:40px 36px;width:100%;max-width:440px;position:relative;z-index:1;box-shadow:0 25px 60px rgba(0,0,0,.5)}
+.logo-row{display:flex;align-items:center;gap:16px;margin-bottom:24px}
+.logo-icon{width:56px;height:56px;border-radius:16px;background:var(--gold);display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:900;color:#1A0533;flex-shrink:0}
+.logo-name{font-size:26px;font-weight:900}
+.logo-sub{font-size:13px;color:var(--text-muted);margin-top:3px}
+.divider{height:1px;background:var(--border);margin-bottom:28px}
+.login-title{font-size:22px;font-weight:800;margin-bottom:8px}
+.login-sub{font-size:14px;color:var(--text-muted);margin-bottom:28px}
+.field{display:flex;flex-direction:column;gap:8px;margin-bottom:20px}
+.field label{font-size:14px;font-weight:600;color:var(--text-muted)}
+.input-wrap{display:flex;align-items:center;background:var(--surface2);border:1.5px solid var(--border);border-radius:12px;padding:0 14px;gap:10px}
+.input-wrap:focus-within{border-color:var(--primary)}
+.input-icon{font-size:18px;flex-shrink:0}
+.input-wrap input{flex:1;background:transparent;border:none;color:var(--text);font-size:15px;padding:14px 0;direction:ltr}
+.eye-btn{background:none;font-size:18px;padding:4px;flex-shrink:0}
+.error-box{display:flex;align-items:center;gap:8px;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.3);border-radius:10px;padding:12px 14px;color:#FCA5A5;font-size:14px;margin-bottom:16px}
+.submit-btn{width:100%;background:linear-gradient(135deg,#6C3FC5,#8B5CF6);color:#FFF;font-size:16px;font-weight:700;padding:15px;border-radius:12px;border:none;cursor:pointer;transition:opacity .2s}
+.submit-btn:hover{opacity:.9}
+.login-footer{text-align:center;font-size:12px;color:var(--text-dim);margin-top:24px}
+
+/* ── Dashboard ── */
+#dashboard{display:flex;height:100vh;overflow:hidden}
+.sidebar{width:240px;flex-shrink:0;background:var(--surface);border-left:1px solid var(--border);display:flex;flex-direction:column;padding:24px 16px;gap:8px;overflow-y:auto}
+.sb-logo{display:flex;align-items:center;gap:12px;margin-bottom:16px;padding:0 4px}
+.sb-logo-icon{width:44px;height:44px;border-radius:12px;background:var(--gold);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:900;color:#1A0533;flex-shrink:0}
+.sb-logo-name{font-size:18px;font-weight:900}
+.sb-logo-sub{font-size:11px;color:var(--text-muted);margin-top:2px}
+.live-row{display:flex;align-items:center;gap:8px;padding:8px 12px;background:rgba(34,197,94,.1);border-radius:10px;margin-bottom:8px}
+.live-dot{width:8px;height:8px;border-radius:50%;background:#22C55E;flex-shrink:0;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+.live-text{font-size:12px;color:#22C55E;font-weight:600}
+.nav-item{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:12px;font-size:14px;font-weight:600;color:var(--text-muted);cursor:pointer;transition:all .15s;border:none;background:none;width:100%;text-align:right}
+.nav-item:hover{background:rgba(108,63,197,.1);color:var(--text)}
+.nav-item.active{background:rgba(108,63,197,.2);color:var(--primary-light);border-right:3px solid var(--primary-light)}
+.nav-icon{font-size:18px;width:24px;text-align:center}
+.sb-spacer{flex:1}
+.logout-btn{display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:12px;background:rgba(239,68,68,.1);color:#FCA5A5;font-size:14px;font-weight:600;border:1px solid rgba(239,68,68,.2);cursor:pointer;margin-top:8px;width:100%}
+.main{flex:1;overflow-y:auto;background:var(--bg)}
+.page{padding:32px;min-height:100%}
+.page-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:28px}
+.page-title{font-size:26px;font-weight:900}
+.page-sub{font-size:13px;color:var(--text-dim);margin-top:4px}
+.refresh-btn{background:var(--surface);border:1px solid var(--border);color:var(--text-muted);padding:10px 18px;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer}
+.refresh-btn:hover{border-color:var(--primary)}
+
+/* Stats */
+.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px}
+.stat-card{background:var(--surface);border:1px solid var(--border);border-top:3px solid;border-radius:16px;padding:20px;display:flex;flex-direction:column;gap:8px}
+.stat-icon-wrap{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;margin-bottom:4px;font-size:22px}
+.stat-value{font-size:28px;font-weight:900}
+.stat-label{font-size:13px;color:var(--text-muted)}
+.stat-sub{font-size:12px;color:var(--text-dim)}
+.totals-row{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:28px}
+.total-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:20px 24px;display:flex;align-items:center;gap:16px}
+.total-icon{font-size:32px}
+.total-value{font-size:24px;font-weight:900}
+.total-label{font-size:13px;color:var(--text-muted);margin-top:2px}
+
+/* Table */
+.section{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px;margin-bottom:24px}
+.section-title{font-size:17px;font-weight:800;margin-bottom:20px}
+.table-wrap{background:var(--surface);border:1px solid var(--border);border-radius:16px;overflow:auto}
+.table-head{display:flex;align-items:center;padding:12px 20px;background:var(--surface2);font-size:12px;font-weight:700;color:var(--text-dim);gap:8px;min-width:700px}
+.table-row{display:flex;align-items:center;padding:14px 20px;border-bottom:1px solid var(--border);gap:8px;min-width:700px}
+.table-row:last-child{border-bottom:none}
+.badge{padding:4px 10px;border-radius:8px;font-size:12px;font-weight:700;white-space:nowrap}
+.cancel-btn{background:rgba(239,68,68,.15);color:#FCA5A5;border:1px solid rgba(239,68,68,.3);border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer}
+.verify-btn{padding:6px 12px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer}
+.empty{text-align:center;padding:60px;color:var(--text-muted)}
+.empty-icon{font-size:48px;margin-bottom:12px}
+.loading{text-align:center;padding:60px;color:var(--text-muted);font-size:18px}
+
+/* Filters */
+.filters-row{display:flex;gap:16px;margin-bottom:20px;flex-wrap:wrap;align-items:center}
+.filter-btns{display:flex;gap:8px;flex-wrap:wrap}
+.filter-btn{padding:8px 14px;border-radius:10px;background:var(--surface);border:1px solid var(--border);color:var(--text-muted);font-size:13px;font-weight:600;cursor:pointer}
+.filter-btn.active{background:rgba(108,63,197,.2);color:var(--primary-light);border-color:var(--primary)}
+.search-wrap{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:0 16px;flex:1;min-width:200px}
+.search-wrap input{flex:1;background:transparent;border:none;color:var(--text);font-size:14px;padding:12px 0}
+.quick-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px}
+.quick-stat{background:var(--surface);border:1px solid var(--border);border-top:3px solid;border-radius:14px;padding:16px;display:flex;flex-direction:column;align-items:center;gap:6px}
+.quick-stat-value{font-size:28px;font-weight:900}
+.quick-stat-label{font-size:12px;color:var(--text-muted);text-align:center}
+</style>
+</head>
+<body>
+
+<!-- LOGIN PAGE -->
+<div id="login-page">
+  <div class="bg-c1"></div>
+  <div class="bg-c2"></div>
+  <div class="login-card">
+    <div class="logo-row">
+      <div class="logo-icon">م</div>
+      <div>
+        <div class="logo-name">مسار</div>
+        <div class="logo-sub">لوحة التحكم الإدارية</div>
+      </div>
+    </div>
+    <div class="divider"></div>
+    <h2 class="login-title">تسجيل الدخول</h2>
+    <p class="login-sub">أدخل بيانات الدخول الخاصة بالشركة</p>
+    <div class="field">
+      <label>اسم المستخدم</label>
+      <div class="input-wrap">
+        <span class="input-icon">👤</span>
+        <input id="username" type="text" placeholder="masar_admin" autocomplete="username"/>
+      </div>
+    </div>
+    <div class="field">
+      <label>كلمة المرور</label>
+      <div class="input-wrap">
+        <span class="input-icon">🔒</span>
+        <input id="password" type="password" placeholder="••••••••" autocomplete="current-password"/>
+        <button class="eye-btn" onclick="togglePass()">👁️</button>
+      </div>
+    </div>
+    <div id="login-error" class="error-box" style="display:none">
+      <span>⚠️</span><span id="error-msg"></span>
+    </div>
+    <button class="submit-btn" onclick="doLogin()">دخول إلى لوحة التحكم</button>
+    <p class="login-footer">🔐 هذه اللوحة مخصصة لموظفي شركة مسار فقط</p>
+  </div>
+</div>
+
+<!-- DASHBOARD -->
+<div id="dashboard" style="display:none">
+  <aside class="sidebar">
+    <div class="sb-logo">
+      <div class="sb-logo-icon">م</div>
+      <div>
+        <div class="sb-logo-name">مسار</div>
+        <div class="sb-logo-sub">لوحة التحكم</div>
+      </div>
+    </div>
+    <div class="live-row">
+      <span class="live-dot"></span>
+      <span class="live-text">متصل بقاعدة البيانات</span>
+    </div>
+    <button class="nav-item active" onclick="showPage('overview',this)">
+      <span class="nav-icon">📊</span><span>نظرة عامة</span>
+    </button>
+    <button class="nav-item" onclick="showPage('rides',this)">
+      <span class="nav-icon">🚗</span><span>الرحلات</span>
+    </button>
+    <button class="nav-item" onclick="showPage('drivers',this)">
+      <span class="nav-icon">👨‍✈️</span><span>السائقون</span>
+    </button>
+    <button class="nav-item" onclick="showPage('passengers',this)">
+      <span class="nav-icon">👥</span><span>المستخدمون</span>
+    </button>
+    <div class="sb-spacer"></div>
+    <button class="logout-btn" onclick="doLogout()">
+      <span>🚪</span><span>تسجيل الخروج</span>
+    </button>
+  </aside>
+  <main class="main" id="main-content">
+    <div class="loading">⟳ جاري التحميل...</div>
+  </main>
+</div>
+
+<script>
+const ADMIN_USER = 'masar_admin';
+const ADMIN_PASS = 'Masar@2025!';
+const API = '/api/trpc';
+
+// ── Auth ──────────────────────────────────────────────────────────────────────
+function togglePass(){
+  const p=document.getElementById('password');
+  p.type=p.type==='password'?'text':'password';
+}
+function doLogin(){
+  const u=document.getElementById('username').value.trim();
+  const p=document.getElementById('password').value;
+  if(u===ADMIN_USER && p===ADMIN_PASS){
+    sessionStorage.setItem('masar_admin','1');
+    document.getElementById('login-page').style.display='none';
+    document.getElementById('dashboard').style.display='flex';
+    showPage('overview', document.querySelector('.nav-item'));
+  } else {
+    document.getElementById('login-error').style.display='flex';
+    document.getElementById('error-msg').textContent='اسم المستخدم أو كلمة المرور غير صحيحة';
+  }
+}
+document.addEventListener('keydown',e=>{ if(e.key==='Enter') doLogin(); });
+function doLogout(){
+  sessionStorage.removeItem('masar_admin');
+  document.getElementById('dashboard').style.display='none';
+  document.getElementById('login-page').style.display='flex';
+  document.getElementById('username').value='';
+  document.getElementById('password').value='';
+}
+// Auto-login if session exists
+if(sessionStorage.getItem('masar_admin')==='1'){
+  document.getElementById('login-page').style.display='none';
+  document.getElementById('dashboard').style.display='flex';
+  setTimeout(()=>showPage('overview',document.querySelector('.nav-item')),0);
+}
+
+// ── tRPC helpers ──────────────────────────────────────────────────────────────
+async function q(path, input){
+  const url = input!==undefined
+    ? `${API}/${path}?input=${encodeURIComponent(JSON.stringify({json:input}))}`
+    : `${API}/${path}`;
+  const r=await fetch(url);
+  const d=await r.json();
+  if(d.result?.data?.json!==undefined) return d.result.data.json;
+  if(d[0]?.result?.data?.json!==undefined) return d[0].result.data.json;
+  return d;
+}
+async function m(path, input){
+  const r=await fetch(`${API}/${path}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({json:input})});
+  const d=await r.json();
+  if(d.result?.data?.json!==undefined) return d.result.data.json;
+  return d;
+}
+
+// ── Status map ────────────────────────────────────────────────────────────────
+const STATUS={
+  searching:{label:'يبحث',color:'#856404',bg:'#FFF3CD'},
+  accepted:{label:'مقبولة',color:'#0C5460',bg:'#D1ECF1'},
+  driver_arrived:{label:'السائق وصل',color:'#004085',bg:'#CCE5FF'},
+  in_progress:{label:'جارية',color:'#155724',bg:'#D4EDDA'},
+  completed:{label:'مكتملة',color:'#155724',bg:'#D4EDDA'},
+  cancelled:{label:'ملغاة',color:'#721C24',bg:'#F8D7DA'},
+};
+function badge(s){
+  const c=STATUS[s]||{label:s,color:'#4A5568',bg:'#E2E8F0'};
+  return `<span class="badge" style="background:${c.bg};color:${c.color}">${c.label}</span>`;
+}
+
+// ── Navigation ────────────────────────────────────────────────────────────────
+let currentPage='';
+let refreshTimer=null;
+function showPage(page, btn){
+  document.querySelectorAll('.nav-item').forEach(b=>b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  currentPage=page;
+  if(refreshTimer) clearInterval(refreshTimer);
+  if(page==='overview'){ loadOverview(); refreshTimer=setInterval(loadOverview,15000); }
+  else if(page==='rides'){ loadRides(); refreshTimer=setInterval(loadRides,20000); }
+  else if(page==='drivers'){ loadDrivers(); refreshTimer=setInterval(loadDrivers,20000); }
+  else if(page==='passengers'){ loadPassengers(); }
+}
+
+// ── Overview ──────────────────────────────────────────────────────────────────
+async function loadOverview(){
+  const mc=document.getElementById('main-content');
+  if(currentPage!=='overview') return;
+  try{
+    const [stats, rides]=await Promise.all([q('admin.stats'), q('admin.recentRides',{limit:10})]);
+    const ridesList=Array.isArray(rides)?rides:[];
+    mc.innerHTML=`
+    <div class="page">
+      <div class="page-header">
+        <div>
+          <div class="page-title">نظرة عامة</div>
+          <div class="page-sub">آخر تحديث: ${new Date().toLocaleTimeString('ar-IQ')} — يتجدد كل 15 ثانية</div>
+        </div>
+        <button class="refresh-btn" onclick="loadOverview()">🔄 تحديث</button>
+      </div>
+      <div class="stats-grid">
+        ${statCard('🚗','رحلات اليوم',stats.todayRides||0,'#6C3FC5')}
+        ${statCard('⚡','رحلات نشطة الآن',stats.activeRides||0,'#22C55E')}
+        ${statCard('💰','إيرادات اليوم',`${(stats.todayRevenue||0).toLocaleString()} د`,'#FFD700')}
+        ${statCard('👨‍✈️','سائقون متاحون',stats.onlineDrivers||0,'#3B82F6',`من ${stats.totalDrivers||0} مسجل`)}
+      </div>
+      <div class="totals-row">
+        <div class="total-card"><span class="total-icon">📈</span><div><div class="total-value">${stats.totalRides||0}</div><div class="total-label">إجمالي الرحلات</div></div></div>
+        <div class="total-card" style="background:linear-gradient(135deg,#B8960C,#FFD700)"><span class="total-icon">💵</span><div><div class="total-value" style="color:#1A0533">${(stats.totalRevenue||0).toLocaleString()} د</div><div class="total-label" style="color:#1A0533">إجمالي الإيرادات</div></div></div>
+        <div class="total-card"><span class="total-icon">👥</span><div><div class="total-value">${stats.totalPassengers||0}</div><div class="total-label">إجمالي المستخدمين</div></div></div>
+      </div>
+      <div class="section">
+        <div class="section-title">آخر الرحلات</div>
+        ${ridesList.length===0?'<div class="empty"><div class="empty-icon">🚗</div><p>لا توجد رحلات بعد</p></div>':
+        `<div class="table-wrap">
+          <div class="table-head">
+            <span style="width:60px">#</span>
+            <span style="flex:1">من</span>
+            <span style="flex:1">إلى</span>
+            <span style="width:120px">الحالة</span>
+            <span style="width:100px">الأجرة</span>
+            <span style="width:90px">الوقت</span>
+            <span style="width:80px">إجراء</span>
+          </div>
+          ${ridesList.map(r=>`
+          <div class="table-row">
+            <span style="width:60px;color:var(--text-dim);font-size:13px">#${r.id}</span>
+            <span style="flex:1;font-size:13px;color:var(--text-muted)">${(r.pickupAddress||`${parseFloat(r.pickupLat||0).toFixed(3)}°`).substring(0,28)}</span>
+            <span style="flex:1;font-size:13px;color:var(--text-muted)">${(r.dropoffAddress||`${parseFloat(r.dropoffLat||0).toFixed(3)}°`).substring(0,28)}</span>
+            <span style="width:120px">${badge(r.status)}</span>
+            <span style="width:100px;font-weight:800;color:var(--gold)">${Math.round(parseFloat(r.fare||0)).toLocaleString()} د</span>
+            <span style="width:90px;font-size:12px;color:var(--text-dim)">${r.createdAt?new Date(r.createdAt).toLocaleTimeString('ar-IQ',{hour:'2-digit',minute:'2-digit'}):'—'}</span>
+            <span style="width:80px">${(r.status==='searching'||r.status==='accepted')?`<button class="cancel-btn" onclick="cancelRide(${r.id})">إلغاء</button>`:''}</span>
+          </div>`).join('')}
+        </div>`}
+      </div>
+    </div>`;
+  }catch(e){ mc.innerHTML=`<div class="loading">⚠️ خطأ في تحميل البيانات</div>`; }
+}
+function statCard(icon,label,value,color,sub=''){
+  return `<div class="stat-card" style="border-top-color:${color}">
+    <div class="stat-icon-wrap" style="background:${color}22">${icon}</div>
+    <div class="stat-value">${value}</div>
+    <div class="stat-label">${label}</div>
+    ${sub?`<div class="stat-sub">${sub}</div>`:''}
+  </div>`;
+}
+async function cancelRide(id){
+  if(!confirm('إلغاء الرحلة؟')) return;
+  await m('admin.cancelRide',{rideId:id,reason:'Admin cancelled'});
+  loadOverview();
+}
+
+// ── Rides ─────────────────────────────────────────────────────────────────────
+let allRides=[], ridesFilter='الكل', ridesSearch='';
+async function loadRides(){
+  if(currentPage!=='rides') return;
+  const mc=document.getElementById('main-content');
+  try{
+    allRides=await q('admin.rides',{limit:200});
+    if(!Array.isArray(allRides)) allRides=[];
+    renderRides();
+  }catch(e){ mc.innerHTML=`<div class="loading">⚠️ خطأ في تحميل البيانات</div>`; }
+}
+function renderRides(){
+  const mc=document.getElementById('main-content');
+  const FILTERS=['الكل','searching','accepted','in_progress','completed','cancelled'];
+  const FLABELS={'الكل':'الكل',searching:'يبحث',accepted:'مقبولة',in_progress:'جارية',completed:'مكتملة',cancelled:'ملغاة'};
+  const filtered=allRides.filter(r=>{
+    const ms=ridesFilter==='الكل'||r.status===ridesFilter;
+    const mq=!ridesSearch||String(r.id).includes(ridesSearch)||(r.pickupAddress||'').includes(ridesSearch);
+    return ms&&mq;
+  });
+  mc.innerHTML=`<div class="page">
+    <div class="page-header">
+      <div><div class="page-title">إدارة الرحلات</div><div class="page-sub">${allRides.length} رحلة إجمالاً</div></div>
+      <button class="refresh-btn" onclick="loadRides()">🔄 تحديث</button>
+    </div>
+    <div class="filters-row">
+      <div class="filter-btns">
+        ${FILTERS.map(f=>`<button class="filter-btn${ridesFilter===f?' active':''}" onclick="setRidesFilter('${f}')">${FLABELS[f]||f}</button>`).join('')}
+      </div>
+      <div class="search-wrap"><span>🔍</span><input value="${ridesSearch}" oninput="ridesSearch=this.value;renderRides()" placeholder="بحث برقم الرحلة أو العنوان..."/></div>
+    </div>
+    ${filtered.length===0?'<div class="empty"><div class="empty-icon">🚗</div><p>لا توجد رحلات</p></div>':
+    `<div class="table-wrap">
+      <div class="table-head" style="min-width:900px">
+        <span style="width:60px">#</span><span style="flex:1">نقطة الانطلاق</span><span style="flex:1">الوجهة</span>
+        <span style="width:130px">الحالة</span><span style="width:100px">الأجرة</span>
+        <span style="width:100px">المسافة</span><span style="width:100px">التاريخ</span><span style="width:80px">إجراء</span>
+      </div>
+      ${filtered.map(r=>`
+      <div class="table-row" style="min-width:900px">
+        <span style="width:60px;color:var(--text-dim);font-size:13px;font-weight:700">#${r.id}</span>
+        <span style="flex:1;font-size:13px;color:var(--text-muted)">${(r.pickupAddress||`${parseFloat(r.pickupLat||0).toFixed(4)}`).substring(0,30)}</span>
+        <span style="flex:1;font-size:13px;color:var(--text-muted)">${(r.dropoffAddress||`${parseFloat(r.dropoffLat||0).toFixed(4)}`).substring(0,30)}</span>
+        <span style="width:130px">${badge(r.status)}</span>
+        <span style="width:100px;font-weight:800;color:var(--gold)">${Math.round(parseFloat(r.fare||0)).toLocaleString()} د</span>
+        <span style="width:100px;font-size:13px;color:var(--text-muted)">${r.estimatedDistance?parseFloat(r.estimatedDistance).toFixed(1)+' كم':'—'}</span>
+        <span style="width:100px;font-size:12px;color:var(--text-dim)">${r.createdAt?new Date(r.createdAt).toLocaleDateString('ar-IQ'):'—'}</span>
+        <span style="width:80px">${(r.status==='searching'||r.status==='accepted')?`<button class="cancel-btn" onclick="cancelRideR(${r.id})">إلغاء</button>`:''}</span>
+      </div>`).join('')}
+    </div>`}
+  </div>`;
+}
+function setRidesFilter(f){ ridesFilter=f; renderRides(); }
+async function cancelRideR(id){ if(!confirm('إلغاء الرحلة؟')) return; await m('admin.cancelRide',{rideId:id,reason:'Admin cancelled'}); loadRides(); }
+
+// ── Drivers ───────────────────────────────────────────────────────────────────
+let allDrivers=[], driversFilter='all', driversSearch='';
+async function loadDrivers(){
+  if(currentPage!=='drivers') return;
+  const mc=document.getElementById('main-content');
+  try{
+    allDrivers=await q('admin.drivers',{limit:200});
+    if(!Array.isArray(allDrivers)) allDrivers=[];
+    renderDrivers();
+  }catch(e){ mc.innerHTML=`<div class="loading">⚠️ خطأ في تحميل البيانات</div>`; }
+}
+function renderDrivers(){
+  const mc=document.getElementById('main-content');
+  const online=allDrivers.filter(d=>d.isOnline).length;
+  const verified=allDrivers.filter(d=>d.isVerified).length;
+  const pending=allDrivers.filter(d=>!d.isVerified).length;
+  const filtered=allDrivers.filter(d=>{
+    if(driversFilter==='online') return d.isOnline;
+    if(driversFilter==='verified') return d.isVerified;
+    if(driversFilter==='pending') return !d.isVerified;
+    return true;
+  }).filter(d=>!driversSearch||(d.name||'').includes(driversSearch)||d.phone.includes(driversSearch)||(d.carPlate||'').includes(driversSearch));
+  mc.innerHTML=`<div class="page">
+    <div class="page-header">
+      <div><div class="page-title">إدارة السائقين</div><div class="page-sub">${allDrivers.length} سائق مسجل</div></div>
+      <button class="refresh-btn" onclick="loadDrivers()">🔄 تحديث</button>
+    </div>
+    <div class="quick-stats">
+      <div class="quick-stat" style="border-top-color:#22C55E"><span style="font-size:24px">🟢</span><div class="quick-stat-value" style="color:#22C55E">${online}</div><div class="quick-stat-label">متاحون الآن</div></div>
+      <div class="quick-stat" style="border-top-color:#3B82F6"><span style="font-size:24px">✅</span><div class="quick-stat-value" style="color:#3B82F6">${verified}</div><div class="quick-stat-label">موثقون</div></div>
+      <div class="quick-stat" style="border-top-color:#F59E0B"><span style="font-size:24px">⏳</span><div class="quick-stat-value" style="color:#F59E0B">${pending}</div><div class="quick-stat-label">بانتظار التوثيق</div></div>
+      <div class="quick-stat" style="border-top-color:#6C3FC5"><span style="font-size:24px">👨‍✈️</span><div class="quick-stat-value" style="color:#6C3FC5">${allDrivers.length}</div><div class="quick-stat-label">إجمالي</div></div>
+    </div>
+    <div class="filters-row">
+      <div class="filter-btns">
+        ${[['all','الكل'],['online','🟢 متاحون'],['verified','✅ موثقون'],['pending','⏳ بانتظار التوثيق']].map(([k,l])=>`<button class="filter-btn${driversFilter===k?' active':''}" onclick="setDriversFilter('${k}')">${l}</button>`).join('')}
+      </div>
+      <div class="search-wrap"><span>🔍</span><input value="${driversSearch}" oninput="driversSearch=this.value;renderDrivers()" placeholder="بحث بالاسم أو الهاتف أو اللوحة..."/></div>
+    </div>
+    ${filtered.length===0?'<div class="empty"><div class="empty-icon">👨‍✈️</div><p>لا يوجد سائقون</p></div>':
+    `<div class="table-wrap">
+      <div class="table-head" style="min-width:900px">
+        <span style="width:50px">#</span><span style="flex:1">الاسم</span><span style="width:130px">الهاتف</span>
+        <span style="flex:1">السيارة</span><span style="width:90px">اللوحة</span>
+        <span style="width:80px">التقييم</span><span style="width:80px">الرحلات</span>
+        <span style="width:90px">الحالة</span><span style="width:110px">التوثيق</span>
+      </div>
+      ${filtered.map(d=>`
+      <div class="table-row" style="min-width:900px">
+        <span style="width:50px;color:var(--text-dim);font-size:13px">#${d.id}</span>
+        <span style="flex:1"><div style="font-weight:700;font-size:14px">${d.name||'—'}</div></span>
+        <span style="width:130px;font-size:13px;color:var(--text-muted);direction:ltr">+964 ${d.phone}</span>
+        <span style="flex:1;font-size:13px;color:var(--text-muted)">${d.carModel||'—'} ${d.carColor?'('+d.carColor+')':''}</span>
+        <span style="width:90px;font-weight:700;color:var(--gold)">${d.carPlate||'—'}</span>
+        <span style="width:80px">⭐ ${parseFloat(d.rating||5).toFixed(1)}</span>
+        <span style="width:80px;font-weight:700">${d.totalRides||0}</span>
+        <span style="width:90px"><span class="badge" style="background:${d.isOnline?'#D4EDDA':'#F8D7DA'};color:${d.isOnline?'#155724':'#721C24'}">${d.isOnline?'متاح':'غير متاح'}</span></span>
+        <span style="width:110px"><button class="verify-btn" style="background:${d.isVerified?'rgba(239,68,68,.15)':'rgba(34,197,94,.15)'};color:${d.isVerified?'#FCA5A5':'#86EFAC'};border:1px solid ${d.isVerified?'rgba(239,68,68,.3)':'rgba(34,197,94,.3)'}" onclick="toggleVerify(${d.id},${d.isVerified},'${d.name||''}')">
+          ${d.isVerified?'⛔ تعليق':'✅ توثيق'}
+        </button></span>
+      </div>`).join('')}
+    </div>`}
+  </div>`;
+}
+function setDriversFilter(f){ driversFilter=f; renderDrivers(); }
+async function toggleVerify(id, isVerified, name){
+  if(!confirm(`${isVerified?'تعليق':'توثيق'} السائق ${name}؟`)) return;
+  await m('admin.verifyDriver',{driverId:id,isVerified:!isVerified});
+  loadDrivers();
+}
+
+// ── Passengers ────────────────────────────────────────────────────────────────
+let allPassengers=[], passSearch='';
+async function loadPassengers(){
+  if(currentPage!=='passengers') return;
+  const mc=document.getElementById('main-content');
+  try{
+    allPassengers=await q('admin.passengers',{limit:200});
+    if(!Array.isArray(allPassengers)) allPassengers=[];
+    renderPassengers();
+  }catch(e){ mc.innerHTML=`<div class="loading">⚠️ خطأ في تحميل البيانات</div>`; }
+}
+function renderPassengers(){
+  const mc=document.getElementById('main-content');
+  const filtered=allPassengers.filter(p=>!passSearch||(p.name||'').includes(passSearch)||p.phone.includes(passSearch));
+  const totalWallet=allPassengers.reduce((s,p)=>s+parseFloat(p.walletBalance||0),0);
+  const totalRides=allPassengers.reduce((s,p)=>s+(p.totalRides||0),0);
+  mc.innerHTML=`<div class="page">
+    <div class="page-header">
+      <div><div class="page-title">إدارة المستخدمين</div><div class="page-sub">${allPassengers.length} مستخدم مسجل</div></div>
+      <button class="refresh-btn" onclick="loadPassengers()">🔄 تحديث</button>
+    </div>
+    <div class="quick-stats">
+      <div class="quick-stat" style="border-top-color:#6C3FC5"><span style="font-size:24px">👥</span><div class="quick-stat-value" style="color:#6C3FC5">${allPassengers.length}</div><div class="quick-stat-label">إجمالي المستخدمين</div></div>
+      <div class="quick-stat" style="border-top-color:#3B82F6"><span style="font-size:24px">🚗</span><div class="quick-stat-value" style="color:#3B82F6">${totalRides}</div><div class="quick-stat-label">إجمالي الرحلات</div></div>
+      <div class="quick-stat" style="border-top-color:#FFD700"><span style="font-size:24px">💰</span><div class="quick-stat-value" style="color:#FFD700">${totalWallet.toLocaleString()} د</div><div class="quick-stat-label">رصيد المحافظ</div></div>
+      <div class="quick-stat" style="border-top-color:#22C55E"><span style="font-size:24px">📊</span><div class="quick-stat-value" style="color:#22C55E">${allPassengers.length?(totalRides/allPassengers.length).toFixed(1):'0'}</div><div class="quick-stat-label">متوسط الرحلات</div></div>
+    </div>
+    <div class="search-wrap" style="margin-bottom:20px"><span>🔍</span><input value="${passSearch}" oninput="passSearch=this.value;renderPassengers()" placeholder="بحث بالاسم أو رقم الهاتف..."/></div>
+    ${filtered.length===0?'<div class="empty"><div class="empty-icon">👥</div><p>لا يوجد مستخدمون</p></div>':
+    `<div class="table-wrap">
+      <div class="table-head">
+        <span style="width:50px">#</span><span style="flex:1">الاسم</span><span style="width:140px">الهاتف</span>
+        <span style="width:90px">التقييم</span><span style="width:90px">الرحلات</span>
+        <span style="width:120px">رصيد المحفظة</span><span style="width:110px">تاريخ التسجيل</span>
+      </div>
+      ${filtered.map((p,i)=>`
+      <div class="table-row" style="background:${i%2===0?'transparent':'rgba(255,255,255,.02)'}">
+        <span style="width:50px;color:var(--text-dim);font-size:13px">#${p.id}</span>
+        <span style="flex:1;font-weight:700;font-size:14px">${p.name||'مستخدم مسار'}</span>
+        <span style="width:140px;font-size:13px;color:var(--text-muted);direction:ltr">+964 ${p.phone}</span>
+        <span style="width:90px">⭐ ${parseFloat(p.rating||5).toFixed(1)}</span>
+        <span style="width:90px;font-weight:700">${p.totalRides||0}</span>
+        <span style="width:120px;font-weight:700;color:var(--gold)">${parseFloat(p.walletBalance||0).toLocaleString()} د</span>
+        <span style="width:110px;font-size:12px;color:var(--text-dim)">${p.createdAt?new Date(p.createdAt).toLocaleDateString('ar-IQ'):'—'}</span>
+      </div>`).join('')}
+    </div>`}
+  </div>`;
+}
+</script>
+</body>
+</html>
