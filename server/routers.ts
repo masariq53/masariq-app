@@ -591,23 +591,42 @@ export const appRouter = router({
      * Get active ride for passenger (polling)
      */
     passengerActiveRide: publicProcedure
-      .input(z.object({ passengerId: z.number() }))
+      .input(z.object({ passengerId: z.number(), rideId: z.number().optional() }))
       .query(async ({ input }) => {
         const { getDb } = await import("./db");
         const { rides: ridesTable, drivers: driversTable } = await import("../drizzle/schema");
-        const { and: andOp, eq: eqOp, inArray: inArrayOp } = await import("drizzle-orm");
+        const { and: andOp, eq: eqOp, inArray: inArrayOp, desc } = await import("drizzle-orm");
         const db = await getDb();
         if (!db) return null;
-        const result = await db
-          .select()
-          .from(ridesTable)
-          .where(
-            andOp(
-              eqOp(ridesTable.passengerId, input.passengerId),
-              inArrayOp(ridesTable.status, ["searching", "accepted", "driver_arrived", "in_progress", "completed"])
+        // إذا تم تمرير rideId، نجلب هذه الرحلة تحديداً
+        // وإلا نجلب أحدث رحلة نشطة فقط (بدون completed)
+        let result;
+        if (input.rideId) {
+          result = await db
+            .select()
+            .from(ridesTable)
+            .where(
+              andOp(
+                eqOp(ridesTable.passengerId, input.passengerId),
+                eqOp(ridesTable.id, input.rideId),
+                inArrayOp(ridesTable.status, ["searching", "accepted", "driver_arrived", "in_progress", "completed"])
+              )
             )
-          )
-          .limit(1);
+            .limit(1);
+        } else {
+          // بدون rideId: أحدث رحلة نشطة فقط (لا تشمل completed)
+          result = await db
+            .select()
+            .from(ridesTable)
+            .where(
+              andOp(
+                eqOp(ridesTable.passengerId, input.passengerId),
+                inArrayOp(ridesTable.status, ["searching", "accepted", "driver_arrived", "in_progress"])
+              )
+            )
+            .orderBy(desc(ridesTable.id))
+            .limit(1);
+        }
         if (result.length === 0) return null;
         const ride = result[0]!;
         // Get driver info if assigned

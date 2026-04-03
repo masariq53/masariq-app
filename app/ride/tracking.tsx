@@ -75,11 +75,11 @@ export default function TrackingScreen() {
 
   const [completed, setCompleted] = useState(false);
 
-  // Polling حقيقي لحالة الرحلة كل 5 ثوانٍ
+  // Polling حقيقي لحالة الرحلة كل 5 ثوانٍ - نمرر rideId لتتبع الرحلة الصحيحة فقط
   const rideQuery = trpc.rides.passengerActiveRide.useQuery(
-    { passengerId: passengerId ?? 0 },
+    { passengerId: passengerId ?? 0, rideId: rideId || undefined },
     {
-      enabled: !!passengerId && !cancelled && !completed,
+      enabled: !!passengerId && !!rideId && !cancelled && !completed,
       refetchInterval: 5000,
       staleTime: 0,
     }
