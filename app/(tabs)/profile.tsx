@@ -63,6 +63,8 @@ export default function ProfileScreen() {
     else if (id === "about") router.push("/about" as any);
     else if (id === "privacy") router.push("/privacy" as any);
     else if (id === "help") router.push("/help" as any);
+    else if (id === "addresses") router.push("/addresses" as any);
+    else if (id === "promo") router.push("/promo" as any);
   };
 
   const goToCaptainMode = () => {

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -14,6 +14,45 @@ import { router, useLocalSearchParams } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import MapView, { Marker, Polyline, PROVIDER_DEFAULT } from "react-native-maps";
+import * as Notifications from "expo-notifications";
+
+// Configure notification handler for foreground display
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+    shouldShowBanner: true,
+    shouldShowList: true,
+  }),
+});
+
+async function setupNotifications() {
+  if (Platform.OS === "web") return;
+  if (Platform.OS === "android") {
+    await Notifications.setNotificationChannelAsync("masar-ride", {
+      name: "تحديثات الرحلة",
+      importance: Notifications.AndroidImportance.HIGH,
+      vibrationPattern: [0, 250, 250, 250],
+    });
+  }
+  const { status } = await Notifications.getPermissionsAsync();
+  if (status !== "granted") {
+    await Notifications.requestPermissionsAsync();
+  }
+}
+
+async function sendRideNotification(title: string, body: string) {
+  if (Platform.OS === "web") return;
+  try {
+    await Notifications.scheduleNotificationAsync({
+      content: { title, body, sound: true },
+      trigger: null, // immediate
+    });
+  } catch (e) {
+    // Silently fail if permissions not granted
+  }
+}
 
 const { height } = Dimensions.get("window");
 
@@ -66,11 +105,20 @@ export default function TrackingScreen() {
   const mapRef = useRef<MapView>(null);
 
   useEffect(() => {
+    // Setup notifications on mount
+    setupNotifications();
+
     // تقدم الخطوات تلقائياً للعرض
     const timers = [
-      setTimeout(() => setCurrentStep(1), 2000),
+      setTimeout(() => {
+        setCurrentStep(1);
+        sendRideNotification("تم العثور على سائق! 🚗", `${driverInfo.name} في طريقه إليك - ${driverInfo.car}`);
+      }, 2000),
       setTimeout(() => setCurrentStep(2), 4500),
-      setTimeout(() => setCurrentStep(3), 9000),
+      setTimeout(() => {
+        setCurrentStep(3);
+        sendRideNotification("السائق وصل! 📍", `${driverInfo.name} ينتظرك - ${driverInfo.plate}`);
+      }, 9000),
       setTimeout(() => setCurrentStep(4), 13000),
     ];
 

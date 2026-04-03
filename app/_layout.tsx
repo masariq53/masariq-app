@@ -112,6 +112,8 @@ export default function RootLayout() {
             <Stack.Screen name="privacy" />
             <Stack.Screen name="about" />
             <Stack.Screen name="help" />
+            <Stack.Screen name="addresses" />
+            <Stack.Screen name="promo" />
           </Stack>
           <StatusBar style="auto" />
         </QueryClientProvider>
