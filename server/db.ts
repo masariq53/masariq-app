@@ -637,7 +637,13 @@ export async function getAllDrivers(limit = 50, offset = 0) {
 export async function updateDriverVerification(driverId: number, isVerified: boolean) {
   const db = await getDb();
   if (!db) return;
-  await db.update(drivers).set({ isVerified }).where(eq(drivers.id, driverId));
+  // When verifying, also update registrationStatus to keep both fields in sync
+  if (isVerified) {
+    await db.update(drivers).set({ isVerified: true, registrationStatus: "approved" }).where(eq(drivers.id, driverId));
+  } else {
+    // When suspending, revert registrationStatus to pending so app shows correct state
+    await db.update(drivers).set({ isVerified: false, registrationStatus: "pending" }).where(eq(drivers.id, driverId));
+  }
 }
 
 /**
