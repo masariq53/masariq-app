@@ -7,8 +7,10 @@ import {
   Animated,
   Platform,
   Dimensions,
+  Alert,
+  Linking,
 } from "react-native";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import MapView, { Marker, Polyline, PROVIDER_DEFAULT } from "react-native-maps";
@@ -45,6 +47,19 @@ const steps = [
 
 export default function TrackingScreen() {
   const insets = useSafeAreaInsets();
+  const params = useLocalSearchParams<{
+    rideId?: string;
+    fare?: string;
+    distance?: string;
+    duration?: string;
+    pickupLat?: string;
+    pickupLng?: string;
+    dropoffLat?: string;
+    dropoffLng?: string;
+    pickupAddress?: string;
+    dropoffAddress?: string;
+  }>();
+  const fare = params.fare ? parseInt(params.fare) : 3500;
   const [currentStep, setCurrentStep] = useState(0);
   const [driverPos, setDriverPos] = useState(0); // index in ROUTE_COORDS
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -217,13 +232,25 @@ export default function TrackingScreen() {
         </View>
 
         {/* زر الطوارئ */}
+        {/* Fare info */}
+        <View style={styles.fareRow}>
+          <Text style={styles.fareLabel}>الأجرة المتوقعة</Text>
+          <Text style={styles.fareValue}>{fare.toLocaleString('ar-IQ')} دينار</Text>
+          <Text style={styles.fareMethod}>💵 نقداً</Text>
+        </View>
+
         <View style={styles.bottomRow}>
-          <TouchableOpacity style={styles.sosBtn}>
+          <TouchableOpacity style={styles.sosBtn} onPress={() => Linking.openURL('tel:122')}>
             <Text style={styles.sosBtnText}>🆘 طوارئ</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.cancelBtn}
-            onPress={() => router.back()}
+            onPress={() => {
+              Alert.alert('إلغاء الرحلة', 'هل أنت متأكد من إلغاء الرحلة؟', [
+                { text: 'لا', style: 'cancel' },
+                { text: 'نعم', style: 'destructive', onPress: () => router.replace('/(tabs)') },
+              ]);
+            }}
           >
             <Text style={styles.cancelBtnText}>إلغاء الرحلة</Text>
           </TouchableOpacity>
@@ -363,4 +390,17 @@ const styles = StyleSheet.create({
     borderColor: "#3D2070",
   },
   cancelBtnText: { color: "#9B8EC4", fontSize: 14, fontWeight: "600" },
+  fareRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: "#2D1B4E",
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    marginBottom: 12,
+  },
+  fareLabel: { color: "#9B8EC4", fontSize: 13 },
+  fareValue: { color: "#FFD700", fontSize: 15, fontWeight: "800" },
+  fareMethod: { color: "#C4B5D4", fontSize: 13 },
 });

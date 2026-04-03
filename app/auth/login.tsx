@@ -13,24 +13,32 @@ import {
 } from "react-native";
 import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { trpc } from "@/lib/trpc";
 
 export default function LoginScreen() {
   const [phone, setPhone] = useState("");
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const handleSendOTP = async () => {
-    if (phone.length < 10) {
+  const sendOtp = trpc.otp.send.useMutation({
+    onSuccess: (data) => {
+      router.push({
+        pathname: "/auth/otp",
+        params: { phone: data.phone, devCode: data.devCode || "" },
+      });
+    },
+    onError: (err) => {
+      setError(err.message || "حدث خطأ، يرجى المحاولة مرة أخرى");
+    },
+  });
+
+  const handleSendOTP = () => {
+    const cleaned = phone.replace(/\s/g, "");
+    if (cleaned.length < 10) {
       setError("يرجى إدخال رقم هاتف صحيح");
       return;
     }
     setError("");
-    setLoading(true);
-    // Simulate OTP send
-    await new Promise((r) => setTimeout(r, 1200));
-    setLoading(false);
-    router.push({ pathname: "/auth/otp", params: { phone } });
+    sendOtp.mutate({ phone: cleaned });
   };
 
   return (
@@ -66,7 +74,10 @@ export default function LoginScreen() {
               placeholderTextColor="#9BA1A6"
               keyboardType="phone-pad"
               value={phone}
-              onChangeText={setPhone}
+              onChangeText={(t) => {
+                setPhone(t);
+                setError("");
+              }}
               maxLength={11}
               textAlign="left"
             />
@@ -76,12 +87,12 @@ export default function LoginScreen() {
 
           {/* Send OTP Button */}
           <TouchableOpacity
-            style={[styles.btn, loading && styles.btnDisabled]}
+            style={[styles.btn, sendOtp.isPending && styles.btnDisabled]}
             onPress={handleSendOTP}
-            disabled={loading}
+            disabled={sendOtp.isPending}
           >
-            {loading ? (
-              <ActivityIndicator color="#1A2E4A" />
+            {sendOtp.isPending ? (
+              <ActivityIndicator color="#1A0533" />
             ) : (
               <Text style={styles.btnText}>إرسال رمز التحقق</Text>
             )}
@@ -118,7 +129,7 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#1A2E4A",
+    backgroundColor: "#1A0533",
   },
   scroll: {
     flexGrow: 1,
@@ -143,7 +154,7 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   tagline: {
-    color: "#F5A623",
+    color: "#FFD700",
     fontSize: 14,
     marginTop: 4,
     fontWeight: "500",
@@ -160,7 +171,7 @@ const styles = StyleSheet.create({
     elevation: 10,
   },
   cardTitle: {
-    color: "#1A2E4A",
+    color: "#1A0533",
     fontSize: 22,
     fontWeight: "800",
     textAlign: "right",
@@ -188,7 +199,7 @@ const styles = StyleSheet.create({
     fontSize: 22,
   },
   countryCode: {
-    color: "#1A2E4A",
+    color: "#1A0533",
     fontSize: 16,
     fontWeight: "700",
     borderRightWidth: 1,
@@ -197,7 +208,7 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    color: "#1A2E4A",
+    color: "#1A0533",
     fontSize: 16,
     fontWeight: "600",
     letterSpacing: 1,
@@ -209,12 +220,12 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   btn: {
-    backgroundColor: "#F5A623",
+    backgroundColor: "#FFD700",
     borderRadius: 14,
     paddingVertical: 16,
     alignItems: "center",
     marginTop: 8,
-    shadowColor: "#F5A623",
+    shadowColor: "#FFD700",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
@@ -224,7 +235,7 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   btnText: {
-    color: "#1A2E4A",
+    color: "#1A0533",
     fontSize: 17,
     fontWeight: "800",
   },
@@ -245,13 +256,13 @@ const styles = StyleSheet.create({
   },
   driverBtn: {
     borderWidth: 2,
-    borderColor: "#1A2E4A",
+    borderColor: "#1A0533",
     borderRadius: 14,
     paddingVertical: 14,
     alignItems: "center",
   },
   driverBtnText: {
-    color: "#1A2E4A",
+    color: "#1A0533",
     fontSize: 16,
     fontWeight: "700",
   },
@@ -264,7 +275,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   termsLink: {
-    color: "#F5A623",
+    color: "#FFD700",
     fontWeight: "600",
   },
 });

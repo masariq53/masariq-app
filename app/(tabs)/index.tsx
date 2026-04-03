@@ -12,6 +12,8 @@ import {
 import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { usePassenger } from "@/lib/passenger-context";
+import { useLocation } from "@/hooks/use-location";
 
 const { width } = Dimensions.get("window");
 
@@ -50,6 +52,8 @@ const quickDestinations = [
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const [searchText, setSearchText] = useState("");
+  const { passenger } = usePassenger();
+  const { coords, isRealLocation } = useLocation();
 
   const handleService = (id: string) => {
     if (id === "ride") router.push("/ride/book" as any);
@@ -72,7 +76,7 @@ export default function HomeScreen() {
           </TouchableOpacity>
           <View>
             <Text style={styles.greeting}>مرحباً 👋</Text>
-            <Text style={styles.userName}>مستخدم مسار</Text>
+            <Text style={styles.userName}>{passenger?.name || passenger?.phone || 'مستخدم مسار'}</Text>
           </View>
         </View>
         <TouchableOpacity style={styles.notifBtn}>

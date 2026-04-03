@@ -87,6 +87,13 @@ const config: ExpoConfig = {
   plugins: [
     "expo-router",
     [
+      "expo-location",
+      {
+        locationAlwaysAndWhenInUsePermission: "السماح لـ مسار باستخدام موقعك لتحديد أقرب سائق إليك.",
+        locationWhenInUsePermission: "السماح لـ مسار باستخدام موقعك لتحديد أقرب سائق إليك.",
+      },
+    ],
+    [
       "expo-audio",
       {
         microphonePermission: "Allow $(PRODUCT_NAME) to access your microphone.",

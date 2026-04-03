@@ -8,10 +8,13 @@ import {
   Dimensions,
   Linking,
 } from "react-native";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import MapView, { Marker, Polyline, PROVIDER_DEFAULT } from "react-native-maps";
+import { useLocation } from "@/hooks/use-location";
+import { trpc } from "@/lib/trpc";
+import { usePassenger } from "@/lib/passenger-context";
 
 type TripPhase = "pickup" | "in_trip" | "arrived";
 
@@ -35,9 +38,16 @@ const ROUTE_TO_DEST = [
 
 export default function CaptainActiveTripScreen() {
   const insets = useSafeAreaInsets();
+  const params = useLocalSearchParams<{ rideId?: string; passengerName?: string; fare?: string }>();
+  const { driver } = usePassenger();
+  const { coords } = useLocation();
   const [phase, setPhase] = useState<TripPhase>("pickup");
   const [captainPos, setCaptainPos] = useState(CAPTAIN_START);
   const mapRef = useRef<MapView>(null);
+
+  const updateStatus = trpc.rides.updateStatus.useMutation();
+
+  const rideId = params.rideId ? parseInt(params.rideId) : null;
 
   const phaseConfig = {
     pickup: {
@@ -73,14 +83,20 @@ export default function CaptainActiveTripScreen() {
 
   const handlePhaseAction = () => {
     if (phase === "pickup") {
+      // Driver arrived at pickup
+      if (rideId) updateStatus.mutate({ rideId, status: "driver_arrived" });
       setPhase("in_trip");
       setCaptainPos(PICKUP_COORD);
       mapRef.current?.animateToRegion({ ...PICKUP_COORD, latitudeDelta: 0.04, longitudeDelta: 0.04 }, 800);
     } else if (phase === "in_trip") {
+      // Trip started
+      if (rideId) updateStatus.mutate({ rideId, status: "in_progress" });
       setPhase("arrived");
       setCaptainPos(DEST_COORD);
       mapRef.current?.animateToRegion({ ...DEST_COORD, latitudeDelta: 0.04, longitudeDelta: 0.04 }, 800);
     } else {
+      // Trip completed
+      if (rideId) updateStatus.mutate({ rideId, status: "completed" });
       router.push("/captain/trip-summary" as any);
     }
   };

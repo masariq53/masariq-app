@@ -8,18 +8,33 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Alert,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { trpc } from "@/lib/trpc";
+import { usePassenger } from "@/lib/passenger-context";
+
+const OTP_LENGTH = 6;
 
 export default function OTPScreen() {
-  const { phone } = useLocalSearchParams<{ phone: string }>();
-  const [otp, setOtp] = useState(["", "", "", ""]);
-  const [loading, setLoading] = useState(false);
+  const { phone, devCode } = useLocalSearchParams<{ phone: string; devCode?: string }>();
+  const [otp, setOtp] = useState(Array(OTP_LENGTH).fill(""));
   const [timer, setTimer] = useState(60);
   const [error, setError] = useState("");
   const inputs = useRef<(TextInput | null)[]>([]);
+  const { setPassenger } = usePassenger();
+
+  // Show dev code hint if available
+  useEffect(() => {
+    if (devCode && devCode.length === 6) {
+      Alert.alert(
+        "وضع التطوير",
+        `رمز التحقق التجريبي: ${devCode}`,
+        [{ text: "حسناً" }]
+      );
+    }
+  }, [devCode]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -28,12 +43,50 @@ export default function OTPScreen() {
     return () => clearInterval(interval);
   }, []);
 
+  const verifyOtp = trpc.otp.verify.useMutation({
+    onSuccess: async (data) => {
+      await setPassenger({
+        id: data.passenger.id,
+        phone: data.passenger.phone,
+        name: data.passenger.name,
+        walletBalance: data.passenger.walletBalance?.toString() || "0.00",
+        totalRides: data.passenger.totalRides,
+        rating: data.passenger.rating?.toString() || "5.00",
+      });
+      router.replace("/(tabs)");
+    },
+    onError: (err) => {
+      setError(err.message || "رمز التحقق غير صحيح");
+      setOtp(Array(OTP_LENGTH).fill(""));
+      inputs.current[0]?.focus();
+    },
+  });
+
+  const sendOtp = trpc.otp.send.useMutation({
+    onSuccess: (data) => {
+      setTimer(60);
+      setOtp(Array(OTP_LENGTH).fill(""));
+      inputs.current[0]?.focus();
+      if (data.devCode) {
+        Alert.alert("وضع التطوير", `رمز التحقق الجديد: ${data.devCode}`);
+      }
+    },
+  });
+
   const handleChange = (text: string, index: number) => {
     const newOtp = [...otp];
-    newOtp[index] = text;
+    newOtp[index] = text.replace(/[^0-9]/g, "").slice(-1);
     setOtp(newOtp);
-    if (text && index < 3) {
+    setError("");
+    if (text && index < OTP_LENGTH - 1) {
       inputs.current[index + 1]?.focus();
+    }
+    // Auto-submit when all filled
+    if (index === OTP_LENGTH - 1 && text) {
+      const code = [...newOtp.slice(0, OTP_LENGTH - 1), text.slice(-1)].join("");
+      if (code.length === OTP_LENGTH) {
+        handleVerify(code);
+      }
     }
   };
 
@@ -43,25 +96,19 @@ export default function OTPScreen() {
     }
   };
 
-  const handleVerify = async () => {
-    const code = otp.join("");
-    if (code.length < 4) {
+  const handleVerify = (codeOverride?: string) => {
+    const code = codeOverride || otp.join("");
+    if (code.length < OTP_LENGTH) {
       setError("يرجى إدخال الرمز كاملاً");
       return;
     }
     setError("");
-    setLoading(true);
-    await new Promise((r) => setTimeout(r, 1200));
-    await AsyncStorage.setItem("@masar_logged_in", "true");
-    await AsyncStorage.setItem("@masar_user_phone", phone || "");
-    setLoading(false);
-    router.replace("/(tabs)");
+    verifyOtp.mutate({ phone: phone || "", code });
   };
 
   const handleResend = () => {
-    setTimer(60);
-    setOtp(["", "", "", ""]);
-    inputs.current[0]?.focus();
+    if (!phone) return;
+    sendOtp.mutate({ phone });
   };
 
   return (
@@ -84,7 +131,7 @@ export default function OTPScreen() {
           <Text style={styles.phone}>{phone}</Text>
         </Text>
 
-        {/* OTP Inputs */}
+        {/* OTP Inputs - 6 digits */}
         <View style={styles.otpContainer}>
           {otp.map((digit, index) => (
             <TextInput
@@ -92,7 +139,7 @@ export default function OTPScreen() {
               ref={(ref) => { inputs.current[index] = ref; }}
               style={[styles.otpInput, digit ? styles.otpInputFilled : null]}
               value={digit}
-              onChangeText={(text) => handleChange(text.slice(-1), index)}
+              onChangeText={(text) => handleChange(text, index)}
               onKeyPress={({ nativeEvent }) => handleKeyPress(nativeEvent.key, index)}
               keyboardType="number-pad"
               maxLength={1}
@@ -106,11 +153,11 @@ export default function OTPScreen() {
 
         {/* Verify Button */}
         <TouchableOpacity
-          style={[styles.btn, loading && styles.btnDisabled]}
-          onPress={handleVerify}
-          disabled={loading}
+          style={[styles.btn, verifyOtp.isPending && styles.btnDisabled]}
+          onPress={() => handleVerify()}
+          disabled={verifyOtp.isPending}
         >
-          {loading ? (
+          {verifyOtp.isPending ? (
             <ActivityIndicator color="#1A0533" />
           ) : (
             <Text style={styles.btnText}>تحقق والمتابعة</Text>
@@ -123,8 +170,10 @@ export default function OTPScreen() {
             إعادة الإرسال خلال <Text style={styles.timerNum}>{timer}s</Text>
           </Text>
         ) : (
-          <TouchableOpacity onPress={handleResend}>
-            <Text style={styles.resendText}>إعادة إرسال الرمز</Text>
+          <TouchableOpacity onPress={handleResend} disabled={sendOtp.isPending}>
+            <Text style={styles.resendText}>
+              {sendOtp.isPending ? "جاري الإرسال..." : "إعادة إرسال الرمز"}
+            </Text>
           </TouchableOpacity>
         )}
       </View>
@@ -152,7 +201,7 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 32,
+    paddingHorizontal: 24,
   },
   icon: {
     fontSize: 64,
@@ -178,18 +227,18 @@ const styles = StyleSheet.create({
   },
   otpContainer: {
     flexDirection: "row",
-    gap: 16,
+    gap: 10,
     marginBottom: 12,
   },
   otpInput: {
-    width: 64,
-    height: 64,
-    borderRadius: 16,
+    width: 50,
+    height: 58,
+    borderRadius: 14,
     backgroundColor: "rgba(45,27,105,0.8)",
     borderWidth: 2,
     borderColor: "#3D2580",
     color: "#FFFFFF",
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: "800",
   },
   otpInputFilled: {
@@ -200,6 +249,7 @@ const styles = StyleSheet.create({
     color: "#F87171",
     fontSize: 13,
     marginBottom: 12,
+    textAlign: "center",
   },
   btn: {
     backgroundColor: "#FFD700",

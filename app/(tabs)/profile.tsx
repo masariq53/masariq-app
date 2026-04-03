@@ -12,6 +12,7 @@ import { router } from "expo-router";
 import { ScreenContainer } from "@/components/screen-container";
 import { StatusBar } from "expo-status-bar";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { usePassenger } from "@/lib/passenger-context";
 
 const menuItems = [
   {
@@ -43,6 +44,7 @@ const menuItems = [
 export default function ProfileScreen() {
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [darkMode, setDarkMode] = useState(false);
+  const { passenger, logout } = usePassenger();
 
   const handleLogout = () => {
     Alert.alert(
@@ -54,7 +56,7 @@ export default function ProfileScreen() {
           text: "خروج",
           style: "destructive",
           onPress: async () => {
-            await AsyncStorage.removeItem("user_logged_in");
+            await logout();
             router.replace("/auth/login" as any);
           },
         },
@@ -87,11 +89,11 @@ export default function ProfileScreen() {
             <Text style={styles.avatarText}>م</Text>
           </View>
           <View style={styles.profileInfo}>
-            <Text style={styles.profileName}>مستخدم مسار</Text>
-            <Text style={styles.profilePhone}>+964 07XX XXX XXXX</Text>
+            <Text style={styles.profileName}>{passenger?.name || 'مستخدم مسار'}</Text>
+            <Text style={styles.profilePhone}>{passenger?.phone ? `+964 ${passenger.phone}` : '+964 07XX XXX XXXX'}</Text>
             <View style={styles.ratingRow}>
-              <Text style={styles.ratingText}>4.9 ★</Text>
-              <Text style={styles.ratingCount}>• 23 رحلة</Text>
+              <Text style={styles.ratingText}>{passenger?.rating || '5.0'} ★</Text>
+              <Text style={styles.ratingCount}>• {passenger?.totalRides || 0} رحلة</Text>
             </View>
           </View>
           <TouchableOpacity style={styles.editBtn}>
@@ -102,9 +104,9 @@ export default function ProfileScreen() {
         {/* Stats */}
         <View style={styles.statsRow}>
           {[
-            { label: "الرحلات", value: "23", icon: "🚗" },
-            { label: "التوصيل", value: "7", icon: "📦" },
-            { label: "النقاط", value: "450", icon: "⭐" },
+            { label: "الرحلات", value: String(passenger?.totalRides || 0), icon: "🚗" },
+            { label: "المحفظة", value: `${passenger?.walletBalance || '0'} د`, icon: "💰" },
+            { label: "التقييم", value: String(passenger?.rating || '5.0'), icon: "⭐" },
           ].map((s, i) => (
             <View key={i} style={styles.statCard}>
               <Text style={styles.statIcon}>{s.icon}</Text>

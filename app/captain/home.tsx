@@ -13,6 +13,8 @@ import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import MapView, { Marker, Circle, PROVIDER_DEFAULT } from "react-native-maps";
+import { usePassenger } from "@/lib/passenger-context";
+import { useLocation } from "@/hooks/use-location";
 
 const { width } = Dimensions.get("window");
 
@@ -47,6 +49,8 @@ const DEMO_REQUEST = {
 
 export default function CaptainHomeScreen() {
   const insets = useSafeAreaInsets();
+  const { driver } = usePassenger();
+  const { coords, isRealLocation } = useLocation();
   const [isOnline, setIsOnline] = useState(false);
   const [showRequest, setShowRequest] = useState(false);
   const [requestTimer, setRequestTimer] = useState(25);
@@ -101,7 +105,7 @@ export default function CaptainHomeScreen() {
         >
           {/* موقع الكابتن الحالي */}
           <Marker
-            coordinate={{ latitude: 36.3392, longitude: 43.1289 }}
+            coordinate={coords}
             title="موقعي"
           >
             <Animated.View style={[styles.myMarker, { transform: [{ scale: pulseAnim }] }]}>
@@ -112,7 +116,7 @@ export default function CaptainHomeScreen() {
           {/* دائرة نطاق الاستقبال */}
           {isOnline && (
             <Circle
-              center={{ latitude: 36.3392, longitude: 43.1289 }}
+              center={coords}
               radius={1500}
               fillColor="rgba(255,215,0,0.08)"
               strokeColor="rgba(255,215,0,0.3)"
