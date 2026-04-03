@@ -354,6 +354,99 @@ export async function getDriverRideHistory(driverId: number, limit = 20) {
     .limit(limit);
 }
 
+// ─── Admin / Dashboard ───────────────────────────────────────────────────────
+
+/**
+ * Get dashboard stats: total rides, passengers, drivers, revenue today
+ */
+export async function getAdminStats() {
+  const db = await getDb();
+  if (!db) {
+    return {
+      totalRides: 0, todayRides: 0, activeRides: 0,
+      totalPassengers: 0, totalDrivers: 0, onlineDrivers: 0,
+      todayRevenue: 0, totalRevenue: 0,
+    };
+  }
+
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+
+  const [allRides, allPassengers, allDrivers] = await Promise.all([
+    db.select().from(rides),
+    db.select().from(passengers),
+    db.select().from(drivers),
+  ]);
+
+  const todayRides = allRides.filter(r => r.createdAt && r.createdAt >= todayStart);
+  const activeRides = allRides.filter(r => ['searching', 'accepted', 'driver_arrived', 'in_progress'].includes(r.status));
+  const onlineDrivers = allDrivers.filter(d => d.isOnline);
+
+  const todayRevenue = todayRides
+    .filter(r => r.status === 'completed')
+    .reduce((sum, r) => sum + parseFloat(r.fare?.toString() || '0'), 0);
+
+  const totalRevenue = allRides
+    .filter(r => r.status === 'completed')
+    .reduce((sum, r) => sum + parseFloat(r.fare?.toString() || '0'), 0);
+
+  return {
+    totalRides: allRides.length,
+    todayRides: todayRides.length,
+    activeRides: activeRides.length,
+    totalPassengers: allPassengers.length,
+    totalDrivers: allDrivers.length,
+    onlineDrivers: onlineDrivers.length,
+    todayRevenue: Math.round(todayRevenue),
+    totalRevenue: Math.round(totalRevenue),
+  };
+}
+
+/**
+ * Get all rides with pagination
+ */
+export async function getAllRides(limit = 50, offset = 0) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(rides).orderBy(desc(rides.createdAt)).limit(limit).offset(offset);
+}
+
+/**
+ * Get all passengers
+ */
+export async function getAllPassengers(limit = 50, offset = 0) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(passengers).orderBy(desc(passengers.createdAt)).limit(limit).offset(offset);
+}
+
+/**
+ * Get all drivers
+ */
+export async function getAllDrivers(limit = 50, offset = 0) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(drivers).orderBy(desc(drivers.createdAt)).limit(limit).offset(offset);
+}
+
+/**
+ * Verify or suspend a driver
+ */
+export async function updateDriverVerification(driverId: number, isVerified: boolean) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(drivers).set({ isVerified }).where(eq(drivers.id, driverId));
+}
+
+/**
+ * Get recent rides (last N)
+ */
+export async function getRecentRides(limit = 10) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(rides).orderBy(desc(rides.createdAt)).limit(limit);
+}
+
 // ─── Fare Calculation ─────────────────────────────────────────────────────────
 
 /**

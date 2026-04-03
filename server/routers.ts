@@ -18,6 +18,12 @@ import {
   setDriverOnlineStatus,
   calculateFare,
   calculateDistance,
+  getAdminStats,
+  getAllRides,
+  getAllPassengers,
+  getAllDrivers,
+  updateDriverVerification,
+  getRecentRides,
 } from "./db";
 
 export const appRouter = router({
@@ -365,6 +371,73 @@ export const appRouter = router({
         return { success: true };
       }),
   }),
+
+  // ─── Admin Dashboard ─────────────────────────────────────────────────────────────────
+  admin: router({
+    /**
+     * Get dashboard stats (public for now - can add admin auth later)
+     */
+    stats: publicProcedure.query(async () => {
+      return getAdminStats();
+    }),
+
+    /**
+     * Get all rides with pagination
+     */
+    rides: publicProcedure
+      .input(z.object({ limit: z.number().default(50), offset: z.number().default(0) }))
+      .query(async ({ input }) => {
+        return getAllRides(input.limit, input.offset);
+      }),
+
+    /**
+     * Get all passengers
+     */
+    passengers: publicProcedure
+      .input(z.object({ limit: z.number().default(50), offset: z.number().default(0) }))
+      .query(async ({ input }) => {
+        return getAllPassengers(input.limit, input.offset);
+      }),
+
+    /**
+     * Get all drivers
+     */
+    drivers: publicProcedure
+      .input(z.object({ limit: z.number().default(50), offset: z.number().default(0) }))
+      .query(async ({ input }) => {
+        return getAllDrivers(input.limit, input.offset);
+      }),
+
+    /**
+     * Verify or suspend a driver
+     */
+    verifyDriver: publicProcedure
+      .input(z.object({ driverId: z.number(), isVerified: z.boolean() }))
+      .mutation(async ({ input }) => {
+        await updateDriverVerification(input.driverId, input.isVerified);
+        return { success: true };
+      }),
+
+    /**
+     * Get recent rides
+     */
+    recentRides: publicProcedure
+      .input(z.object({ limit: z.number().default(10) }))
+      .query(async ({ input }) => {
+        return getRecentRides(input.limit);
+      }),
+
+    /**
+     * Cancel a ride (admin action)
+     */
+    cancelRide: publicProcedure
+      .input(z.object({ rideId: z.number(), reason: z.string().optional() }))
+      .mutation(async ({ input }) => {
+        await updateRideStatus(input.rideId, "cancelled", { cancelReason: input.reason || "Admin cancelled" });
+        return { success: true };
+      }),
+  }),
 });
 
 export type AppRouter = typeof appRouter;
+

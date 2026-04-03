@@ -48,3 +48,14 @@
 - [ ] إشعارات Push للسائق
 - [ ] تكامل المحفظة مع API
 - [ ] حفظ نقطة تفتيش نهائية
+
+## المرحلة 7: قاعدة البيانات الحقيقية
+- [x] ربط MySQL بالـ DATABASE_URL (متصل عبر TiDB Cloud)
+- [x] تشغيل drizzle migrations - جميع الجداول موجودة
+- [x] التحقق من اتصال قاعدة البيانات - 6 جداول جاهزة
+
+## المرحلة 8: لوحة التحكم الإدارية
+- [x] دوال Admin API في server/db.ts (getAdminStats, getAllRides, getAllDrivers, getAllPassengers, updateDriverVerification, getRecentRides)
+- [x] Admin router في server/routers.ts (7 endpoints)
+- [x] لوحة تحكم كاملة (app/admin/index.tsx) - 4 تبويبات
+- [x] زر لوحة التحكم في صفحة الملف الشخصي

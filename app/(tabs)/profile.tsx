@@ -166,6 +166,17 @@ export default function ProfileScreen() {
           </View>
         </View>
 
+        {/* Admin Dashboard Banner */}
+        <TouchableOpacity style={styles.adminBanner} onPress={() => router.push("/admin" as any)}>
+          <View style={styles.captainBannerContent}>
+            <View>
+              <Text style={styles.adminBannerTitle}>📊  لوحة التحكم</Text>
+              <Text style={styles.captainBannerSub}>إدارة الرحلات والسائقين والمستخدمين</Text>
+            </View>
+            <Text style={styles.captainBannerArrow}>←</Text>
+          </View>
+        </TouchableOpacity>
+
         {/* Captain Mode Banner */}
         <TouchableOpacity style={styles.captainBanner} onPress={goToCaptainMode}>
           <View style={styles.captainBannerContent}>
@@ -362,6 +373,21 @@ const styles = StyleSheet.create({
     color: "#EF4444",
     fontSize: 16,
     fontWeight: "700",
+  },
+  adminBanner: {
+    marginHorizontal: 20,
+    marginBottom: 12,
+    borderRadius: 16,
+    overflow: 'hidden',
+    backgroundColor: '#0F172A',
+    borderWidth: 1.5,
+    borderColor: '#6C3FC5',
+  },
+  adminBannerTitle: {
+    color: '#A78BFA',
+    fontSize: 17,
+    fontWeight: '700',
+    textAlign: 'right',
   },
   captainBanner: {
     marginHorizontal: 20,
