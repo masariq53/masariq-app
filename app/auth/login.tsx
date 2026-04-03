@@ -118,13 +118,6 @@ export default function LoginScreen() {
             <Text style={styles.registerBtnLink}>إنشاء حساب جديد</Text>
           </TouchableOpacity>
 
-          {/* Driver Register */}
-          <TouchableOpacity
-            style={styles.driverBtn}
-            onPress={() => router.push("/driver/register" as any)}
-          >
-            <Text style={styles.driverBtnText}>🚗  سجّل كسائق</Text>
-          </TouchableOpacity>
         </View>
 
         {/* Terms */}
@@ -291,18 +284,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "800",
   },
-  driverBtn: {
-    borderWidth: 2,
-    borderColor: "#1A0533",
-    borderRadius: 14,
-    paddingVertical: 14,
-    alignItems: "center",
-  },
-  driverBtnText: {
-    color: "#1A0533",
-    fontSize: 16,
-    fontWeight: "700",
-  },
+
   terms: {
     color: "rgba(255,255,255,0.6)",
     fontSize: 12,
