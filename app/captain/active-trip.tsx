@@ -43,11 +43,11 @@ export default function CaptainActiveTripScreen() {
   const rideId = params.rideId ? parseInt(params.rideId) : 0;
   const driverId = driver?.id ?? 0;
 
-  // جلب بيانات الرحلة الحقيقية من السيرفر
+  // جلب بيانات الرحلة الحقيقية من السيرفر - نمرر rideId لتجنب جلب رحلة قديمة
   const rideQuery = trpc.rides.driverActiveRide.useQuery(
-    { driverId },
+    { driverId, rideId: rideId || undefined },
     {
-      enabled: driverId > 0,
+      enabled: driverId > 0 && rideId > 0,
       refetchInterval: 8000,
       staleTime: 0,
     }

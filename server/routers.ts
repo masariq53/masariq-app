@@ -562,9 +562,32 @@ export const appRouter = router({
      * Get active ride for driver - includes passenger info
      */
     driverActiveRide: publicProcedure
-      .input(z.object({ driverId: z.number() }))
+      .input(z.object({ driverId: z.number(), rideId: z.number().optional() }))
       .query(async ({ input }) => {
-        const ride = await getDriverActiveRide(input.driverId);
+        let ride;
+        if (input.rideId) {
+          // جلب هذه الرحلة تحديداً بالـ rideId
+          const { getDb } = await import("./db");
+          const { rides: ridesTable } = await import("../drizzle/schema");
+          const { and: andOp, eq: eqOp, inArray: inArrayOp } = await import("drizzle-orm");
+          const db = await getDb();
+          if (!db) return null;
+          const result = await db
+            .select()
+            .from(ridesTable)
+            .where(
+              andOp(
+                eqOp(ridesTable.id, input.rideId),
+                eqOp(ridesTable.driverId, input.driverId),
+                inArrayOp(ridesTable.status, ["accepted", "driver_arrived", "in_progress", "completed"])
+              )
+            )
+            .limit(1);
+          ride = result.length > 0 ? result[0] : null;
+        } else {
+          // بدون rideId: أحدث رحلة نشطة للسائق
+          ride = await getDriverActiveRide(input.driverId);
+        }
         if (!ride) return null;
         // Fetch passenger info
         const passenger = await getPassengerById(ride.passengerId);
