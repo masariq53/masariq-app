@@ -18,6 +18,8 @@ import { usePassenger } from "@/lib/passenger-context";
 import { useDriver } from "@/lib/driver-context";
 import { useThemeContext } from "@/lib/theme-provider";
 import { trpc } from "@/lib/trpc";
+import { getApiBaseUrl } from "@/constants/oauth";
+import { getSessionToken } from "@/lib/_core/auth";
 
 const DARK_MODE_KEY = "@masar_dark_mode";
 
@@ -30,10 +32,35 @@ export default function ProfileScreen() {
   const isDark = colorScheme === "dark";
 
   // Check if passenger has a linked driver account - always fresh from DB
-  const { data: driverStatus, refetch: refetchDriverStatus, isLoading: statusLoading } = trpc.driver.checkStatus.useQuery(
+  // refetchInterval ensures status is always up-to-date without user action
+  const { data: driverStatus } = trpc.driver.checkStatus.useQuery(
     { phone: passenger?.phone ?? "" },
-    { enabled: !!passenger?.phone, staleTime: 0, refetchOnMount: true }
+    {
+      enabled: !!passenger?.phone,
+      staleTime: 0,
+      refetchOnMount: true,
+      refetchInterval: 30000, // Poll every 30 seconds automatically
+      refetchIntervalInBackground: false,
+    }
   );
+
+  // Direct fetch function that bypasses TanStack Query cache entirely
+  const fetchDriverStatusDirect = async (phone: string) => {
+    try {
+      const token = await getSessionToken();
+      const normalizedPhone = phone.replace(/\s/g, "");
+      const input = encodeURIComponent(JSON.stringify({ json: { phone: normalizedPhone } }));
+      const res = await fetch(`${getApiBaseUrl()}/api/trpc/driver.checkStatus?input=${input}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: "include",
+        cache: "no-store",
+      });
+      const json = await res.json();
+      return json?.result?.data?.json ?? null;
+    } catch {
+      return null;
+    }
+  };
 
   // Load dark mode preference on mount
   useEffect(() => {
@@ -81,8 +108,8 @@ export default function ProfileScreen() {
   const goToCaptainMode = async () => {
     setCaptainCheckLoading(true);
     try {
-      // Refetch fresh status from DB before making decision
-      const { data: freshStatus } = await refetchDriverStatus();
+      // Direct fetch bypassing TanStack Query cache for 100% fresh data
+      const freshStatus = await fetchDriverStatusDirect(passenger?.phone ?? "");
 
       if (freshStatus?.found) {
         const liveStatus = freshStatus.registrationStatus;
