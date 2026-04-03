@@ -67,6 +67,10 @@ export default function ProfileScreen() {
     else if (id === "subscription") router.push("/subscription" as any);
   };
 
+  const goToCaptainMode = () => {
+    router.push("/captain/home" as any);
+  };
+
   return (
     <ScreenContainer containerClassName="bg-[#1A0533]" safeAreaClassName="bg-[#F5F7FA]">
       <StatusBar style="light" />
@@ -159,6 +163,17 @@ export default function ProfileScreen() {
             </View>
           </View>
         </View>
+
+        {/* Captain Mode Banner */}
+        <TouchableOpacity style={styles.captainBanner} onPress={goToCaptainMode}>
+          <View style={styles.captainBannerContent}>
+            <View>
+              <Text style={styles.captainBannerTitle}>🚗  وضع الكابتن</Text>
+              <Text style={styles.captainBannerSub}>اشتغل كسائق واكسب أرباحاً</Text>
+            </View>
+            <Text style={styles.captainBannerArrow}>←</Text>
+          </View>
+        </TouchableOpacity>
 
         {/* Logout */}
         <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
@@ -345,6 +360,38 @@ const styles = StyleSheet.create({
     color: "#EF4444",
     fontSize: 16,
     fontWeight: "700",
+  },
+  captainBanner: {
+    marginHorizontal: 20,
+    marginBottom: 12,
+    borderRadius: 16,
+    overflow: 'hidden',
+    backgroundColor: '#2D0A5E',
+    borderWidth: 1.5,
+    borderColor: '#FFD700',
+  },
+  captainBannerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 18,
+  },
+  captainBannerTitle: {
+    color: '#FFD700',
+    fontSize: 17,
+    fontWeight: '700',
+    textAlign: 'right',
+  },
+  captainBannerSub: {
+    color: '#C8A8E9',
+    fontSize: 13,
+    marginTop: 4,
+    textAlign: 'right',
+  },
+  captainBannerArrow: {
+    color: '#FFD700',
+    fontSize: 22,
+    fontWeight: '700',
   },
   version: {
     color: "#C0C8D4",
