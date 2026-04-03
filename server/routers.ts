@@ -528,6 +528,89 @@ export const appRouter = router({
           name: driver.name,
         };
       }),
+
+    /**
+     * Send OTP to driver phone for login
+     */
+    sendLoginOtp: publicProcedure
+      .input(z.object({ phone: z.string().min(10).max(15) }))
+      .mutation(async ({ input }) => {
+        let phone = input.phone.replace(/\s/g, "");
+        if (phone.startsWith("0")) phone = "+964" + phone.slice(1);
+        else if (!phone.startsWith("+")) phone = "+964" + phone;
+
+        const driver = await getDriverByPhone(phone);
+        if (!driver) throw new Error("رقم الهاتف غير مسجل، يرجى التسجيل أولاً");
+
+        const code = await createOtp(phone);
+        const isDev = process.env.NODE_ENV !== "production";
+        return {
+          success: true,
+          phone,
+          devCode: isDev ? code : undefined,
+          message: isDev ? `رمز التحقق: ${code}` : "تم إرسال رمز التحقق",
+        };
+      }),
+
+    /**
+     * Verify OTP and login driver
+     */
+    verifyLoginOtp: publicProcedure
+      .input(z.object({ phone: z.string().min(10).max(15), code: z.string().length(6) }))
+      .mutation(async ({ input }) => {
+        let phone = input.phone.replace(/\s/g, "");
+        if (phone.startsWith("0")) phone = "+964" + phone.slice(1);
+        else if (!phone.startsWith("+")) phone = "+964" + phone;
+
+        const isValid = await verifyOtp(phone, input.code);
+        if (!isValid) throw new Error("رمز التحقق غير صحيح أو منتهي الصلاحية");
+
+        const driver = await getDriverByPhone(phone);
+        if (!driver) throw new Error("السائق غير موجود");
+
+        return {
+          success: true,
+          driver: {
+            id: driver.id,
+            phone: driver.phone,
+            name: driver.name,
+            photoUrl: driver.photoUrl ?? null,
+            registrationStatus: driver.registrationStatus,
+            rejectionReason: driver.rejectionReason ?? null,
+            isVerified: driver.isVerified,
+            vehicleModel: driver.vehicleModel ?? null,
+            vehicleColor: driver.vehicleColor ?? null,
+            vehiclePlate: driver.vehiclePlate ?? null,
+            vehicleType: driver.vehicleType,
+            rating: driver.rating,
+            totalRides: driver.totalRides,
+            walletBalance: driver.walletBalance,
+          },
+        };
+      }),
+
+    /**
+     * Get driver full profile by ID
+     */
+    getProfile: publicProcedure
+      .input(z.object({ driverId: z.number() }))
+      .query(async ({ input }) => {
+        const db = await (await import("./db")).getDb();
+        if (!db) throw new Error("قاعدة البيانات غير متاحة");
+        const { drivers: driversTable } = await import("../drizzle/schema");
+        const { eq } = await import("drizzle-orm");
+        const result = await db.select().from(driversTable).where(eq(driversTable.id, input.driverId)).limit(1);
+        if (!result.length) throw new Error("السائق غير موجود");
+        const d = result[0]!;
+        return {
+          id: d.id, phone: d.phone, name: d.name, photoUrl: d.photoUrl ?? null,
+          registrationStatus: d.registrationStatus, rejectionReason: d.rejectionReason ?? null,
+          isVerified: d.isVerified, vehicleModel: d.vehicleModel ?? null,
+          vehicleColor: d.vehicleColor ?? null, vehiclePlate: d.vehiclePlate ?? null,
+          vehicleType: d.vehicleType, rating: d.rating, totalRides: d.totalRides,
+          walletBalance: d.walletBalance,
+        };
+      }),
   }),
 
   // ─── Passenger Profile ──────────────────────────────────────────────────────
@@ -729,7 +812,34 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => {
         await updateDriverRegistrationStatus(input.driverId, input.status, input.rejectionReason);
-        return { success: true };
+
+        // Get driver info and log notification (in production: send SMS/push)
+        try {
+          const db = await (await import("./db")).getDb();
+          if (db) {
+            const { drivers: driversTable } = await import("../drizzle/schema");
+            const { eq } = await import("drizzle-orm");
+            const result = await db.select().from(driversTable).where(eq(driversTable.id, input.driverId)).limit(1);
+            if (result.length > 0) {
+              const d = result[0]!;
+              const statusMsg = input.status === "approved"
+                ? `مبروك! تم قبول طلبك كسائق في مسار. يمكنك الآن البدء باستقبال الرحلات.`
+                : `نأسف لعدم قبول طلبك. ${input.rejectionReason ?? "يرجى مراجعة البيانات وإعادة التقديم."}` ;
+              // Log notification (in production, send via push notification service)
+              console.log(`[Driver Notification] ${d.name} (${d.phone}): ${statusMsg}`);
+            }
+          }
+        } catch (e) {
+          // Non-critical, don't fail the mutation
+          console.warn("[reviewDriver] Failed to send notification:", e);
+        }
+
+        return {
+          success: true,
+          message: input.status === "approved"
+            ? "تم قبول السائق بنجاح"
+            : "تم رفض طلب السائق",
+        };
       }),
   }),
 });

@@ -18,6 +18,7 @@ import type { EdgeInsets, Metrics, Rect } from "react-native-safe-area-context";
 
 import { trpc, createTRPCClient } from "@/lib/trpc";
 import { PassengerProvider } from "@/lib/passenger-context";
+import { DriverProvider } from "@/lib/driver-context";
 import { initManusRuntime, subscribeSafeAreaInsets } from "@/lib/_core/manus-runtime";
 
 const DEFAULT_WEB_INSETS: EdgeInsets = { top: 0, right: 0, bottom: 0, left: 0 };
@@ -81,6 +82,7 @@ export default function RootLayout() {
 
   const content = (
     <GestureHandlerRootView style={{ flex: 1 }}>
+      <DriverProvider>
       <PassengerProvider>
       <trpc.Provider client={trpcClient} queryClient={queryClient}>
         <QueryClientProvider client={queryClient}>
@@ -114,11 +116,16 @@ export default function RootLayout() {
             <Stack.Screen name="help" />
             <Stack.Screen name="addresses" />
             <Stack.Screen name="promo" />
+            <Stack.Screen name="driver/login" />
+            <Stack.Screen name="driver/otp" />
+            <Stack.Screen name="driver/status" />
+            <Stack.Screen name="ride/rating" />
           </Stack>
           <StatusBar style="auto" />
         </QueryClientProvider>
       </trpc.Provider>
       </PassengerProvider>
+      </DriverProvider>
     </GestureHandlerRootView>
   );
 

@@ -291,17 +291,37 @@ export default function TrackingScreen() {
           <TouchableOpacity style={styles.sosBtn} onPress={() => Linking.openURL('tel:122')}>
             <Text style={styles.sosBtnText}>🆘 طوارئ</Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.cancelBtn}
-            onPress={() => {
-              Alert.alert('إلغاء الرحلة', 'هل أنت متأكد من إلغاء الرحلة؟', [
-                { text: 'لا', style: 'cancel' },
-                { text: 'نعم', style: 'destructive', onPress: () => router.replace('/(tabs)') },
-              ]);
-            }}
-          >
-            <Text style={styles.cancelBtnText}>إلغاء الرحلة</Text>
-          </TouchableOpacity>
+          {currentStep >= 4 ? (
+            <TouchableOpacity
+              style={[styles.cancelBtn, { backgroundColor: '#22C55E', borderColor: '#22C55E' }]}
+              onPress={() => {
+                router.replace({
+                  pathname: '/ride/rating' as any,
+                  params: {
+                    driverName: driverInfo.name,
+                    driverAvatar: driverInfo.avatar,
+                    driverRating: driverInfo.rating,
+                    fare: fare.toString(),
+                    rideId: params.rideId ?? '0',
+                  },
+                });
+              }}
+            >
+              <Text style={[styles.cancelBtnText, { color: '#FFFFFF' }]}>✅ إنهاء الرحلة</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={styles.cancelBtn}
+              onPress={() => {
+                Alert.alert('إلغاء الرحلة', 'هل أنت متأكد من إلغاء الرحلة؟', [
+                  { text: 'لا', style: 'cancel' },
+                  { text: 'نعم', style: 'destructive', onPress: () => router.replace('/(tabs)') },
+                ]);
+              }}
+            >
+              <Text style={styles.cancelBtnText}>إلغاء الرحلة</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         <View style={{ height: insets.bottom + 8 }} />
