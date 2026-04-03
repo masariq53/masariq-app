@@ -620,6 +620,32 @@ export async function getDriverPushToken(driverId: number): Promise<string | nul
 // In-memory push token store (cache layer)
 export const driverPushTokens = new Map<number, string>();
 
+// In-memory push token store for passengers
+export const passengerPushTokens = new Map<number, string>();
+
+/**
+ * Save push notification token for a passenger
+ */
+export async function savePassengerPushToken(passengerId: number, token: string) {
+  const db = await getDb();
+  passengerPushTokens.set(passengerId, token);
+  if (!db) return;
+  // Store in passengers table (add pushToken column if needed - using lastActiveAt as proxy for now)
+  // We store in memory map for now; in production add pushToken column to passengers table
+  await db.update(passengers).set({ lastActiveAt: new Date() }).where(eq(passengers.id, passengerId));
+}
+
+/**
+ * Get push notification token for a passenger
+ */
+export async function getPassengerPushToken(passengerId: number): Promise<string | null> {
+  // Check memory cache first
+  if (passengerPushTokens.has(passengerId)) {
+    return passengerPushTokens.get(passengerId) ?? null;
+  }
+  return null;
+}
+
 // ─── Admin / Dashboard ───────────────────────────────────────────────────────
 
 /**

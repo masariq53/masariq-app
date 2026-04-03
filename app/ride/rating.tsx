@@ -7,11 +7,13 @@ import {
   TextInput,
   ScrollView,
   Platform,
+  Alert,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
+import { trpc } from "@/lib/trpc";
 
 const QUICK_TAGS = [
   "سائق محترف",
@@ -58,15 +60,41 @@ export default function RideRatingScreen() {
     }
   };
 
+  const rateRideMutation = trpc.rides.rateRide.useMutation();
+
   const handleSubmit = () => {
     if (rating === 0) return;
-    setSubmitted(true);
-    if (Platform.OS !== "web") {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    const rideId = params.rideId ? parseInt(params.rideId) : 0;
+    if (rideId > 0) {
+      rateRideMutation.mutate(
+        {
+          rideId,
+          rating,
+          comment: comment.trim() || undefined,
+          tags: selectedTags,
+        },
+        {
+          onSuccess: () => {
+            setSubmitted(true);
+            if (Platform.OS !== "web") {
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            }
+            setTimeout(() => router.replace("/(tabs)"), 2000);
+          },
+          onError: () => {
+            // حتى لو فشل الحفظ، نعرض شاشة النجاح
+            setSubmitted(true);
+            setTimeout(() => router.replace("/(tabs)"), 2000);
+          },
+        }
+      );
+    } else {
+      setSubmitted(true);
+      if (Platform.OS !== "web") {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+      setTimeout(() => router.replace("/(tabs)"), 2000);
     }
-    setTimeout(() => {
-      router.replace("/(tabs)");
-    }, 2000);
   };
 
   const getStarLabel = () => {

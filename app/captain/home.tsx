@@ -33,6 +33,9 @@ const MOSUL_CENTER = {
 type PendingRide = {
   id: number;
   passengerId: number;
+  passengerName: string;
+  passengerRating: number;
+  passengerTotalRides: number;
   pickupLat: number;
   pickupLng: number;
   pickupAddress: string;
@@ -368,9 +371,14 @@ export default function CaptainHomeScreen() {
                 <Text style={{ fontSize: 24 }}>👤</Text>
               </View>
               <View style={styles.passengerInfo}>
-                <Text style={styles.passengerName}>راكب</Text>
+                <Text style={styles.passengerName}>{currentRequest?.passengerName || "راكب"}</Text>
                 <View style={styles.passengerRating}>
-                  <Text style={styles.passengerRatingText}>⭐ 5.0</Text>
+                  <Text style={styles.passengerRatingText}>⭐ {currentRequest?.passengerRating?.toFixed(1) || "5.0"}</Text>
+                  {(currentRequest?.passengerTotalRides ?? 0) > 0 && (
+                    <Text style={[styles.passengerRatingText, { color: "#9B8EC4", marginLeft: 6 }]}>
+                      • {currentRequest?.passengerTotalRides} رحلة
+                    </Text>
+                  )}
                 </View>
               </View>
               <View style={styles.priceTag}>

@@ -6,7 +6,6 @@ import {
   StyleSheet,
   Animated,
   Platform,
-  Dimensions,
   Alert,
   Linking,
   ActivityIndicator,
@@ -17,23 +16,28 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import MapView, { Marker, Polyline, PROVIDER_DEFAULT } from "react-native-maps";
 import { trpc } from "@/lib/trpc";
 
-const { height } = Dimensions.get("window");
+// مراحل الرحلة من منظور الراكب
+// 0 = searching: جاري البحث عن سائق
+// 1 = accepted:  تم قبول الطلب، السائق في الطريق
+// 2 = driver_arrived: السائق وصل لموقعك
+// 3 = in_progress: الرحلة جارية
+// 4 = completed: وصلت
 
-const steps = [
-  { id: 0, label: "جاري البحث عن سائق...", icon: "🔍" },
-  { id: 1, label: "تم العثور على سائق!", icon: "✅" },
-  { id: 2, label: "السائق في طريقه إليك", icon: "🚗" },
-  { id: 3, label: "السائق وصل! ابحث عنه", icon: "📍" },
-  { id: 4, label: "في الطريق إلى وجهتك", icon: "🛣️" },
+const RIDE_STEPS = [
+  { id: 0, label: "جاري البحث عن سائق...", icon: "🔍", dbStatus: "searching" },
+  { id: 1, label: "تم العثور على سائق! في طريقه إليك 🚗", icon: "✅", dbStatus: "accepted" },
+  { id: 2, label: "السائق وصل! ابحث عنه 📍", icon: "📍", dbStatus: "driver_arrived" },
+  { id: 3, label: "في الطريق إلى وجهتك 🛣️", icon: "🛣️", dbStatus: "in_progress" },
+  { id: 4, label: "وصلت إلى وجهتك! 🎉", icon: "🎉", dbStatus: "completed" },
 ];
 
 const STATUS_TO_STEP: Record<string, number> = {
-  pending: 0,
+  searching: 0,
   accepted: 1,
-  driver_on_way: 2,
-  arrived: 3,
-  in_progress: 4,
+  driver_arrived: 2,
+  in_progress: 3,
   completed: 4,
+  cancelled: -1,
 };
 
 export default function TrackingScreen() {
@@ -42,8 +46,6 @@ export default function TrackingScreen() {
     rideId?: string;
     passengerId?: string;
     fare?: string;
-    distance?: string;
-    duration?: string;
     pickupLat?: string;
     pickupLng?: string;
     dropoffLat?: string;
@@ -53,7 +55,8 @@ export default function TrackingScreen() {
   }>();
 
   const rideId = params.rideId ? parseInt(params.rideId) : 0;
-  const fare = params.fare ? parseInt(params.fare) : 3500;
+  const passengerId = params.passengerId ? parseInt(params.passengerId) : 0;
+  const fare = params.fare ? parseInt(params.fare) : 0;
   const pickupCoord = {
     latitude: params.pickupLat ? parseFloat(params.pickupLat) : 36.3392,
     longitude: params.pickupLng ? parseFloat(params.pickupLng) : 43.1289,
@@ -64,21 +67,16 @@ export default function TrackingScreen() {
   };
 
   const [currentStep, setCurrentStep] = useState(0);
-  const [passengerId, setPassengerId] = useState<number | null>(null);
+  const [cancelled, setCancelled] = useState(false);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const mapRef = useRef<MapView>(null);
-
-  // جلب passengerId من params أو AsyncStorage
-  useEffect(() => {
-    const pid = params.passengerId ? parseInt(params.passengerId as string) : null;
-    if (pid) setPassengerId(pid);
-  }, []);
+  const prevStepRef = useRef(0);
 
   // Polling حقيقي لحالة الرحلة كل 5 ثوانٍ
   const rideQuery = trpc.rides.passengerActiveRide.useQuery(
     { passengerId: passengerId ?? 0 },
     {
-      enabled: !!passengerId,
+      enabled: !!passengerId && !cancelled,
       refetchInterval: 5000,
       staleTime: 0,
     }
@@ -86,28 +84,59 @@ export default function TrackingScreen() {
 
   const ride = rideQuery.data;
 
-  // تحديث الخطوة بناءً على حالة الرحلة من السيرفر
+  // مزامنة الخطوة مع حالة DB
   useEffect(() => {
     if (!ride) return;
-    const step = STATUS_TO_STEP[ride.status] ?? 0;
-    setCurrentStep(step);
 
-    // إذا اكتملت الرحلة، انتقل لشاشة التقييم
+    if (ride.status === "cancelled") {
+      setCancelled(true);
+      Alert.alert("تم إلغاء الرحلة", "تم إلغاء الرحلة.", [
+        { text: "حسناً", onPress: () => router.replace("/(tabs)" as any) },
+      ]);
+      return;
+    }
+
+    const step = STATUS_TO_STEP[ride.status] ?? 0;
+    if (step !== prevStepRef.current) {
+      prevStepRef.current = step;
+      setCurrentStep(step);
+
+      // تحريك الخريطة عند تغيير المرحلة
+      if (step === 1 && ride.driver?.currentLat && ride.driver?.currentLng) {
+        mapRef.current?.animateToRegion({
+          latitude: ride.driver.currentLat,
+          longitude: ride.driver.currentLng,
+          latitudeDelta: 0.05,
+          longitudeDelta: 0.05,
+        }, 800);
+      } else if (step === 3) {
+        mapRef.current?.animateToRegion({
+          latitude: dropoffCoord.latitude,
+          longitude: dropoffCoord.longitude,
+          latitudeDelta: 0.05,
+          longitudeDelta: 0.05,
+        }, 800);
+      }
+    }
+
+    // انتقل لشاشة التقييم عند الاكتمال
     if (ride.status === "completed") {
-      router.replace({
-        pathname: "/ride/rating" as any,
-        params: {
-          driverName: ride.driver?.name ?? "السائق",
-          driverAvatar: "👨",
-          driverRating: ride.driver?.rating ?? "5.0",
-          fare: fare.toString(),
-          rideId: rideId.toString(),
-        },
-      });
+      setTimeout(() => {
+        router.replace({
+          pathname: "/ride/rating" as any,
+          params: {
+            driverName: ride.driver?.name ?? "السائق",
+            driverAvatar: "👨",
+            driverRating: ride.driver?.rating ?? "5.0",
+            fare: (ride.fare ?? fare).toString(),
+            rideId: rideId.toString(),
+          },
+        });
+      }, 1500);
     }
   }, [ride?.status]);
 
-  // نبضة
+  // نبضة للتأثير البصري
   useEffect(() => {
     const pulse = Animated.loop(
       Animated.sequence([
@@ -119,27 +148,50 @@ export default function TrackingScreen() {
     return () => pulse.stop();
   }, []);
 
-  // إلغاء الرحلة
-  const [cancelling, setCancelling] = useState(false);
+  // إلغاء الرحلة الحقيقي
+  const cancelMutation = trpc.rides.cancel.useMutation();
   const handleCancel = () => {
-    setCancelling(true);
-    router.replace("/(tabs)" as any);
+    Alert.alert("إلغاء الرحلة", "هل أنت متأكد من إلغاء الرحلة؟", [
+      { text: "لا", style: "cancel" },
+      {
+        text: "نعم، إلغاء",
+        style: "destructive",
+        onPress: () => {
+          cancelMutation.mutate(
+            { rideId, passengerId, reason: "ألغى الراكب الرحلة" },
+            {
+              onSuccess: () => {
+                setCancelled(true);
+                router.replace("/(tabs)" as any);
+              },
+              onError: () => {
+                // حتى لو فشل السيرفر، نرجع للرئيسية
+                router.replace("/(tabs)" as any);
+              },
+            }
+          );
+        },
+      },
+    ]);
   };
 
-  const step = steps[currentStep];
-  const driverName = ride?.driver?.name ?? "جاري البحث...";
-  const driverCar = ride?.driver ? `${ride.driver.vehicleModel ?? ""} ${ride.driver.vehicleColor ?? ""}`.trim() || "—" : "—";
+  const step = RIDE_STEPS[currentStep] ?? RIDE_STEPS[0];
+  const driverName = ride?.driver?.name ?? (currentStep > 0 ? "السائق" : "جاري البحث...");
+  const driverCar = ride?.driver
+    ? `${ride.driver.vehicleModel ?? ""} ${ride.driver.vehicleColor ?? ""}`.trim() || "—"
+    : "—";
   const driverPlate = ride?.driver?.vehiclePlate ?? "—";
   const driverRating = ride?.driver?.rating ?? "5.0";
   const driverPhone = ride?.driver?.phone;
   const driverLat = ride?.driver?.currentLat;
   const driverLng = ride?.driver?.currentLng;
+  const actualFare = ride?.fare ?? fare;
 
   return (
     <View style={styles.container}>
       <StatusBar style="light" />
 
-      {/* خريطة تتبع حقيقية */}
+      {/* خريطة تتبع */}
       {Platform.OS !== "web" ? (
         <MapView
           ref={mapRef}
@@ -148,8 +200,8 @@ export default function TrackingScreen() {
           initialRegion={{
             latitude: pickupCoord.latitude,
             longitude: pickupCoord.longitude,
-            latitudeDelta: 0.05,
-            longitudeDelta: 0.05,
+            latitudeDelta: 0.06,
+            longitudeDelta: 0.06,
           }}
           showsUserLocation
           showsMyLocationButton={false}
@@ -157,11 +209,11 @@ export default function TrackingScreen() {
           {/* نقطة الانطلاق */}
           <Marker coordinate={pickupCoord} title="نقطة الانطلاق">
             <View style={styles.originMarker}>
-              <Text style={{ fontSize: 18 }}>📍</Text>
+              <Text style={{ fontSize: 20 }}>📍</Text>
             </View>
           </Marker>
 
-          {/* نقطة الوجهة */}
+          {/* الوجهة */}
           <Marker coordinate={dropoffCoord} title="وجهتك">
             <View style={styles.destMarker}>
               <Text style={{ fontSize: 22 }}>🏁</Text>
@@ -175,7 +227,7 @@ export default function TrackingScreen() {
               title={`السائق: ${driverName}`}
             >
               <Animated.View style={[styles.driverMarker, { transform: [{ scale: pulseAnim }] }]}>
-                <Text style={{ fontSize: 22 }}>🚗</Text>
+                <Text style={{ fontSize: 24 }}>🚗</Text>
               </Animated.View>
             </Marker>
           )}
@@ -191,9 +243,9 @@ export default function TrackingScreen() {
       ) : (
         <View style={[styles.map, styles.webMap]}>
           <Animated.Text style={[styles.webMapCar, { transform: [{ scale: pulseAnim }] }]}>
-            🚗
+            {currentStep === 0 ? "🔍" : "🚗"}
           </Animated.Text>
-          <Text style={styles.webMapLabel}>تتبع السائق — الموصل</Text>
+          <Text style={styles.webMapLabel}>{step.label}</Text>
         </View>
       )}
 
@@ -205,13 +257,13 @@ export default function TrackingScreen() {
         <Text style={styles.backIcon}>←</Text>
       </TouchableOpacity>
 
-      {/* حالة الرحلة */}
+      {/* شارة الحالة */}
       <View style={[styles.statusBadge, { top: insets.top + 12 }]}>
         <Text style={styles.statusIcon}>{step.icon}</Text>
-        <Text style={styles.statusText}>{step.label}</Text>
+        <Text style={styles.statusText} numberOfLines={1}>{step.label}</Text>
       </View>
 
-      {/* لوحة معلومات السائق */}
+      {/* لوحة السائق السفلية */}
       <View style={styles.driverSheet}>
         <View style={styles.handle} />
 
@@ -219,89 +271,89 @@ export default function TrackingScreen() {
         <View style={styles.driverRow}>
           <View style={styles.avatarCircle}>
             {currentStep === 0 ? (
-              <ActivityIndicator color="#FFD700" />
+              <ActivityIndicator color="#FFD700" size="small" />
             ) : (
               <Text style={styles.avatarText}>👨</Text>
             )}
           </View>
           <View style={styles.driverInfo}>
             <Text style={styles.driverName}>{driverName}</Text>
-            <Text style={styles.driverCar}>{driverCar}</Text>
-            <View style={styles.ratingRow}>
-              <Text style={styles.star}>⭐</Text>
-              <Text style={styles.rating}>{driverRating}</Text>
-              {driverPlate !== "—" && <Text style={styles.plate}> • {driverPlate}</Text>}
-            </View>
+            {currentStep > 0 && (
+              <>
+                <Text style={styles.driverCar}>{driverCar}</Text>
+                <View style={styles.ratingRow}>
+                  <Text style={styles.star}>⭐</Text>
+                  <Text style={styles.rating}>{driverRating}</Text>
+                  {driverPlate !== "—" && (
+                    <Text style={styles.plate}> • {driverPlate}</Text>
+                  )}
+                </View>
+              </>
+            )}
+            {currentStep === 0 && (
+              <Text style={styles.searchingText}>نبحث عن أقرب سائق لك...</Text>
+            )}
           </View>
-          {currentStep > 0 && (
-            <View style={styles.driverActions}>
-              <TouchableOpacity
-                style={styles.actionBtn}
-                onPress={() => driverPhone && Linking.openURL(`tel:${driverPhone}`)}
-              >
-                <Text style={styles.actionIcon}>📞</Text>
-              </TouchableOpacity>
-            </View>
+          {currentStep > 0 && driverPhone && (
+            <TouchableOpacity
+              style={styles.callBtn}
+              onPress={() => Linking.openURL(`tel:${driverPhone}`)}
+            >
+              <Text style={styles.callIcon}>📞</Text>
+            </TouchableOpacity>
           )}
         </View>
 
-        {/* شريط التقدم */}
-        <View style={styles.progressBar}>
-          {steps.map((s, i) => (
-            <View
-              key={s.id}
-              style={[
-                styles.progressDot,
-                i <= currentStep && styles.progressDotActive,
-                i < currentStep && styles.progressDotDone,
-              ]}
-            />
+        {/* شريط تقدم المراحل */}
+        <View style={styles.stepsRow}>
+          {RIDE_STEPS.slice(0, 4).map((s, i) => (
+            <React.Fragment key={s.id}>
+              <View style={styles.stepItem}>
+                <View style={[
+                  styles.stepDot,
+                  i < currentStep && styles.stepDotDone,
+                  i === currentStep && styles.stepDotActive,
+                ]} />
+                <Text style={[styles.stepLabel, i === currentStep && styles.stepLabelActive]}>
+                  {["بحث", "قبول", "وصل", "رحلة"][i]}
+                </Text>
+              </View>
+              {i < 3 && (
+                <View style={[styles.stepLine, i < currentStep && styles.stepLineDone]} />
+              )}
+            </React.Fragment>
           ))}
         </View>
 
-        {/* معلومات الأجرة */}
+        {/* الأجرة */}
         <View style={styles.fareRow}>
-          <Text style={styles.fareLabel}>الأجرة المتوقعة</Text>
-          <Text style={styles.fareValue}>{fare.toLocaleString("ar-IQ")} دينار</Text>
+          <View>
+            <Text style={styles.fareLabel}>الأجرة المتوقعة</Text>
+            <Text style={styles.fareValue}>{actualFare.toLocaleString("ar-IQ")} دينار</Text>
+          </View>
           <Text style={styles.fareMethod}>💵 نقداً</Text>
         </View>
 
-        <View style={styles.bottomRow}>
+        {/* أزرار الإجراء */}
+        <View style={styles.actionRow}>
           <TouchableOpacity style={styles.sosBtn} onPress={() => Linking.openURL("tel:122")}>
             <Text style={styles.sosBtnText}>🆘 طوارئ</Text>
           </TouchableOpacity>
-          {currentStep >= 4 ? (
-            <TouchableOpacity
-              style={[styles.cancelBtn, { backgroundColor: "#22C55E", borderColor: "#22C55E" }]}
-              onPress={() => {
-                router.replace({
-                  pathname: "/ride/rating" as any,
-                  params: {
-                    driverName: driverName,
-                    driverAvatar: "👨",
-                    driverRating: driverRating,
-                    fare: fare.toString(),
-                    rideId: rideId.toString(),
-                  },
-                });
-              }}
-            >
-              <Text style={[styles.cancelBtnText, { color: "#FFFFFF" }]}>✅ إنهاء الرحلة</Text>
-            </TouchableOpacity>
-          ) : (
+
+          {currentStep < 3 ? (
             <TouchableOpacity
               style={styles.cancelBtn}
-              onPress={() => {
-                Alert.alert("إلغاء الرحلة", "هل أنت متأكد من إلغاء الرحلة؟", [
-                  { text: "لا", style: "cancel" },
-                  { text: "نعم", style: "destructive", onPress: handleCancel },
-                ]);
-              }}
+              onPress={handleCancel}
+              disabled={cancelMutation.isPending}
             >
               <Text style={styles.cancelBtnText}>
-                {cancelling ? "جاري الإلغاء..." : "إلغاء الرحلة"}
+                {cancelMutation.isPending ? "جاري الإلغاء..." : "إلغاء الرحلة"}
               </Text>
             </TouchableOpacity>
+          ) : (
+            <View style={[styles.cancelBtn, { backgroundColor: "#22C55E", borderColor: "#22C55E" }]}>
+              <Text style={[styles.cancelBtnText, { color: "#fff" }]}>الرحلة جارية ✓</Text>
+            </View>
           )}
         </View>
 
@@ -318,9 +370,10 @@ const styles = StyleSheet.create({
     backgroundColor: "#2D1B4E",
     alignItems: "center",
     justifyContent: "center",
+    gap: 12,
   },
-  webMapCar: { fontSize: 64, marginBottom: 12 },
-  webMapLabel: { color: "#FFD700", fontSize: 18, fontWeight: "bold" },
+  webMapCar: { fontSize: 56 },
+  webMapLabel: { color: "#FFD700", fontSize: 16, fontWeight: "bold", textAlign: "center", paddingHorizontal: 20 },
   backBtn: {
     position: "absolute",
     left: 16,
@@ -340,18 +393,19 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "rgba(26,5,51,0.9)",
-    paddingHorizontal: 16,
+    paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 20,
     borderWidth: 1,
     borderColor: "#FFD700",
-    gap: 8,
+    gap: 6,
+    maxWidth: "70%",
   },
   statusIcon: { fontSize: 16 },
-  statusText: { color: "#FFD700", fontSize: 13, fontWeight: "600" },
-  driverMarker: { alignItems: "center" },
-  destMarker: { alignItems: "center" },
+  statusText: { color: "#FFD700", fontSize: 12, fontWeight: "600" },
   originMarker: { alignItems: "center" },
+  destMarker: { alignItems: "center" },
+  driverMarker: { alignItems: "center" },
   driverSheet: {
     backgroundColor: "#1A0533",
     borderTopLeftRadius: 24,
@@ -367,17 +421,17 @@ const styles = StyleSheet.create({
     backgroundColor: "#3D2070",
     borderRadius: 2,
     alignSelf: "center",
-    marginBottom: 16,
+    marginBottom: 14,
   },
   driverRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 16,
+    marginBottom: 14,
   },
   avatarCircle: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
     backgroundColor: "#2D1B4E",
     alignItems: "center",
     justifyContent: "center",
@@ -389,12 +443,12 @@ const styles = StyleSheet.create({
   driverInfo: { flex: 1 },
   driverName: { color: "#FFFFFF", fontSize: 16, fontWeight: "bold" },
   driverCar: { color: "#9B8EC4", fontSize: 13, marginTop: 2 },
-  ratingRow: { flexDirection: "row", alignItems: "center", gap: 3, marginTop: 3 },
+  searchingText: { color: "#9B8EC4", fontSize: 13, marginTop: 2 },
+  ratingRow: { flexDirection: "row", alignItems: "center", marginTop: 2 },
   star: { fontSize: 12 },
-  rating: { color: "#FFD700", fontSize: 13, fontWeight: "600" },
+  rating: { color: "#FFD700", fontSize: 13, fontWeight: "600", marginLeft: 2 },
   plate: { color: "#9B8EC4", fontSize: 12 },
-  driverActions: { flexDirection: "row", gap: 8 },
-  actionBtn: {
+  callBtn: {
     width: 40,
     height: 40,
     borderRadius: 20,
@@ -404,25 +458,33 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#3D2070",
   },
-  actionIcon: { fontSize: 18 },
-  progressBar: {
-    flexDirection: "row",
-    justifyContent: "center",
-    gap: 8,
-    marginBottom: 16,
-  },
-  progressDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: "#3D2070",
-  },
-  progressDotActive: { backgroundColor: "#FFD700" },
-  progressDotDone: { backgroundColor: "#22C55E" },
-  fareRow: {
+  callIcon: { fontSize: 18 },
+  stepsRow: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 14,
+    paddingHorizontal: 4,
+  },
+  stepItem: { alignItems: "center", gap: 4 },
+  stepDot: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: "#3D2070",
+    borderWidth: 2,
+    borderColor: "#3D2070",
+  },
+  stepDotActive: { backgroundColor: "#FFD700", borderColor: "#FFD700" },
+  stepDotDone: { backgroundColor: "#22C55E", borderColor: "#22C55E" },
+  stepLabel: { color: "#9B8EC4", fontSize: 10 },
+  stepLabelActive: { color: "#FFD700", fontWeight: "bold" },
+  stepLine: { flex: 1, height: 2, backgroundColor: "#3D2070", marginBottom: 14, marginHorizontal: 4 },
+  stepLineDone: { backgroundColor: "#22C55E" },
+  fareRow: {
+    flexDirection: "row",
     justifyContent: "space-between",
+    alignItems: "center",
     backgroundColor: "#2D1B4E",
     borderRadius: 12,
     padding: 12,
@@ -430,32 +492,32 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#3D2070",
   },
-  fareLabel: { color: "#9B8EC4", fontSize: 13 },
-  fareValue: { color: "#FFD700", fontSize: 15, fontWeight: "bold" },
-  fareMethod: { color: "#9B8EC4", fontSize: 13 },
-  bottomRow: {
+  fareLabel: { color: "#9B8EC4", fontSize: 12 },
+  fareValue: { color: "#FFD700", fontSize: 18, fontWeight: "bold" },
+  fareMethod: { color: "#9B8EC4", fontSize: 14 },
+  actionRow: {
     flexDirection: "row",
-    gap: 12,
-    marginBottom: 8,
+    gap: 10,
+    marginBottom: 4,
   },
   sosBtn: {
-    backgroundColor: "#2D1B4E",
+    flex: 1,
+    paddingVertical: 13,
     borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
+    backgroundColor: "#2D1B4E",
     alignItems: "center",
     borderWidth: 1,
     borderColor: "#EF4444",
   },
-  sosBtnText: { color: "#EF4444", fontSize: 13, fontWeight: "bold" },
+  sosBtnText: { color: "#EF4444", fontSize: 14, fontWeight: "600" },
   cancelBtn: {
-    flex: 1,
-    backgroundColor: "#2D1B4E",
+    flex: 2,
+    paddingVertical: 13,
     borderRadius: 12,
-    paddingVertical: 14,
+    backgroundColor: "#2D1B4E",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#3D2070",
+    borderColor: "#9B8EC4",
   },
-  cancelBtnText: { color: "#9B8EC4", fontSize: 14, fontWeight: "bold" },
+  cancelBtnText: { color: "#9B8EC4", fontSize: 14, fontWeight: "600" },
 });

@@ -5,9 +5,9 @@ import {
   StyleSheet,
   TouchableOpacity,
   Platform,
-  Dimensions,
   Linking,
   ActivityIndicator,
+  Alert,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -17,7 +17,20 @@ import { useLocation } from "@/hooks/use-location";
 import { trpc } from "@/lib/trpc";
 import { useDriver } from "@/lib/driver-context";
 
-type TripPhase = "pickup" | "in_trip" | "arrived";
+// مراحل الرحلة من منظور السائق
+// pickup   → السائق في طريقه لموقع الراكب
+// arrived  → السائق وصل لموقع الراكب (driver_arrived في DB)
+// in_trip  → الرحلة بدأت فعلاً (in_progress في DB)
+// done     → الرحلة اكتملت
+type TripPhase = "pickup" | "arrived" | "in_trip" | "done";
+
+// خريطة حالة DB → مرحلة محلية
+const STATUS_TO_PHASE: Record<string, TripPhase> = {
+  accepted: "pickup",
+  driver_arrived: "arrived",
+  in_progress: "in_trip",
+  completed: "done",
+};
 
 export default function CaptainActiveTripScreen() {
   const insets = useSafeAreaInsets();
@@ -50,6 +63,14 @@ export default function CaptainActiveTripScreen() {
     ? { latitude: ride.dropoffLat, longitude: ride.dropoffLng }
     : { latitude: 36.3600, longitude: 43.1450 };
 
+  // مزامنة المرحلة مع حالة DB
+  useEffect(() => {
+    if (ride?.status) {
+      const mappedPhase = STATUS_TO_PHASE[ride.status];
+      if (mappedPhase) setPhase(mappedPhase);
+    }
+  }, [ride?.status]);
+
   // تمركز الخريطة على موقع الراكب عند التحميل
   useEffect(() => {
     if (ride && mapRef.current) {
@@ -64,59 +85,128 @@ export default function CaptainActiveTripScreen() {
 
   const updateStatus = trpc.rides.updateStatus.useMutation();
 
-  const phaseConfig = {
-    pickup: {
-      title: "في الطريق لاستلام الراكب",
-      btnText: "وصلت لموقع الراكب ✓",
-      btnColor: "#FFD700",
-      btnTextColor: "#1A0533",
-      route: [coords, pickupCoord],
-      target: pickupCoord,
-      statusToSet: "driver_arrived" as const,
-    },
-    in_trip: {
-      title: "الرحلة جارية 🛣️",
-      btnText: "إنهاء الرحلة ✓",
-      btnColor: "#22C55E",
-      btnTextColor: "#FFFFFF",
-      route: [pickupCoord, destCoord],
-      target: destCoord,
-      statusToSet: "in_progress" as const,
-    },
-    arrived: {
-      title: "وصلنا للوجهة! 🎉",
-      btnText: "تأكيد إنهاء الرحلة",
-      btnColor: "#FFD700",
-      btnTextColor: "#1A0533",
-      route: [pickupCoord, destCoord],
-      target: destCoord,
-      statusToSet: "completed" as const,
-    },
+  // فتح خرائط Google Maps أو Apple Maps للملاحة
+  const openNavigation = (targetLat: number, targetLng: number, label: string) => {
+    const encodedLabel = encodeURIComponent(label);
+    if (Platform.OS === "ios") {
+      // iOS: نحاول Waze أولاً ثم Apple Maps
+      const wazeUrl = `waze://?ll=${targetLat},${targetLng}&navigate=yes`;
+      const appleMapsUrl = `maps://?daddr=${targetLat},${targetLng}&dirflg=d`;
+      const googleMapsUrl = `comgooglemaps://?daddr=${targetLat},${targetLng}&directionsmode=driving`;
+      
+      Linking.canOpenURL(wazeUrl).then((supported) => {
+        if (supported) {
+          Linking.openURL(wazeUrl);
+        } else {
+          Linking.canOpenURL(googleMapsUrl).then((gSupported) => {
+            if (gSupported) {
+              Linking.openURL(googleMapsUrl);
+            } else {
+              Linking.openURL(appleMapsUrl);
+            }
+          });
+        }
+      });
+    } else {
+      // Android: Google Maps
+      const googleMapsUrl = `google.navigation:q=${targetLat},${targetLng}&mode=d`;
+      Linking.canOpenURL(googleMapsUrl).then((supported) => {
+        if (supported) {
+          Linking.openURL(googleMapsUrl);
+        } else {
+          // Fallback to browser Google Maps
+          Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${targetLat},${targetLng}&travelmode=driving`);
+        }
+      });
+    }
   };
-
-  const config = phaseConfig[phase];
 
   const handlePhaseAction = () => {
     const actualRideId = ride?.id ?? rideId;
     if (!actualRideId) return;
 
     if (phase === "pickup") {
+      // السائق وصل لموقع الراكب
       updateStatus.mutate({ rideId: actualRideId, status: "driver_arrived" });
-      setPhase("in_trip");
-      mapRef.current?.animateToRegion({ ...pickupCoord, latitudeDelta: 0.04, longitudeDelta: 0.04 }, 800);
-    } else if (phase === "in_trip") {
-      updateStatus.mutate({ rideId: actualRideId, status: "in_progress" });
       setPhase("arrived");
+      mapRef.current?.animateToRegion({ ...pickupCoord, latitudeDelta: 0.03, longitudeDelta: 0.03 }, 800);
+    } else if (phase === "arrived") {
+      // بدأت الرحلة فعلاً
+      updateStatus.mutate({ rideId: actualRideId, status: "in_progress" });
+      setPhase("in_trip");
       mapRef.current?.animateToRegion({ ...destCoord, latitudeDelta: 0.04, longitudeDelta: 0.04 }, 800);
-    } else {
+    } else if (phase === "in_trip") {
+      // إنهاء الرحلة
       updateStatus.mutate(
         { rideId: actualRideId, status: "completed" },
         {
-          onSuccess: () => router.push("/captain/trip-summary" as any),
+          onSuccess: () => {
+            router.replace({
+              pathname: "/captain/trip-summary" as any,
+              params: {
+                rideId: actualRideId.toString(),
+                fare: ride?.fare?.toString() ?? "0",
+                distance: ride?.estimatedDistance?.toString() ?? "0",
+                duration: ride?.estimatedDuration?.toString() ?? "0",
+                passengerName: ride?.passengerName ?? "الراكب",
+                pickupAddress: ride?.pickupAddress ?? "",
+                dropoffAddress: ride?.dropoffAddress ?? "",
+              },
+            });
+          },
         }
       );
     }
   };
+
+  const phaseConfig = {
+    pickup: {
+      title: "في الطريق لاستلام الراكب 🚗",
+      subtitle: `توجه إلى: ${ride?.pickupAddress || "موقع الراكب"}`,
+      btnText: "وصلت لموقع الراكب ✓",
+      btnColor: "#FFD700",
+      btnTextColor: "#1A0533",
+      navTarget: pickupCoord,
+      navLabel: ride?.pickupAddress || "موقع الراكب",
+      route: [coords, pickupCoord],
+      statusDotColor: "#FFD700",
+    },
+    arrived: {
+      title: "وصلت لموقع الراكب 📍",
+      subtitle: "في انتظار الراكب...",
+      btnText: "بدء الرحلة ▶",
+      btnColor: "#22C55E",
+      btnTextColor: "#FFFFFF",
+      navTarget: pickupCoord,
+      navLabel: ride?.pickupAddress || "موقع الراكب",
+      route: [coords, pickupCoord],
+      statusDotColor: "#22C55E",
+    },
+    in_trip: {
+      title: "الرحلة جارية 🛣️",
+      subtitle: `الوجهة: ${ride?.dropoffAddress || "الوجهة"}`,
+      btnText: "إنهاء الرحلة ✓",
+      btnColor: "#22C55E",
+      btnTextColor: "#FFFFFF",
+      navTarget: destCoord,
+      navLabel: ride?.dropoffAddress || "الوجهة",
+      route: [pickupCoord, destCoord],
+      statusDotColor: "#22C55E",
+    },
+    done: {
+      title: "اكتملت الرحلة 🎉",
+      subtitle: "شكراً لك!",
+      btnText: "العودة للرئيسية",
+      btnColor: "#FFD700",
+      btnTextColor: "#1A0533",
+      navTarget: destCoord,
+      navLabel: "",
+      route: [pickupCoord, destCoord],
+      statusDotColor: "#FFD700",
+    },
+  };
+
+  const config = phaseConfig[phase];
 
   if (rideQuery.isLoading) {
     return (
@@ -149,14 +239,14 @@ export default function CaptainActiveTripScreen() {
           {/* موقع الراكب */}
           <Marker coordinate={pickupCoord} title="موقع الراكب">
             <View style={styles.pickupMarker}>
-              <Text style={{ fontSize: 20 }}>👤</Text>
+              <Text style={{ fontSize: 22 }}>👤</Text>
             </View>
           </Marker>
 
           {/* الوجهة */}
           <Marker coordinate={destCoord} title="الوجهة">
             <View style={styles.destMarker}>
-              <Text style={{ fontSize: 20 }}>🏁</Text>
+              <Text style={{ fontSize: 22 }}>🏁</Text>
             </View>
           </Marker>
 
@@ -176,13 +266,18 @@ export default function CaptainActiveTripScreen() {
       )}
 
       {/* زر الرجوع */}
-      <TouchableOpacity style={[styles.backBtn, { top: insets.top + 8, left: 16 }]} onPress={() => router.back()}>
+      <TouchableOpacity style={[styles.backBtn, { top: insets.top + 8, left: 16 }]} onPress={() => {
+        Alert.alert("تنبيه", "الرحلة لا تزال نشطة. هل تريد الرجوع؟", [
+          { text: "لا", style: "cancel" },
+          { text: "نعم", onPress: () => router.back() },
+        ]);
+      }}>
         <Text style={styles.backBtnText}>←</Text>
       </TouchableOpacity>
 
       {/* شريط الحالة */}
       <View style={[styles.statusBar, { top: insets.top + 8 }]}>
-        <View style={[styles.statusDot, phase === "in_trip" && styles.statusDotGreen]} />
+        <View style={[styles.statusDot, { backgroundColor: config.statusDotColor }]} />
         <Text style={styles.statusTitle}>{config.title}</Text>
       </View>
 
@@ -196,14 +291,28 @@ export default function CaptainActiveTripScreen() {
             <Text style={{ fontSize: 26 }}>👤</Text>
           </View>
           <View style={styles.passengerInfo}>
-            <Text style={styles.passengerName}>راكب</Text>
-            <Text style={styles.passengerDest} numberOfLines={1}>
-              {phase === "pickup" ? (ride?.pickupAddress || "موقع الراكب") : (ride?.dropoffAddress || "الوجهة")}
-            </Text>
+            <Text style={styles.passengerName}>{ride?.passengerName || "الراكب"}</Text>
+            <View style={styles.ratingRow}>
+              <Text style={styles.ratingText}>⭐ {ride?.passengerRating?.toFixed(1) ?? "5.0"}</Text>
+              <Text style={styles.subtitleText}>{config.subtitle}</Text>
+            </View>
           </View>
           <View style={styles.actionBtns}>
-            <TouchableOpacity style={styles.actionBtn}>
-              <Text style={styles.actionIcon}>📞</Text>
+            {/* زر الاتصال */}
+            {ride?.passengerPhone && (
+              <TouchableOpacity
+                style={styles.actionBtn}
+                onPress={() => Linking.openURL(`tel:${ride.passengerPhone}`)}
+              >
+                <Text style={styles.actionIcon}>📞</Text>
+              </TouchableOpacity>
+            )}
+            {/* زر الملاحة GPS */}
+            <TouchableOpacity
+              style={[styles.actionBtn, { borderColor: "#FFD700" }]}
+              onPress={() => openNavigation(config.navTarget.latitude, config.navTarget.longitude, config.navLabel)}
+            >
+              <Text style={styles.actionIcon}>🧭</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -228,7 +337,29 @@ export default function CaptainActiveTripScreen() {
           <Text style={styles.fareItem}>⏱ {ride?.estimatedDuration ?? "—"} دقيقة</Text>
         </View>
 
-        {/* زر الإجراء */}
+        {/* شريط تقدم المراحل */}
+        <View style={styles.stepsRow}>
+          {(["pickup", "arrived", "in_trip"] as TripPhase[]).map((p, i) => {
+            const labels = ["في الطريق", "وصلت", "الرحلة"];
+            const isDone = ["pickup", "arrived", "in_trip"].indexOf(phase) > i;
+            const isCurrent = phase === p;
+            return (
+              <React.Fragment key={p}>
+                <View style={styles.stepItem}>
+                  <View style={[
+                    styles.stepDot,
+                    isCurrent && styles.stepDotActive,
+                    isDone && styles.stepDotDone,
+                  ]} />
+                  <Text style={[styles.stepLabel, isCurrent && styles.stepLabelActive]}>{labels[i]}</Text>
+                </View>
+                {i < 2 && <View style={[styles.stepLine, isDone && styles.stepLineDone]} />}
+              </React.Fragment>
+            );
+          })}
+        </View>
+
+        {/* زر الإجراء الرئيسي */}
         <TouchableOpacity
           style={[styles.actionMainBtn, { backgroundColor: config.btnColor }]}
           onPress={handlePhaseAction}
@@ -237,6 +368,14 @@ export default function CaptainActiveTripScreen() {
           <Text style={[styles.actionMainBtnText, { color: config.btnTextColor }]}>
             {updateStatus.isPending ? "جاري التحديث..." : config.btnText}
           </Text>
+        </TouchableOpacity>
+
+        {/* زر الملاحة الكبير */}
+        <TouchableOpacity
+          style={styles.navBtn}
+          onPress={() => openNavigation(config.navTarget.latitude, config.navTarget.longitude, config.navLabel)}
+        >
+          <Text style={styles.navBtnText}>🧭 فتح الملاحة (Google Maps / Waze)</Text>
         </TouchableOpacity>
 
         <View style={{ height: insets.bottom + 8 }} />
@@ -286,7 +425,6 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     backgroundColor: "#FFD700",
   },
-  statusDotGreen: { backgroundColor: "#22C55E" },
   statusTitle: { color: "#FFD700", fontSize: 13, fontWeight: "600" },
   pickupMarker: { alignItems: "center" },
   destMarker: { alignItems: "center" },
@@ -305,12 +443,12 @@ const styles = StyleSheet.create({
     backgroundColor: "#3D2070",
     borderRadius: 2,
     alignSelf: "center",
-    marginBottom: 16,
+    marginBottom: 14,
   },
   passengerRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 14,
+    marginBottom: 12,
   },
   avatarCircle: {
     width: 48,
@@ -325,7 +463,9 @@ const styles = StyleSheet.create({
   },
   passengerInfo: { flex: 1 },
   passengerName: { color: "#FFFFFF", fontSize: 16, fontWeight: "bold" },
-  passengerDest: { color: "#9B8EC4", fontSize: 13, marginTop: 2 },
+  ratingRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2, flexWrap: "wrap" },
+  ratingText: { color: "#FFD700", fontSize: 13 },
+  subtitleText: { color: "#9B8EC4", fontSize: 12 },
   actionBtns: { flexDirection: "row", gap: 8 },
   actionBtn: {
     width: 38,
@@ -342,7 +482,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#2D1B4E",
     borderRadius: 12,
     padding: 12,
-    marginBottom: 12,
+    marginBottom: 10,
     borderWidth: 1,
     borderColor: "#3D2070",
   },
@@ -357,11 +497,33 @@ const styles = StyleSheet.create({
     backgroundColor: "#2D1B4E",
     borderRadius: 12,
     padding: 10,
-    marginBottom: 14,
+    marginBottom: 12,
     borderWidth: 1,
     borderColor: "#3D2070",
   },
   fareItem: { color: "#FFD700", fontSize: 13, fontWeight: "600" },
+  stepsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 12,
+    paddingHorizontal: 8,
+  },
+  stepItem: { alignItems: "center", gap: 4 },
+  stepDot: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: "#3D2070",
+    borderWidth: 2,
+    borderColor: "#3D2070",
+  },
+  stepDotActive: { backgroundColor: "#FFD700", borderColor: "#FFD700" },
+  stepDotDone: { backgroundColor: "#22C55E", borderColor: "#22C55E" },
+  stepLabel: { color: "#9B8EC4", fontSize: 10 },
+  stepLabelActive: { color: "#FFD700", fontWeight: "bold" },
+  stepLine: { flex: 1, height: 2, backgroundColor: "#3D2070", marginBottom: 14, marginHorizontal: 4 },
+  stepLineDone: { backgroundColor: "#22C55E" },
   actionMainBtn: {
     borderRadius: 14,
     paddingVertical: 16,
@@ -369,4 +531,14 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   actionMainBtnText: { fontSize: 16, fontWeight: "bold" },
+  navBtn: {
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: "center",
+    marginBottom: 4,
+    backgroundColor: "#2D1B4E",
+    borderWidth: 1,
+    borderColor: "#3D2070",
+  },
+  navBtnText: { color: "#9B8EC4", fontSize: 14 },
 });

@@ -178,6 +178,9 @@ export default function CaptainEarningsScreen() {
                   <Text style={{ fontSize: 22 }}>🚗</Text>
                 </View>
                 <View style={styles.tripInfo}>
+                  {trip.passengerName && (
+                    <Text style={styles.passengerName}>👤 {trip.passengerName}</Text>
+                  )}
                   <Text style={styles.tripRoute} numberOfLines={1}>
                     {trip.pickupAddress} ← {trip.dropoffAddress}
                   </Text>
@@ -287,4 +290,5 @@ const styles = StyleSheet.create({
   tripFare: { alignItems: "flex-end" },
   tripAmount: { color: "#22C55E", fontSize: 16, fontWeight: "800" },
   tripCurrency: { color: "#6B7280", fontSize: 11 },
+  passengerName: { color: "#FFD700", fontSize: 12, fontWeight: "600", marginBottom: 2 },
 });

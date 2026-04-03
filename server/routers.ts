@@ -41,6 +41,8 @@ import {
   saveDriverPushToken,
   driverPushTokens,
   getDriverPushToken,
+  getPassengerPushToken,
+  savePassengerPushToken,
 } from "./db";
 import { storagePut } from "./storage";
 
@@ -364,7 +366,7 @@ export const appRouter = router({
       }),
 
     /**
-     * Accept a ride (driver action)
+     * Accept a ride (driver action) - sends push notification to passenger
      */
     accept: publicProcedure
       .input(
@@ -375,11 +377,46 @@ export const appRouter = router({
       )
       .mutation(async ({ input }) => {
         await updateRideStatus(input.rideId, "accepted", { driverId: input.driverId });
+        // Get ride and driver info to notify passenger
+        const ride = await getRideById(input.rideId);
+        if (ride) {
+          const { drivers: driversTable } = await import("../drizzle/schema");
+          const { eq: eqOp } = await import("drizzle-orm");
+          const { getDb } = await import("./db");
+          const db = await getDb();
+          let driverName = "السائق";
+          let driverVehicle = "";
+          let driverPlate = "";
+          if (db) {
+            const [d] = await db.select().from(driversTable).where(eqOp(driversTable.id, input.driverId)).limit(1);
+            if (d) {
+              driverName = d.name;
+              driverVehicle = `${d.vehicleModel ?? ""} ${d.vehicleColor ?? ""}`.trim();
+              driverPlate = d.vehiclePlate ?? "";
+            }
+          }
+          // Send push notification to passenger
+          const passengerToken = await getPassengerPushToken(ride.passengerId);
+          if (passengerToken && passengerToken.startsWith("ExponentPushToken[")) {
+            fetch("https://exp.host/--/api/v2/push/send", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "Accept": "application/json" },
+              body: JSON.stringify({
+                to: passengerToken,
+                sound: "default",
+                title: "🚗 تم قبول طلبك!",
+                body: `${driverName} في طريقه إليك${driverVehicle ? ` — ${driverVehicle}` : ""}${driverPlate ? ` (${driverPlate})` : ""}`,
+                data: { rideId: input.rideId, type: "ride_accepted" },
+                priority: "high",
+              }),
+            }).catch((err) => console.warn("[Push] Failed to notify passenger:", err));
+          }
+        }
         return { success: true };
       }),
 
     /**
-     * Update ride status
+     * Update ride status - also updates driver/passenger stats on completion
      */
     updateStatus: publicProcedure
       .input(
@@ -396,6 +433,27 @@ export const appRouter = router({
         if (input.cancelReason) extra.cancelReason = input.cancelReason;
 
         await updateRideStatus(input.rideId, input.status, extra as any);
+
+        // On completion: increment totalRides for driver and passenger
+        if (input.status === "completed") {
+          const ride = await getRideById(input.rideId);
+          if (ride) {
+            const { drivers: driversTable, passengers: passengersTable } = await import("../drizzle/schema");
+            const { eq: eqOp, sql: sqlOp } = await import("drizzle-orm");
+            const { getDb } = await import("./db");
+            const db = await getDb();
+            if (db) {
+              if (ride.driverId) {
+                await db.update(driversTable)
+                  .set({ totalRides: sqlOp`totalRides + 1` })
+                  .where(eqOp(driversTable.id, ride.driverId));
+              }
+              await db.update(passengersTable)
+                .set({ totalRides: sqlOp`totalRides + 1` })
+                .where(eqOp(passengersTable.id, ride.passengerId));
+            }
+          }
+        }
         return { success: true };
       }),
 
@@ -409,12 +467,54 @@ export const appRouter = router({
       }),
 
     /**
-     * Get passenger ride history
+     * Get passenger ride history with real data
      */
     passengerHistory: publicProcedure
-      .input(z.object({ passengerId: z.number(), limit: z.number().default(20) }))
+      .input(z.object({ passengerId: z.number(), limit: z.number().default(50) }))
       .query(async ({ input }) => {
-        return getPassengerRideHistory(input.passengerId, input.limit);
+        const db = await (await import("./db")).getDb();
+        if (!db) return [];
+        const { rides: ridesTable, drivers: driversTable } = await import("../drizzle/schema");
+        const { eq, desc } = await import("drizzle-orm");
+        const passengerRides = await db
+          .select()
+          .from(ridesTable)
+          .where(eq(ridesTable.passengerId, input.passengerId))
+          .orderBy(desc(ridesTable.createdAt))
+          .limit(input.limit);
+        // Fetch driver info for each completed ride
+        const ridesWithDriver = await Promise.all(
+          passengerRides.map(async (r) => {
+            let driverInfo = null;
+            if (r.driverId) {
+              const [d] = await db.select().from(driversTable).where(eq(driversTable.id, r.driverId)).limit(1);
+              if (d) {
+                driverInfo = {
+                  name: d.name,
+                  vehicleModel: d.vehicleModel ?? "",
+                  vehicleColor: d.vehicleColor ?? "",
+                  vehiclePlate: d.vehiclePlate ?? "",
+                  rating: d.rating ?? "5.0",
+                };
+              }
+            }
+            return {
+              id: r.id,
+              status: r.status,
+              fare: r.fare ? Math.round(parseFloat(r.fare.toString())) : 0,
+              pickupAddress: r.pickupAddress ?? "",
+              dropoffAddress: r.dropoffAddress ?? "",
+              estimatedDistance: r.estimatedDistance ? parseFloat(r.estimatedDistance.toString()) : 0,
+              estimatedDuration: r.estimatedDuration ?? 0,
+              paymentMethod: r.paymentMethod ?? "cash",
+              createdAt: r.createdAt?.toISOString() ?? new Date().toISOString(),
+              completedAt: r.completedAt?.toISOString() ?? null,
+              passengerRating: r.passengerRating ?? null,
+              driver: driverInfo,
+            };
+          })
+        );
+        return ridesWithDriver;
       }),
 
     /**
@@ -427,39 +527,54 @@ export const appRouter = router({
       }),
 
     /**
-     * Get pending rides for available drivers (polling)
+     * Get pending rides for available drivers (polling) - includes passenger info
      */
     pendingRides: publicProcedure
       .query(async () => {
         const pending = await getPendingRides();
-        return pending.map((r) => ({
-          id: r.id,
-          passengerId: r.passengerId,
-          pickupLat: r.pickupLat ? parseFloat(r.pickupLat.toString()) : 0,
-          pickupLng: r.pickupLng ? parseFloat(r.pickupLng.toString()) : 0,
-          pickupAddress: r.pickupAddress ?? "",
-          dropoffLat: r.dropoffLat ? parseFloat(r.dropoffLat.toString()) : 0,
-          dropoffLng: r.dropoffLng ? parseFloat(r.dropoffLng.toString()) : 0,
-          dropoffAddress: r.dropoffAddress ?? "",
-          fare: r.fare ? Math.round(parseFloat(r.fare.toString())) : 0,
-          estimatedDistance: r.estimatedDistance ? parseFloat(r.estimatedDistance.toString()) : 0,
-          estimatedDuration: r.estimatedDuration ?? 0,
-          createdAt: r.createdAt.toISOString(),
-        }));
+        // Fetch passenger info for each ride
+        const ridesWithPassenger = await Promise.all(
+          pending.map(async (r) => {
+            const passenger = await getPassengerById(r.passengerId);
+            return {
+              id: r.id,
+              passengerId: r.passengerId,
+              passengerName: passenger?.name ?? "راكب",
+              passengerRating: passenger?.rating ? parseFloat(passenger.rating.toString()) : 5.0,
+              passengerTotalRides: passenger?.totalRides ?? 0,
+              pickupLat: r.pickupLat ? parseFloat(r.pickupLat.toString()) : 0,
+              pickupLng: r.pickupLng ? parseFloat(r.pickupLng.toString()) : 0,
+              pickupAddress: r.pickupAddress ?? "",
+              dropoffLat: r.dropoffLat ? parseFloat(r.dropoffLat.toString()) : 0,
+              dropoffLng: r.dropoffLng ? parseFloat(r.dropoffLng.toString()) : 0,
+              dropoffAddress: r.dropoffAddress ?? "",
+              fare: r.fare ? Math.round(parseFloat(r.fare.toString())) : 0,
+              estimatedDistance: r.estimatedDistance ? parseFloat(r.estimatedDistance.toString()) : 0,
+              estimatedDuration: r.estimatedDuration ?? 0,
+              createdAt: r.createdAt.toISOString(),
+            };
+          })
+        );
+        return ridesWithPassenger;
       }),
 
     /**
-     * Get active ride for driver
+     * Get active ride for driver - includes passenger info
      */
     driverActiveRide: publicProcedure
       .input(z.object({ driverId: z.number() }))
       .query(async ({ input }) => {
         const ride = await getDriverActiveRide(input.driverId);
         if (!ride) return null;
+        // Fetch passenger info
+        const passenger = await getPassengerById(ride.passengerId);
         return {
           id: ride.id,
           status: ride.status,
           passengerId: ride.passengerId,
+          passengerName: passenger?.name ?? "راكب",
+          passengerPhone: passenger?.phone ?? null,
+          passengerRating: passenger?.rating ? parseFloat(passenger.rating.toString()) : 5.0,
           pickupLat: ride.pickupLat ? parseFloat(ride.pickupLat.toString()) : 0,
           pickupLng: ride.pickupLng ? parseFloat(ride.pickupLng.toString()) : 0,
           pickupAddress: ride.pickupAddress ?? "",
@@ -531,7 +646,38 @@ export const appRouter = router({
     reject: publicProcedure
       .input(z.object({ rideId: z.number(), driverId: z.number() }))
       .mutation(async () => {
-        // For now, just return success - ride stays in searching state for other drivers
+        // Ride stays in searching state for other drivers to pick up
+        return { success: true };
+      }),
+
+    /**
+     * Cancel a ride (passenger action) - updates DB and notifies driver if assigned
+     */
+    cancel: publicProcedure
+      .input(z.object({ rideId: z.number(), passengerId: z.number(), reason: z.string().optional() }))
+      .mutation(async ({ input }) => {
+        const ride = await getRideById(input.rideId);
+        if (!ride) throw new Error("الرحلة غير موجودة");
+        if (ride.passengerId !== input.passengerId) throw new Error("غير مصرح");
+        await updateRideStatus(input.rideId, "cancelled", { cancelReason: input.reason ?? "ألغى الراكب الرحلة" } as any);
+        // Notify driver if assigned
+        if (ride.driverId) {
+          const driverToken = await getDriverPushToken(ride.driverId);
+          if (driverToken && driverToken.startsWith("ExponentPushToken[")) {
+            fetch("https://exp.host/--/api/v2/push/send", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "Accept": "application/json" },
+              body: JSON.stringify({
+                to: driverToken,
+                sound: "default",
+                title: "❌ تم إلغاء الرحلة",
+                body: "قام الراكب بإلغاء الرحلة",
+                data: { rideId: input.rideId, type: "ride_cancelled" },
+                priority: "high",
+              }),
+            }).catch((err) => console.warn("[Push] Failed to notify driver of cancellation:", err));
+          }
+        }
         return { success: true };
       }),
 
@@ -542,6 +688,52 @@ export const appRouter = router({
       .input(z.object({ driverId: z.number(), token: z.string() }))
       .mutation(async ({ input }) => {
         await saveDriverPushToken(input.driverId, input.token);
+        return { success: true };
+      }),
+
+    /**
+     * Save passenger push notification token
+     */
+    savePassengerPushToken: publicProcedure
+      .input(z.object({ passengerId: z.number(), token: z.string() }))
+      .mutation(async ({ input }) => {
+        await savePassengerPushToken(input.passengerId, input.token);
+        return { success: true };
+      }),
+
+    /**
+     * Rate a completed ride - saves passenger rating to DB and updates driver average
+     */
+    rateRide: publicProcedure
+      .input(z.object({
+        rideId: z.number(),
+        rating: z.number().min(1).max(5),
+        comment: z.string().optional(),
+        tags: z.array(z.string()).optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const db = await (await import("./db")).getDb();
+        if (!db) return { success: false };
+        const { rides: ridesTable, drivers: driversTable } = await import("../drizzle/schema");
+        const { eq, avg, sql: sqlOp } = await import("drizzle-orm");
+        // Update ride with passenger rating
+        await db.update(ridesTable)
+          .set({ passengerRating: input.rating } as any)
+          .where(eq(ridesTable.id, input.rideId));
+        // Recalculate driver average rating
+        const [rideRow] = await db.select({ driverId: ridesTable.driverId }).from(ridesTable).where(eq(ridesTable.id, input.rideId)).limit(1);
+        if (rideRow?.driverId) {
+          const ratingResult = await db
+            .select({ avgRating: avg(ridesTable.passengerRating) })
+            .from(ridesTable)
+            .where(eq(ridesTable.driverId, rideRow.driverId));
+          const newAvg = ratingResult[0]?.avgRating;
+          if (newAvg) {
+            await db.update(driversTable)
+              .set({ rating: parseFloat(newAvg).toFixed(1) })
+              .where(eq(driversTable.id, rideRow.driverId));
+          }
+        }
         return { success: true };
       }),
 
@@ -742,35 +934,51 @@ export const appRouter = router({
       }),
 
     /**
-     * Get driver trips history
+     * Get driver trips history with real data
      */
     getTrips: publicProcedure
-      .input(z.object({ driverId: z.number(), limit: z.number().default(20) }))
+      .input(z.object({ driverId: z.number(), limit: z.number().default(50) }))
       .query(async ({ input }) => {
         const db = await (await import("./db")).getDb();
-        if (!db) return { trips: [], totalEarnings: 0, totalTrips: 0 };
-        const { rides } = await import("../drizzle/schema");
-        const { eq, desc, and, inArray } = await import("drizzle-orm");
+        if (!db) return { trips: [], totalEarnings: 0, totalTrips: 0, walletBalance: "0" };
+        const { rides: ridesTable, drivers: driversTable, passengers: passengersTable } = await import("../drizzle/schema");
+        const { eq, desc } = await import("drizzle-orm");
         const driverRides = await db
           .select()
-          .from(rides)
-          .where(eq(rides.driverId, input.driverId))
-          .orderBy(desc(rides.createdAt))
+          .from(ridesTable)
+          .where(eq(ridesTable.driverId, input.driverId))
+          .orderBy(desc(ridesTable.createdAt))
           .limit(input.limit);
         const completedRides = driverRides.filter(r => r.status === "completed");
-        const totalEarnings = completedRides.reduce((sum, r) => sum + parseFloat(r.fare ?? "0"), 0);
-        return {
-          trips: driverRides.map(r => ({
+        const totalEarnings = completedRides.reduce((sum, r) => sum + parseFloat(r.fare?.toString() ?? "0"), 0);
+        // Get driver wallet balance
+        const [driver] = await db.select({ walletBalance: driversTable.walletBalance }).from(driversTable).where(eq(driversTable.id, input.driverId)).limit(1);
+        // Fetch passenger names for each ride
+        const tripsWithPassenger = await Promise.all(driverRides.map(async (r) => {
+          let passengerName = null;
+          if (r.passengerId) {
+            const [p] = await db.select({ name: passengersTable.name }).from(passengersTable).where(eq(passengersTable.id, r.passengerId)).limit(1);
+            passengerName = p?.name ?? null;
+          }
+          return {
             id: r.id,
             status: r.status,
-            fare: r.fare ?? "0",
+            fare: r.fare?.toString() ?? "0",
             pickupAddress: r.pickupAddress ?? "الموصل",
             dropoffAddress: r.dropoffAddress ?? "الوجهة",
+            estimatedDistance: r.estimatedDistance ? parseFloat(r.estimatedDistance.toString()) : 0,
+            estimatedDuration: r.estimatedDuration ?? 0,
             createdAt: r.createdAt?.toISOString() ?? new Date().toISOString(),
-            distance: "0",
-          })),
-          totalEarnings,
+            completedAt: r.completedAt?.toISOString() ?? null,
+            paymentMethod: r.paymentMethod ?? "cash",
+            passengerName,
+          };
+        }));
+        return {
+          trips: tripsWithPassenger,
+          totalEarnings: Math.round(totalEarnings),
           totalTrips: completedRides.length,
+          walletBalance: driver?.walletBalance?.toString() ?? "0",
         };
       }),
 

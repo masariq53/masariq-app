@@ -1,108 +1,124 @@
-import React, { useState } from "react";
+import React from "react";
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
+  ScrollView,
+  Platform,
 } from "react-native";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import * as Haptics from "expo-haptics";
 
 export default function TripSummaryScreen() {
   const insets = useSafeAreaInsets();
-  const [rating, setRating] = useState(0);
+  const params = useLocalSearchParams<{
+    rideId?: string;
+    fare?: string;
+    distance?: string;
+    duration?: string;
+    passengerName?: string;
+    pickupAddress?: string;
+    dropoffAddress?: string;
+  }>();
+
+  const fare = params.fare ? parseInt(params.fare) : 0;
+  const distance = params.distance ? parseFloat(params.distance) : 0;
+  const duration = params.duration ? parseInt(params.duration) : 0;
+  const passengerName = params.passengerName ?? "الراكب";
+  const pickupAddress = params.pickupAddress ?? "موقع الانطلاق";
+  const dropoffAddress = params.dropoffAddress ?? "الوجهة";
+
+  const handleGoHome = () => {
+    if (Platform.OS !== "web") {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
+    router.replace("/captain/home" as any);
+  };
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <StatusBar style="light" />
-      <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
-        <Text style={styles.backBtnText}>← رجوع</Text>
-      </TouchableOpacity>
 
-      {/* Success Icon */}
-      <View style={styles.successSection}>
-        <View style={styles.successCircle}>
-          <Text style={styles.successIcon}>✅</Text>
+      <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
+        {/* أيقونة النجاح */}
+        <View style={styles.successSection}>
+          <View style={styles.successCircle}>
+            <Text style={styles.successIcon}>🎉</Text>
+          </View>
+          <Text style={styles.successTitle}>اكتملت الرحلة!</Text>
+          <Text style={styles.successSubtitle}>أحسنت! لقد أوصلت راكبك بأمان</Text>
         </View>
-        <Text style={styles.successTitle}>انتهت الرحلة بنجاح!</Text>
-        <Text style={styles.successSubtitle}>شكراً لك كابتن أحمد</Text>
-      </View>
 
-      {/* Earnings Card */}
-      <View style={styles.earningsCard}>
-        <Text style={styles.earningsLabel}>أرباح هذه الرحلة</Text>
-        <Text style={styles.earningsAmount}>8,000</Text>
-        <Text style={styles.earningsCurrency}>دينار عراقي</Text>
-        <View style={styles.earningsDetails}>
-          <View style={styles.earningsDetail}>
-            <Text style={styles.earningsDetailLabel}>المسافة</Text>
-            <Text style={styles.earningsDetailValue}>3.2 كم</Text>
+        {/* بطاقة الراكب */}
+        <View style={styles.passengerCard}>
+          <View style={styles.passengerAvatar}>
+            <Text style={styles.passengerAvatarText}>👤</Text>
           </View>
-          <View style={styles.earningsDetailDivider} />
-          <View style={styles.earningsDetail}>
-            <Text style={styles.earningsDetailLabel}>المدة</Text>
-            <Text style={styles.earningsDetailValue}>12 دقيقة</Text>
-          </View>
-          <View style={styles.earningsDetailDivider} />
-          <View style={styles.earningsDetail}>
-            <Text style={styles.earningsDetailLabel}>نوع الدفع</Text>
-            <Text style={styles.earningsDetailValue}>نقداً</Text>
+          <View>
+            <Text style={styles.passengerLabel}>الراكب</Text>
+            <Text style={styles.passengerName}>{passengerName}</Text>
           </View>
         </View>
-      </View>
 
-      {/* Rate Rider */}
-      <View style={styles.rateSection}>
-        <Text style={styles.rateTitle}>كيف كان الراكب؟</Text>
-        <Text style={styles.rateSubtitle}>محمد علي</Text>
-        <View style={styles.starsRow}>
-          {[1, 2, 3, 4, 5].map((star) => (
-            <TouchableOpacity key={star} onPress={() => setRating(star)}>
-              <Text style={[styles.star, star <= rating && styles.starActive]}>
-                ★
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
-
-      {/* Today Stats */}
-      <View style={styles.todayStats}>
-        <Text style={styles.todayTitle}>إحصائيات اليوم</Text>
-        <View style={styles.todayRow}>
-          <View style={styles.todayStat}>
-            <Text style={styles.todayStatValue}>9</Text>
-            <Text style={styles.todayStatLabel}>رحلات</Text>
+        {/* تفاصيل المسار */}
+        <View style={styles.routeCard}>
+          <View style={styles.routeRow}>
+            <View style={styles.dotGreen} />
+            <Text style={styles.routeText} numberOfLines={2}>{pickupAddress}</Text>
           </View>
-          <View style={styles.todayStatDivider} />
-          <View style={styles.todayStat}>
-            <Text style={[styles.todayStatValue, { color: "#FFD700" }]}>55,500</Text>
-            <Text style={styles.todayStatLabel}>د.ع اليوم</Text>
-          </View>
-          <View style={styles.todayStatDivider} />
-          <View style={styles.todayStat}>
-            <Text style={styles.todayStatValue}>4.9 ⭐</Text>
-            <Text style={styles.todayStatLabel}>تقييمي</Text>
+          <View style={styles.routeLine} />
+          <View style={styles.routeRow}>
+            <View style={styles.dotRed} />
+            <Text style={styles.routeText} numberOfLines={2}>{dropoffAddress}</Text>
           </View>
         </View>
-      </View>
 
-      {/* Actions */}
-      <View style={styles.actions}>
-        <TouchableOpacity
-          style={styles.newTripBtn}
-          onPress={() => router.push({ pathname: "/captain/rate-passenger" as any, params: { passengerName: "محمد علي" } })}
-        >
-          <Text style={styles.newTripText}>تقييم الراكب ⭐</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.earningsBtn}
-          onPress={() => router.push("/captain/earnings" as any)}
-        >
-          <Text style={styles.earningsBtnText}>عرض الأرباح</Text>
-        </TouchableOpacity>
-      </View>
+        {/* إحصائيات الرحلة */}
+        <View style={styles.statsCard}>
+          <View style={styles.statItem}>
+            <Text style={styles.statIcon}>💰</Text>
+            <Text style={styles.statValue}>{fare.toLocaleString("ar-IQ")}</Text>
+            <Text style={styles.statLabel}>دينار</Text>
+          </View>
+          <View style={styles.statDivider} />
+          <View style={styles.statItem}>
+            <Text style={styles.statIcon}>📍</Text>
+            <Text style={styles.statValue}>{distance.toFixed(1)}</Text>
+            <Text style={styles.statLabel}>كيلومتر</Text>
+          </View>
+          <View style={styles.statDivider} />
+          <View style={styles.statItem}>
+            <Text style={styles.statIcon}>⏱️</Text>
+            <Text style={styles.statValue}>{duration}</Text>
+            <Text style={styles.statLabel}>دقيقة</Text>
+          </View>
+        </View>
+
+        {/* تذكير بالأرباح */}
+        <View style={styles.earningsNote}>
+          <Text style={styles.earningsNoteText}>
+            💡 تم إضافة هذه الرحلة لسجل أرباحك
+          </Text>
+        </View>
+
+        {/* أزرار */}
+        <View style={styles.actions}>
+          <TouchableOpacity
+            style={styles.earningsBtn}
+            onPress={() => router.push("/captain/earnings" as any)}
+          >
+            <Text style={styles.earningsBtnText}>📊 عرض الأرباح</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.homeBtn} onPress={handleGoHome}>
+            <Text style={styles.homeBtnText}>الرئيسية 🏠</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={{ height: insets.bottom + 20 }} />
+      </ScrollView>
     </View>
   );
 }
@@ -294,4 +310,52 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
   },
+  body: { padding: 24, paddingBottom: 40 },
+  passengerCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    backgroundColor: "#1E1035",
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: "#2D1B4E",
+  },
+  passengerAvatar: {
+    width: 50, height: 50, borderRadius: 25,
+    backgroundColor: "#2D1B4E", alignItems: "center", justifyContent: "center",
+    borderWidth: 2, borderColor: "#FFD700",
+  },
+  passengerAvatarText: { fontSize: 26 },
+  passengerLabel: { color: "#9B8EC4", fontSize: 12 },
+  passengerName: { color: "#FFFFFF", fontSize: 18, fontWeight: "bold" },
+  routeCard: {
+    backgroundColor: "#1E1035", borderRadius: 16, padding: 16,
+    marginBottom: 14, borderWidth: 1, borderColor: "#2D1B4E",
+  },
+  routeRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  routeLine: { width: 2, height: 16, backgroundColor: "#3D2070", marginLeft: 5, marginVertical: 4 },
+  dotGreen: { width: 12, height: 12, borderRadius: 6, backgroundColor: "#22C55E" },
+  dotRed: { width: 12, height: 12, borderRadius: 6, backgroundColor: "#EF4444" },
+  routeText: { color: "#ECEDEE", fontSize: 14, flex: 1 },
+  statsCard: {
+    flexDirection: "row", backgroundColor: "#1E1035", borderRadius: 16,
+    padding: 16, marginBottom: 14, borderWidth: 1, borderColor: "#2D1B4E",
+  },
+  statItem: { flex: 1, alignItems: "center", gap: 4 },
+  statIcon: { fontSize: 22 },
+  statValue: { color: "#FFD700", fontSize: 20, fontWeight: "900" },
+  statLabel: { color: "#9B8EC4", fontSize: 12 },
+  statDivider: { width: 1, backgroundColor: "#2D1B4E" },
+  earningsNote: {
+    backgroundColor: "rgba(255,215,0,0.08)", borderRadius: 12, padding: 12,
+    marginBottom: 24, borderWidth: 1, borderColor: "rgba(255,215,0,0.2)",
+  },
+  earningsNoteText: { color: "#FFD700", fontSize: 13, textAlign: "center" },
+  homeBtn: {
+    flex: 2, backgroundColor: "#FFD700", paddingVertical: 16,
+    borderRadius: 14, alignItems: "center",
+  },
+  homeBtnText: { color: "#1A0533", fontSize: 16, fontWeight: "900" },
 });
