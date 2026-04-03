@@ -97,21 +97,7 @@ export default function LoginScreen() {
             </Text>
           </TouchableOpacity>
 
-          {/* Divider */}
-          <View style={styles.orContainer}>
-            <View style={styles.orLine} />
-            <Text style={styles.orText}>أو</Text>
-            <View style={styles.orLine} />
-          </View>
-
-          {/* Captain Register Only */}
-          <TouchableOpacity
-            style={styles.captainBtn}
-            onPress={() => router.push("/driver/register" as any)}
-          >
-            <Text style={styles.captainIcon}>🚗</Text>
-            <Text style={styles.captainText}>سجّل كـ كابتن</Text>
-          </TouchableOpacity>
+          {/* Note: Captain registration is available from Profile > Captain Mode */}
         </View>
 
         {/* Terms */}

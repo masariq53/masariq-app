@@ -518,7 +518,12 @@ export const appRouter = router({
     checkStatus: publicProcedure
       .input(z.object({ phone: z.string() }))
       .query(async ({ input }) => {
-        const driver = await getDriverByPhone(input.phone);
+        // Normalize phone number to +964 format to match stored format
+        let phone = input.phone.replace(/\s/g, "");
+        if (phone.startsWith("0")) phone = "+964" + phone.slice(1);
+        else if (!phone.startsWith("+")) phone = "+964" + phone;
+
+        const driver = await getDriverByPhone(phone);
         if (!driver) return { found: false, registrationStatus: null };
         return {
           found: true,

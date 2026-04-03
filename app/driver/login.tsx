@@ -90,7 +90,7 @@ export default function DriverLoginScreen() {
           <View style={styles.infoBox}>
             <Text style={styles.infoIcon}>ℹ️</Text>
             <Text style={styles.infoText}>
-              يجب أن يكون رقمك مسجلاً مسبقاً كسائق. إذا لم تسجل بعد، اضغط على "تسجيل كسائق جديد" أدناه.
+              يجب أن يكون رقمك مسجّلاً مسبقاً كسائق. للتسجيل كسائق جديد، اذهب إلى حسابي ← وضع الكابتن.
             </Text>
           </View>
 
@@ -107,13 +107,7 @@ export default function DriverLoginScreen() {
             )}
           </TouchableOpacity>
 
-          {/* Register Link */}
-          <View style={styles.registerRow}>
-            <Text style={styles.registerText}>لست مسجلاً بعد؟ </Text>
-            <TouchableOpacity onPress={() => router.push("/driver/register")}>
-              <Text style={styles.registerLink}>سجّل كسائق جديد</Text>
-            </TouchableOpacity>
-          </View>
+
         </ScrollView>
       </KeyboardAvoidingView>
     </View>

@@ -8,6 +8,7 @@ import {
   Switch,
   Alert,
   Image,
+  ActivityIndicator,
 } from "react-native";
 import { router } from "expo-router";
 import { ScreenContainer } from "@/components/screen-container";
@@ -22,15 +23,16 @@ const DARK_MODE_KEY = "@masar_dark_mode";
 
 export default function ProfileScreen() {
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [captainCheckLoading, setCaptainCheckLoading] = useState(false);
   const { passenger, logout } = usePassenger();
   const { driver } = useDriver();
   const { colorScheme, setColorScheme } = useThemeContext();
   const isDark = colorScheme === "dark";
 
-  // Check if passenger has a linked driver account
-  const { data: driverStatus } = trpc.driver.checkStatus.useQuery(
+  // Check if passenger has a linked driver account - always fresh from DB
+  const { data: driverStatus, refetch: refetchDriverStatus, isLoading: statusLoading } = trpc.driver.checkStatus.useQuery(
     { phone: passenger?.phone ?? "" },
-    { enabled: !!passenger?.phone }
+    { enabled: !!passenger?.phone, staleTime: 0, refetchOnMount: true }
   );
 
   // Load dark mode preference on mount
@@ -76,59 +78,67 @@ export default function ProfileScreen() {
     else if (id === "promo") router.push("/promo" as any);
   };
 
-  const goToCaptainMode = () => {
-    // أولاً: تحقق من قاعدة البيانات مباشرة (أحدث وأدق)
-    if (driverStatus?.found) {
-      const liveStatus = driverStatus.registrationStatus;
+  const goToCaptainMode = async () => {
+    setCaptainCheckLoading(true);
+    try {
+      // Refetch fresh status from DB before making decision
+      const { data: freshStatus } = await refetchDriverStatus();
 
-      if (liveStatus === "approved") {
-        // إذا كان مسجّل دخول بالفعل وحسابه معتمد → انتقل مباشرة
-        if (driver && driver.registrationStatus === "approved") {
-          router.push("/captain/home" as any);
+      if (freshStatus?.found) {
+        const liveStatus = freshStatus.registrationStatus;
+
+        if (liveStatus === "approved") {
+          // Has approved account - check if already logged in as driver
+          if (driver?.id) {
+            // Already logged in as driver - go directly to captain home
+            router.push("/captain/home" as any);
+            return;
+          }
+          // Approved but not logged in yet - prompt driver login
+          Alert.alert(
+            "حسابك معتمد ✔️",
+            "تم قبول حسابك كسائق. سجّل دخولك للبدء باستقبال الرحلات!",
+            [
+              { text: "إلغاء", style: "cancel" },
+              { text: "دخول كابتن 🚗", onPress: () => router.push("/driver/login" as any) },
+            ]
+          );
           return;
         }
-        // لديه حساب معتمد لكن لم يسجّل دخول بعد → اطلب تسجيل الدخول
+
+        if (liveStatus === "pending") {
+          Alert.alert(
+            "طلبك قيد المراجعة ⏳",
+            "تسجيلك كسائق لا يزال تحت المراجعة. سيتم إشعارك عند القبول.",
+            [{ text: "حسناً" }]
+          );
+          return;
+        }
+
+        // rejected - guide to re-register from profile
         Alert.alert(
-          "حسابك معتمد ✔️",
-          "تم قبول حسابك كسائق. سجّل دخولك للبدء باستقبال الرحلات!",
+          "تم رفض طلبك ❌",
+          "للأسف تم رفض طلب تسجيلك كسائق.\n\nهل تريد إعادة التسجيل ببيانات جديدة?",
           [
             { text: "إلغاء", style: "cancel" },
-            { text: "دخول كابتن 🚗", onPress: () => router.push("/driver/login" as any) },
+            { text: "تسجيل جديد", onPress: () => router.push("/driver/register" as any) },
           ]
         );
         return;
       }
 
-      if (liveStatus === "pending") {
-        Alert.alert(
-          "طلبك قيد المراجعة ⏳",
-          "تسجيلك كسائق لا يزال تحت المراجعة. سيتم إشعارك عند القبول.",
-          [{ text: "حسناً" }]
-        );
-        return;
-      }
-
-      // rejected
+      // No captain account at all - offer to register
       Alert.alert(
-        "تم رفض طلبك ❌",
-        "للأسف تم رفض طلب تسجيلك كسائق. يمكنك إعادة التسجيل.",
+        "لا تمتلك حساب كابتن 🚗",
+        "هذا الخيار مخصص للسائقين المعتمدين فقط.\n\nهل تريد تسجيل حساب سائق والانضمام إلى فريق مسار?",
         [
-          { text: "إلغاء", style: "cancel" },
-          { text: "تسجيل جديد", onPress: () => router.push("/driver/register" as any) },
+          { text: "لا، شكراً", style: "cancel" },
+          { text: "نعم، سجّلني", onPress: () => router.push("/driver/register" as any) },
         ]
       );
-      return;
+    } finally {
+      setCaptainCheckLoading(false);
     }
-
-    // لا يوجد حساب كابتن بتاتاً
-    Alert.alert(
-      "لا تمتلك حساب كابتن 🚗",
-      "هذا الخيار مخصص للسائقين المعتمدين فقط.\n\nهل تريد تسجيل حساب سائق والانضمام إلى فريق مسار?",
-      [
-        { text: "لا، شكراً", style: "cancel" },
-        { text: "نعم، سجّلني", onPress: () => router.push("/driver/register" as any) },
-      ]
-    );
   };
 
   // Dynamic colors based on dark mode
@@ -296,13 +306,21 @@ export default function ProfileScreen() {
           </View>
 
           {/* Captain Mode Banner */}
-          <TouchableOpacity style={styles.captainBanner} onPress={goToCaptainMode}>
+          <TouchableOpacity
+            style={[styles.captainBanner, captainCheckLoading && { opacity: 0.7 }]}
+            onPress={goToCaptainMode}
+            disabled={captainCheckLoading}
+          >
             <View style={styles.captainBannerContent}>
               <View>
                 <Text style={styles.captainBannerTitle}>🚗  وضع الكابتن</Text>
                 <Text style={styles.captainBannerSub}>اشتغل كسائق واكسب أرباحاً</Text>
               </View>
-              <Text style={styles.captainBannerArrow}>←</Text>
+              {captainCheckLoading ? (
+                <ActivityIndicator color="#FFD700" size="small" />
+              ) : (
+                <Text style={styles.captainBannerArrow}>←</Text>
+              )}
             </View>
           </TouchableOpacity>
 

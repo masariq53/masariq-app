@@ -161,12 +161,14 @@ export default function DriverStatusScreen() {
             )}
 
             {status === "rejected" && (
-              <TouchableOpacity
-                style={styles.reapplyBtn}
-                onPress={() => router.push("/driver/register" as any)}
-              >
-                <Text style={styles.reapplyBtnText}>🔄 إعادة التقديم</Text>
-              </TouchableOpacity>
+              <View style={styles.contactBox}>
+                <Text style={[styles.contactText, { color: "#F87171", fontWeight: "700" }]}>
+                  تم رفض طلبك
+                </Text>
+                <Text style={styles.contactText}>
+                  لإعادة التقديم، سجّل خروجاً ثم اذهب إلى حسابي ← وضع الكابتن
+                </Text>
+              </View>
             )}
 
             {status === "pending" && (

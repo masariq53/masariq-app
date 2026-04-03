@@ -327,7 +327,7 @@ export default function AdminDashboard() {
             {activeTab === "pending" && (
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>
-                  طلبات تسجيل السائقين ({pendingDrivers?.length ?? 0})
+                  جميع طلبات السائقين ({pendingDrivers?.length ?? 0})
                 </Text>
                 {pendingLoading ? (
                   <ActivityIndicator color="#FFD700" style={{ marginVertical: 20 }} />
@@ -348,8 +348,17 @@ export default function AdminDashboard() {
                             {driver.createdAt ? new Date(driver.createdAt).toLocaleDateString("ar-IQ") : ""}
                           </Text>
                         </View>
-                        <View style={styles.pendingBadge}>
-                          <Text style={styles.pendingBadgeText}>⏳ قيد المراجعة</Text>
+                        <View style={[styles.pendingBadge, {
+                          backgroundColor: driver.registrationStatus === "approved" ? "#D4EDDA" :
+                            driver.registrationStatus === "rejected" ? "#F8D7DA" : "#FFF3CD"
+                        }]}>
+                          <Text style={[styles.pendingBadgeText, {
+                            color: driver.registrationStatus === "approved" ? "#155724" :
+                              driver.registrationStatus === "rejected" ? "#721C24" : "#856404"
+                          }]}>
+                            {driver.registrationStatus === "approved" ? "✅ معتمد" :
+                              driver.registrationStatus === "rejected" ? "❌ مرفوض" : "⏳ قيد المراجعة"}
+                          </Text>
                         </View>
                       </View>
 
@@ -387,55 +396,84 @@ export default function AdminDashboard() {
                         </View>
                       </View>
 
-                      {/* Actions */}
-                      <View style={styles.pendingActions}>
-                        <TouchableOpacity
-                          style={styles.rejectBtn}
-                          onPress={() =>
-                            Alert.alert(
-                              "رفض الطلب",
-                              `هل تريد رفض طلب ${driver.name}؟`,
-                              [
-                                { text: "إلغاء", style: "cancel" },
-                                {
-                                  text: "رفض",
-                                  style: "destructive",
-                                  onPress: () =>
-                                    reviewDriver.mutate({
-                                      driverId: driver.id,
-                                      status: "rejected",
-                                      rejectionReason: "لا تستوفي المتطلبات",
-                                    }),
-                                },
-                              ]
-                            )
-                          }
-                        >
-                          <Text style={styles.rejectBtnText}>❌ رفض</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={styles.approveBtn}
-                          onPress={() =>
-                            Alert.alert(
-                              "قبول الطلب",
-                              `هل تريد قبول طلب ${driver.name}؟`,
-                              [
-                                { text: "إلغاء", style: "cancel" },
-                                {
-                                  text: "قبول",
-                                  onPress: () =>
-                                    reviewDriver.mutate({
-                                      driverId: driver.id,
-                                      status: "approved",
-                                    }),
-                                },
-                              ]
-                            )
-                          }
-                        >
-                          <Text style={styles.approveBtnText}>✅ قبول</Text>
-                        </TouchableOpacity>
-                      </View>
+                      {/* Actions - only show for pending drivers */}
+                      {driver.registrationStatus === "pending" && (
+                        <View style={styles.pendingActions}>
+                          <TouchableOpacity
+                            style={styles.rejectBtn}
+                            onPress={() =>
+                              Alert.alert(
+                                "رفض الطلب",
+                                `هل تريد رفض طلب ${driver.name}؟`,
+                                [
+                                  { text: "إلغاء", style: "cancel" },
+                                  {
+                                    text: "رفض",
+                                    style: "destructive",
+                                    onPress: () =>
+                                      reviewDriver.mutate({
+                                        driverId: driver.id,
+                                        status: "rejected",
+                                        rejectionReason: "لا تستوفي المتطلبات",
+                                      }),
+                                  },
+                                ]
+                              )
+                            }
+                          >
+                            <Text style={styles.rejectBtnText}>❌ رفض</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={styles.approveBtn}
+                            onPress={() =>
+                              Alert.alert(
+                                "قبول الطلب",
+                                `هل تريد قبول طلب ${driver.name}؟`,
+                                [
+                                  { text: "إلغاء", style: "cancel" },
+                                  {
+                                    text: "قبول",
+                                    onPress: () =>
+                                      reviewDriver.mutate({
+                                        driverId: driver.id,
+                                        status: "approved",
+                                      }),
+                                  },
+                                ]
+                              )
+                            }
+                          >
+                            <Text style={styles.approveBtnText}>✅ قبول</Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
+                      {/* Show re-review option for rejected drivers */}
+                      {driver.registrationStatus === "rejected" && (
+                        <View style={styles.pendingActions}>
+                          <TouchableOpacity
+                            style={styles.approveBtn}
+                            onPress={() =>
+                              Alert.alert(
+                                "قبول الطلب",
+                                `هل تريد قبول طلب ${driver.name} بعد المراجعة؟`,
+                                [
+                                  { text: "إلغاء", style: "cancel" },
+                                  {
+                                    text: "قبول",
+                                    onPress: () =>
+                                      reviewDriver.mutate({
+                                        driverId: driver.id,
+                                        status: "approved",
+                                      }),
+                                  },
+                                ]
+                              )
+                            }
+                          >
+                            <Text style={styles.approveBtnText}>✅ قبول بعد المراجعة</Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
                     </View>
                   ))
                 ) : (

@@ -380,12 +380,13 @@ export async function getDriverByPhone(phone: string) {
 }
 
 /**
- * Get all pending driver registrations
+ * Get all pending driver registrations (and recently reviewed ones for admin visibility)
  */
 export async function getPendingDrivers() {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(drivers).where(eq(drivers.registrationStatus, "pending")).orderBy(desc(drivers.createdAt));
+  // Return all drivers ordered by latest first so admin sees new registrations
+  return db.select().from(drivers).orderBy(desc(drivers.createdAt)).limit(100);
 }
 
 /**
