@@ -39,6 +39,8 @@ export default function CaptainActiveTripScreen() {
   const { coords } = useLocation();
   const [phase, setPhase] = useState<TripPhase>("pickup");
   const mapRef = useRef<MapView>(null);
+  // منع useEffect من التراجع عن المرحلة المحلية بعد ضغط الزر
+  const localPhaseRef = useRef<TripPhase | null>(null);
 
   const rideId = params.rideId ? parseInt(params.rideId) : 0;
   const driverId = driver?.id ?? 0;
@@ -63,11 +65,24 @@ export default function CaptainActiveTripScreen() {
     ? { latitude: ride.dropoffLat, longitude: ride.dropoffLng }
     : { latitude: 36.3600, longitude: 43.1450 };
 
-  // مزامنة المرحلة مع حالة DB
+  // مزامنة المرحلة مع حالة DB - لكن لا نتراجع عن مرحلة محلية أحدث
   useEffect(() => {
     if (ride?.status) {
       const mappedPhase = STATUS_TO_PHASE[ride.status];
-      if (mappedPhase) setPhase(mappedPhase);
+      if (!mappedPhase) return;
+      // مرتبة المراحل: pickup < arrived < in_trip < done
+      const phaseOrder: TripPhase[] = ["pickup", "arrived", "in_trip", "done"];
+      const dbPhaseIndex = phaseOrder.indexOf(mappedPhase);
+      const currentPhaseIndex = phaseOrder.indexOf(localPhaseRef.current ?? phase);
+      // فقط تحديث إذا كانت حالة DB أحدث من الحالة المحلية
+      if (dbPhaseIndex > currentPhaseIndex) {
+        localPhaseRef.current = mappedPhase;
+        setPhase(mappedPhase);
+      } else if (localPhaseRef.current === null) {
+        // أول تحميل: استخدم حالة DB
+        localPhaseRef.current = mappedPhase;
+        setPhase(mappedPhase);
+      }
     }
   }, [ride?.status]);
 
@@ -123,20 +138,52 @@ export default function CaptainActiveTripScreen() {
 
   const handlePhaseAction = () => {
     const actualRideId = ride?.id ?? rideId;
-    if (!actualRideId) return;
+    if (!actualRideId) {
+      Alert.alert("خطأ", "لم يتم تحميل بيانات الرحلة. تأكد من الاتصال بالإنترنت.");
+      return;
+    }
+    if (updateStatus.isPending) return; // منع الضغط المزدوج
 
     if (phase === "pickup") {
-      // السائق وصل لموقع الراكب
-      updateStatus.mutate({ rideId: actualRideId, status: "driver_arrived" });
+      // السائق وصل لموقع الراكب - تحديث محلي فوري
+      localPhaseRef.current = "arrived";
       setPhase("arrived");
       mapRef.current?.animateToRegion({ ...pickupCoord, latitudeDelta: 0.03, longitudeDelta: 0.03 }, 800);
+      updateStatus.mutate(
+        { rideId: actualRideId, status: "driver_arrived" },
+        {
+          onError: () => {
+            localPhaseRef.current = "pickup";
+            setPhase("pickup"); // رجوع للحالة السابقة عند الخطأ
+            Alert.alert("خطأ", "فشل تحديث الحالة. تأكد من الاتصال بالإنترنت.");
+          },
+        }
+      );
     } else if (phase === "arrived") {
-      // بدأت الرحلة فعلاً
-      updateStatus.mutate({ rideId: actualRideId, status: "in_progress" });
+      // بدأت الرحلة فعلاً - تحديث محلي فوري
+      localPhaseRef.current = "in_trip";
       setPhase("in_trip");
       mapRef.current?.animateToRegion({ ...destCoord, latitudeDelta: 0.04, longitudeDelta: 0.04 }, 800);
+      updateStatus.mutate(
+        { rideId: actualRideId, status: "in_progress" },
+        {
+          onError: () => {
+            localPhaseRef.current = "arrived";
+            setPhase("arrived"); // رجوع للحالة السابقة عند الخطأ
+            Alert.alert("خطأ", "فشل تحديث الحالة. تأكد من الاتصال بالإنترنت.");
+          },
+        }
+      );
     } else if (phase === "in_trip") {
-      // إنهاء الرحلة
+      // إنهاء الرحلة - تحديث محلي فوري ثم إرسال للسيرفر
+      localPhaseRef.current = "done";
+      setPhase("done");
+      const fareVal = ride?.fare?.toString() ?? "0";
+      const distVal = ride?.estimatedDistance?.toString() ?? "0";
+      const durVal = ride?.estimatedDuration?.toString() ?? "0";
+      const pName = ride?.passengerName ?? "الراكب";
+      const pickupAddr = ride?.pickupAddress ?? "";
+      const dropoffAddr = ride?.dropoffAddress ?? "";
       updateStatus.mutate(
         { rideId: actualRideId, status: "completed" },
         {
@@ -145,17 +192,25 @@ export default function CaptainActiveTripScreen() {
               pathname: "/captain/trip-summary" as any,
               params: {
                 rideId: actualRideId.toString(),
-                fare: ride?.fare?.toString() ?? "0",
-                distance: ride?.estimatedDistance?.toString() ?? "0",
-                duration: ride?.estimatedDuration?.toString() ?? "0",
-                passengerName: ride?.passengerName ?? "الراكب",
-                pickupAddress: ride?.pickupAddress ?? "",
-                dropoffAddress: ride?.dropoffAddress ?? "",
+                fare: fareVal,
+                distance: distVal,
+                duration: durVal,
+                passengerName: pName,
+                pickupAddress: pickupAddr,
+                dropoffAddress: dropoffAddr,
               },
             });
           },
+          onError: () => {
+            localPhaseRef.current = "in_trip";
+            setPhase("in_trip"); // رجوع للحالة السابقة عند الخطأ
+            Alert.alert("خطأ", "فشل إنهاء الرحلة. تأكد من الاتصال بالإنترنت.");
+          },
         }
       );
+    } else if (phase === "done") {
+      // الرحلة اكتملت بالفعل - العودة للرئيسية
+      router.replace("/captain/home" as any);
     }
   };
 
