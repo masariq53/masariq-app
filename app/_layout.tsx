@@ -109,6 +109,8 @@ export default function RootLayout() {
             <Stack.Screen name="captain/documents" />
             <Stack.Screen name="captain/support" />
             <Stack.Screen name="oauth/callback" />
+            <Stack.Screen name="privacy" />
+            <Stack.Screen name="about" />
           </Stack>
           <StatusBar style="auto" />
         </QueryClientProvider>

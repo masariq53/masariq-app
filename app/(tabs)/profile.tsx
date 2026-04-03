@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -14,38 +14,29 @@ import { ScreenContainer } from "@/components/screen-container";
 import { StatusBar } from "expo-status-bar";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { usePassenger } from "@/lib/passenger-context";
+import { useThemeContext } from "@/lib/theme-provider";
 
-const menuItems = [
-  {
-    section: "الحساب",
-    items: [
-      { id: "edit", icon: "✏️", label: "تعديل الملف الشخصي", arrow: true },
-      { id: "wallet", icon: "💰", label: "المحفظة والمدفوعات", arrow: true },
-      { id: "addresses", icon: "📍", label: "عناويني المحفوظة", arrow: true },
-    ],
-  },
-  {
-    section: "الخدمات",
-    items: [
-      { id: "subscription", icon: "⭐", label: "اشتراكاتي", arrow: true },
-      { id: "promo", icon: "🎁", label: "أكواد الخصم", arrow: true },
-      { id: "invite", icon: "👥", label: "دعوة الأصدقاء", arrow: true },
-    ],
-  },
-  {
-    section: "الدعم",
-    items: [
-      { id: "help", icon: "❓", label: "المساعدة والدعم", arrow: true },
-      { id: "about", icon: "ℹ️", label: "عن التطبيق", arrow: true },
-      { id: "privacy", icon: "🔒", label: "سياسة الخصوصية", arrow: true },
-    ],
-  },
-];
+const DARK_MODE_KEY = "@masar_dark_mode";
 
 export default function ProfileScreen() {
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
-  const [darkMode, setDarkMode] = useState(false);
   const { passenger, logout } = usePassenger();
+  const { colorScheme, setColorScheme } = useThemeContext();
+  const isDark = colorScheme === "dark";
+
+  // Load dark mode preference on mount
+  useEffect(() => {
+    AsyncStorage.getItem(DARK_MODE_KEY).then((val) => {
+      if (val === "dark") setColorScheme("dark");
+      else if (val === "light") setColorScheme("light");
+    });
+  }, []);
+
+  const handleDarkModeToggle = async (value: boolean) => {
+    const scheme = value ? "dark" : "light";
+    setColorScheme(scheme);
+    await AsyncStorage.setItem(DARK_MODE_KEY, scheme);
+  };
 
   const handleLogout = () => {
     Alert.alert(
@@ -69,137 +60,204 @@ export default function ProfileScreen() {
     if (id === "wallet") router.push("/wallet" as any);
     else if (id === "subscription") router.push("/subscription" as any);
     else if (id === "edit") router.push("/profile/edit" as any);
+    else if (id === "about") router.push("/about" as any);
+    else if (id === "privacy") router.push("/privacy" as any);
   };
 
   const goToCaptainMode = () => {
     router.push("/captain/home" as any);
   };
 
+  // Dynamic colors based on dark mode
+  const colors = {
+    bg: isDark ? "#0D0019" : "#F5F7FA",
+    card: isDark ? "#1E0F4A" : "#FFFFFF",
+    cardBorder: isDark ? "#2D1B69" : "#F0F0F0",
+    sectionTitle: isDark ? "#9B8AB0" : "#6B7A8D",
+    menuLabel: isDark ? "#FFFFFF" : "#1A0533",
+    menuArrow: isDark ? "#4D3A6A" : "#C0C8D4",
+    statValue: isDark ? "#FFFFFF" : "#1A0533",
+    statLabel: isDark ? "#9B8AB0" : "#6B7A8D",
+    profileName: isDark ? "#FFFFFF" : "#1A0533",
+    profilePhone: isDark ? "#9B8AB0" : "#6B7A8D",
+    editBtn: isDark ? "#2D1B69" : "#F5F7FA",
+    editBtnBorder: isDark ? "#3D2580" : "#E2E8F0",
+    editBtnText: isDark ? "#FFD700" : "#1A0533",
+    version: isDark ? "#4D3A6A" : "#C0C8D4",
+  };
+
+  const menuSections = [
+    {
+      section: "الحساب",
+      items: [
+        { id: "edit", icon: "✏️", label: "تعديل الملف الشخصي", arrow: true },
+        { id: "wallet", icon: "💰", label: "المحفظة والمدفوعات", arrow: true },
+        { id: "addresses", icon: "📍", label: "عناويني المحفوظة", arrow: true },
+      ],
+    },
+    {
+      section: "الخدمات",
+      items: [
+        { id: "subscription", icon: "⭐", label: "اشتراكاتي", arrow: true },
+        { id: "promo", icon: "🎁", label: "أكواد الخصم", arrow: true },
+        { id: "invite", icon: "👥", label: "دعوة الأصدقاء", arrow: true },
+      ],
+    },
+    {
+      section: "الدعم",
+      items: [
+        { id: "help", icon: "❓", label: "المساعدة والدعم", arrow: true },
+        { id: "about", icon: "ℹ️", label: "عن التطبيق", arrow: true },
+        { id: "privacy", icon: "🔒", label: "سياسة الخصوصية", arrow: true },
+      ],
+    },
+  ];
+
   return (
-    <ScreenContainer containerClassName="bg-[#1A0533]" safeAreaClassName="bg-[#F5F7FA]">
-      <StatusBar style="light" />
+    <View style={[styles.outerContainer, { backgroundColor: "#1A0533" }]}>
+      <ScreenContainer
+        containerClassName="bg-[#1A0533]"
+        safeAreaClassName={isDark ? "bg-[#0D0019]" : "bg-[#F5F7FA]"}
+      >
+        <StatusBar style="light" />
 
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>الملف الشخصي</Text>
-      </View>
+        {/* Header */}
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>الملف الشخصي</Text>
+        </View>
 
-      <ScrollView showsVerticalScrollIndicator={false}>
-        {/* Profile Card */}
-        <View style={styles.profileCard}>
-          <TouchableOpacity onPress={() => router.push("/profile/edit" as any)}>
-            {passenger?.photoUrl ? (
-              <Image source={{ uri: passenger.photoUrl }} style={styles.avatarLarge} />
-            ) : (
-              <View style={styles.avatarLarge}>
-                <Text style={styles.avatarText}>
-                  {passenger?.name ? passenger.name.charAt(0).toUpperCase() : 'م'}
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          style={{ backgroundColor: colors.bg }}
+        >
+          {/* Profile Card */}
+          <View style={[styles.profileCard, { backgroundColor: colors.card }]}>
+            <TouchableOpacity onPress={() => router.push("/profile/edit" as any)}>
+              {passenger?.photoUrl ? (
+                <Image source={{ uri: passenger.photoUrl }} style={styles.avatarLarge} />
+              ) : (
+                <View style={[styles.avatarLarge, { backgroundColor: "#1A0533" }]}>
+                  <Text style={styles.avatarText}>
+                    {passenger?.name ? passenger.name.charAt(0).toUpperCase() : 'م'}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
+            <View style={styles.profileInfo}>
+              <Text style={[styles.profileName, { color: colors.profileName }]}>
+                {passenger?.name || 'مستخدم مسار'}
+              </Text>
+              <Text style={[styles.profilePhone, { color: colors.profilePhone }]}>
+                {passenger?.phone ? `+964 ${passenger.phone}` : '+964 07XX XXX XXXX'}
+              </Text>
+              <View style={styles.ratingRow}>
+                <Text style={styles.ratingText}>{passenger?.rating || '5.0'} ★</Text>
+                <Text style={[styles.ratingCount, { color: colors.profilePhone }]}>
+                  • {passenger?.totalRides || 0} رحلة
                 </Text>
               </View>
-            )}
-          </TouchableOpacity>
-          <View style={styles.profileInfo}>
-            <Text style={styles.profileName}>{passenger?.name || 'مستخدم مسار'}</Text>
-            <Text style={styles.profilePhone}>{passenger?.phone ? `+964 ${passenger.phone}` : '+964 07XX XXX XXXX'}</Text>
-            <View style={styles.ratingRow}>
-              <Text style={styles.ratingText}>{passenger?.rating || '5.0'} ★</Text>
-              <Text style={styles.ratingCount}>• {passenger?.totalRides || 0} رحلة</Text>
             </View>
+            <TouchableOpacity
+              style={[styles.editBtn, { backgroundColor: colors.editBtn, borderColor: colors.editBtnBorder }]}
+              onPress={() => router.push("/profile/edit" as any)}
+            >
+              <Text style={[styles.editBtnText, { color: colors.editBtnText }]}>تعديل</Text>
+            </TouchableOpacity>
           </View>
-          <TouchableOpacity style={styles.editBtn} onPress={() => router.push("/profile/edit" as any)}>
-            <Text style={styles.editBtnText}>تعديل</Text>
-          </TouchableOpacity>
-        </View>
 
-        {/* Stats */}
-        <View style={styles.statsRow}>
-          {[
-            { label: "الرحلات", value: String(passenger?.totalRides || 0), icon: "🚗" },
-            { label: "المحفظة", value: `${passenger?.walletBalance || '0'} د`, icon: "💰" },
-            { label: "التقييم", value: String(passenger?.rating || '5.0'), icon: "⭐" },
-          ].map((s, i) => (
-            <View key={i} style={styles.statCard}>
-              <Text style={styles.statIcon}>{s.icon}</Text>
-              <Text style={styles.statValue}>{s.value}</Text>
-              <Text style={styles.statLabel}>{s.label}</Text>
+          {/* Stats */}
+          <View style={styles.statsRow}>
+            {[
+              { label: "الرحلات", value: String(passenger?.totalRides || 0), icon: "🚗" },
+              { label: "المحفظة", value: `${passenger?.walletBalance || '0'} د`, icon: "💰" },
+              { label: "التقييم", value: String(passenger?.rating || '5.0'), icon: "⭐" },
+            ].map((s, i) => (
+              <View key={i} style={[styles.statCard, { backgroundColor: colors.card }]}>
+                <Text style={styles.statIcon}>{s.icon}</Text>
+                <Text style={[styles.statValue, { color: colors.statValue }]}>{s.value}</Text>
+                <Text style={[styles.statLabel, { color: colors.statLabel }]}>{s.label}</Text>
+              </View>
+            ))}
+          </View>
+
+          {/* Menu Sections */}
+          {menuSections.map((section, si) => (
+            <View key={si} style={styles.menuSection}>
+              <Text style={[styles.sectionTitle, { color: colors.sectionTitle }]}>
+                {section.section}
+              </Text>
+              <View style={[styles.menuCard, { backgroundColor: colors.card }]}>
+                {section.items.map((item, ii) => (
+                  <TouchableOpacity
+                    key={item.id}
+                    style={[
+                      styles.menuItem,
+                      ii < section.items.length - 1 && [styles.menuItemBorder, { borderBottomColor: colors.cardBorder }],
+                    ]}
+                    onPress={() => handleMenuItem(item.id)}
+                  >
+                    <Text style={[styles.menuArrow, { color: colors.menuArrow }]}>←</Text>
+                    <Text style={[styles.menuLabel, { color: colors.menuLabel }]}>{item.label}</Text>
+                    <Text style={styles.menuIcon}>{item.icon}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
           ))}
-        </View>
 
-        {/* Menu Sections */}
-        {menuItems.map((section, si) => (
-          <View key={si} style={styles.menuSection}>
-            <Text style={styles.sectionTitle}>{section.section}</Text>
-            <View style={styles.menuCard}>
-              {section.items.map((item, ii) => (
-                <TouchableOpacity
-                  key={item.id}
-                  style={[
-                    styles.menuItem,
-                    ii < section.items.length - 1 && styles.menuItemBorder,
-                  ]}
-                  onPress={() => handleMenuItem(item.id)}
-                >
-                  <Text style={styles.menuArrow}>←</Text>
-                  <Text style={styles.menuLabel}>{item.label}</Text>
-                  <Text style={styles.menuIcon}>{item.icon}</Text>
-                </TouchableOpacity>
-              ))}
+          {/* Preferences */}
+          <View style={styles.menuSection}>
+            <Text style={[styles.sectionTitle, { color: colors.sectionTitle }]}>التفضيلات</Text>
+            <View style={[styles.menuCard, { backgroundColor: colors.card }]}>
+              <View style={[styles.menuItem, styles.menuItemBorder, { borderBottomColor: colors.cardBorder }]}>
+                <Switch
+                  value={notificationsEnabled}
+                  onValueChange={setNotificationsEnabled}
+                  trackColor={{ false: "#E2E8F0", true: "#FFD700" }}
+                  thumbColor="#FFFFFF"
+                />
+                <Text style={[styles.menuLabel, { color: colors.menuLabel }]}>الإشعارات</Text>
+                <Text style={styles.menuIcon}>🔔</Text>
+              </View>
+              <View style={styles.menuItem}>
+                <Switch
+                  value={isDark}
+                  onValueChange={handleDarkModeToggle}
+                  trackColor={{ false: "#E2E8F0", true: "#1A0533" }}
+                  thumbColor={isDark ? "#FFD700" : "#FFFFFF"}
+                />
+                <Text style={[styles.menuLabel, { color: colors.menuLabel }]}>الوضع الداكن</Text>
+                <Text style={styles.menuIcon}>🌙</Text>
+              </View>
             </View>
           </View>
-        ))}
 
-        {/* Preferences */}
-        <View style={styles.menuSection}>
-          <Text style={styles.sectionTitle}>التفضيلات</Text>
-          <View style={styles.menuCard}>
-            <View style={[styles.menuItem, styles.menuItemBorder]}>
-              <Switch
-                value={notificationsEnabled}
-                onValueChange={setNotificationsEnabled}
-                trackColor={{ false: "#E2E8F0", true: "#FFD700" }}
-                thumbColor="#FFFFFF"
-              />
-              <Text style={styles.menuLabel}>الإشعارات</Text>
-              <Text style={styles.menuIcon}>🔔</Text>
+          {/* Captain Mode Banner */}
+          <TouchableOpacity style={styles.captainBanner} onPress={goToCaptainMode}>
+            <View style={styles.captainBannerContent}>
+              <View>
+                <Text style={styles.captainBannerTitle}>🚗  وضع الكابتن</Text>
+                <Text style={styles.captainBannerSub}>اشتغل كسائق واكسب أرباحاً</Text>
+              </View>
+              <Text style={styles.captainBannerArrow}>←</Text>
             </View>
-            <View style={styles.menuItem}>
-              <Switch
-                value={darkMode}
-                onValueChange={setDarkMode}
-                trackColor={{ false: "#E2E8F0", true: "#1A0533" }}
-                thumbColor="#FFFFFF"
-              />
-              <Text style={styles.menuLabel}>الوضع الداكن</Text>
-              <Text style={styles.menuIcon}>🌙</Text>
-            </View>
-          </View>
-        </View>
+          </TouchableOpacity>
 
-        {/* Captain Mode Banner */}
-        <TouchableOpacity style={styles.captainBanner} onPress={goToCaptainMode}>
-          <View style={styles.captainBannerContent}>
-            <View>
-              <Text style={styles.captainBannerTitle}>🚗  وضع الكابتن</Text>
-              <Text style={styles.captainBannerSub}>اشتغل كسائق واكسب أرباحاً</Text>
-            </View>
-            <Text style={styles.captainBannerArrow}>←</Text>
-          </View>
-        </TouchableOpacity>
+          {/* Logout */}
+          <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
+            <Text style={styles.logoutText}>🚪  تسجيل الخروج</Text>
+          </TouchableOpacity>
 
-        {/* Logout */}
-        <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
-          <Text style={styles.logoutText}>🚪  تسجيل الخروج</Text>
-        </TouchableOpacity>
-
-        <Text style={styles.version}>مسار v1.0.0</Text>
-        <View style={{ height: 100 }} />
-      </ScrollView>
-    </ScreenContainer>
+          <Text style={[styles.version, { color: colors.version }]}>مسار v1.0.0</Text>
+          <View style={{ height: 100 }} />
+        </ScrollView>
+      </ScreenContainer>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  outerContainer: { flex: 1 },
   header: {
     backgroundColor: "#1A0533",
     paddingHorizontal: 20,
@@ -215,7 +273,6 @@ const styles = StyleSheet.create({
   profileCard: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
     margin: 16,
     borderRadius: 20,
     padding: 16,
@@ -230,7 +287,6 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: "#1A0533",
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
@@ -245,12 +301,10 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
   },
   profileName: {
-    color: "#1A0533",
     fontSize: 16,
     fontWeight: "800",
   },
   profilePhone: {
-    color: "#6B7A8D",
     fontSize: 13,
     marginTop: 2,
   },
@@ -266,19 +320,15 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   ratingCount: {
-    color: "#6B7A8D",
     fontSize: 12,
   },
   editBtn: {
-    backgroundColor: "#F5F7FA",
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "#E2E8F0",
   },
   editBtnText: {
-    color: "#1A0533",
     fontSize: 13,
     fontWeight: "700",
   },
@@ -290,7 +340,6 @@ const styles = StyleSheet.create({
   },
   statCard: {
     flex: 1,
-    backgroundColor: "#FFFFFF",
     borderRadius: 16,
     padding: 14,
     alignItems: "center",
@@ -305,12 +354,10 @@ const styles = StyleSheet.create({
     fontSize: 22,
   },
   statValue: {
-    color: "#1A0533",
     fontSize: 20,
     fontWeight: "800",
   },
   statLabel: {
-    color: "#6B7A8D",
     fontSize: 11,
   },
   menuSection: {
@@ -318,7 +365,6 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   sectionTitle: {
-    color: "#6B7A8D",
     fontSize: 13,
     fontWeight: "600",
     textAlign: "right",
@@ -326,7 +372,6 @@ const styles = StyleSheet.create({
     marginRight: 4,
   },
   menuCard: {
-    backgroundColor: "#FFFFFF",
     borderRadius: 18,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
@@ -343,7 +388,6 @@ const styles = StyleSheet.create({
   },
   menuItemBorder: {
     borderBottomWidth: 1,
-    borderBottomColor: "#F5F7FA",
   },
   menuIcon: {
     fontSize: 20,
@@ -352,13 +396,11 @@ const styles = StyleSheet.create({
   },
   menuLabel: {
     flex: 1,
-    color: "#1A0533",
     fontSize: 15,
     fontWeight: "600",
     textAlign: "right",
   },
   menuArrow: {
-    color: "#C0C8D4",
     fontSize: 18,
   },
   logoutBtn: {
@@ -373,21 +415,6 @@ const styles = StyleSheet.create({
     color: "#EF4444",
     fontSize: 16,
     fontWeight: "700",
-  },
-  adminBanner: {
-    marginHorizontal: 20,
-    marginBottom: 12,
-    borderRadius: 16,
-    overflow: 'hidden',
-    backgroundColor: '#0F172A',
-    borderWidth: 1.5,
-    borderColor: '#6C3FC5',
-  },
-  adminBannerTitle: {
-    color: '#A78BFA',
-    fontSize: 17,
-    fontWeight: '700',
-    textAlign: 'right',
   },
   captainBanner: {
     marginHorizontal: 20,
@@ -422,7 +449,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   version: {
-    color: "#C0C8D4",
     fontSize: 12,
     textAlign: "center",
     marginBottom: 8,
