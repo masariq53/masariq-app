@@ -1,15 +1,13 @@
-import React, { useState, useRef } from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   StyleSheet,
   ScrollView,
   Alert,
   ActivityIndicator,
   Image,
-  Platform,
 } from "react-native";
 import { useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
@@ -22,13 +20,9 @@ export default function EditProfileScreen() {
   const router = useRouter();
   const { passenger, setPassenger } = usePassenger();
 
-  const [name, setName] = useState(passenger?.name || "");
   const [photoUri, setPhotoUri] = useState<string | null>(passenger?.photoUrl || null);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
-  const [isSavingName, setIsSavingName] = useState(false);
-  const [nameError, setNameError] = useState("");
 
-  const updateNameMutation = trpc.passenger.updateName.useMutation();
   const uploadPhotoMutation = trpc.passenger.uploadPhoto.useMutation();
 
   // ─── Pick photo from gallery ───────────────────────────────────────────────
@@ -71,7 +65,6 @@ export default function EditProfileScreen() {
       });
 
       setPhotoUri(res.photoUrl);
-      // Update local context
       if (passenger) {
         await setPassenger({ ...passenger, photoUrl: res.photoUrl });
       }
@@ -83,39 +76,8 @@ export default function EditProfileScreen() {
     }
   };
 
-  // ─── Save name ─────────────────────────────────────────────────────────────
-  const handleSaveName = async () => {
-    const trimmed = name.trim();
-    if (trimmed.length < 2) {
-      setNameError("الاسم يجب أن يكون حرفين على الأقل");
-      return;
-    }
-    if (trimmed.length > 30) {
-      setNameError("الاسم يجب ألا يتجاوز 30 حرفاً");
-      return;
-    }
-    setNameError("");
-    setIsSavingName(true);
-    try {
-      await updateNameMutation.mutateAsync({
-        passengerId: passenger!.id,
-        name: trimmed,
-      });
-      // Update local context
-      if (passenger) {
-        await setPassenger({ ...passenger, name: trimmed });
-      }
-      Alert.alert("✅ تم", "تم تحديث الاسم بنجاح");
-    } catch (err: any) {
-      Alert.alert("خطأ", err.message || "فشل في تحديث الاسم");
-    } finally {
-      setIsSavingName(false);
-    }
-  };
-
-  // ─── Get initials ──────────────────────────────────────────────────────────
   const getInitial = () => {
-    const n = passenger?.name || name;
+    const n = passenger?.name;
     return n ? n.charAt(0).toUpperCase() : "م";
   };
 
@@ -154,55 +116,30 @@ export default function EditProfileScreen() {
           <Text style={styles.avatarHint}>اضغط لتغيير الصورة</Text>
         </View>
 
-        {/* Name Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>الاسم الكامل</Text>
-          <View style={styles.inputRow}>
-            <TextInput
-              style={[styles.input, nameError ? styles.inputError : null]}
-              value={name}
-              onChangeText={(t) => {
-                setName(t);
-                setNameError("");
-              }}
-              placeholder="أدخل اسمك الكامل"
-              placeholderTextColor="#9BA1A6"
-              maxLength={30}
-              textAlign="right"
-              returnKeyType="done"
-            />
+        {/* Info Section - Read Only */}
+        <View style={styles.infoSection}>
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>الاسم</Text>
+            <Text style={styles.infoValue}>{passenger?.name || "—"}</Text>
           </View>
-          {nameError ? <Text style={styles.errorText}>{nameError}</Text> : null}
-          <Text style={styles.charCount}>{name.length}/30</Text>
-          <TouchableOpacity
-            style={[styles.saveBtn, isSavingName && styles.saveBtnDisabled]}
-            onPress={handleSaveName}
-            disabled={isSavingName}
-          >
-            {isSavingName ? (
-              <ActivityIndicator color="#fff" size="small" />
-            ) : (
-              <Text style={styles.saveBtnText}>حفظ الاسم</Text>
-            )}
-          </TouchableOpacity>
+          <View style={styles.divider} />
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>رقم الهاتف</Text>
+            <Text style={styles.infoValue}>{passenger?.phone ? `+964 ${passenger.phone}` : "—"}</Text>
+          </View>
         </View>
 
-        {/* Phone Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>رقم الهاتف</Text>
-          <View style={styles.phoneRow}>
-            <Text style={styles.phoneValue}>{passenger?.phone}</Text>
-            <TouchableOpacity
-              style={styles.changePhoneBtn}
-              onPress={() => router.push("/profile/change-phone" as any)}
-            >
-              <Text style={styles.changePhoneBtnText}>تغيير الرقم</Text>
-            </TouchableOpacity>
-          </View>
-          <Text style={styles.phoneHint}>
-            تغيير الرقم يتطلب التحقق عبر OTP من رقمك الحالي ثم الجديد
-          </Text>
-        </View>
+        {/* Change Phone Button */}
+        <TouchableOpacity
+          style={styles.changePhoneBtn}
+          onPress={() => router.push("/profile/change-phone" as any)}
+        >
+          <Text style={styles.changePhoneBtnText}>🔄  تغيير رقم الهاتف</Text>
+        </TouchableOpacity>
+
+        <Text style={styles.phoneHint}>
+          تغيير الرقم يتطلب التحقق عبر OTP من رقمك الحالي ثم الجديد
+        </Text>
       </ScrollView>
     </ScreenContainer>
   );
@@ -236,34 +173,34 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 20,
-    gap: 24,
+    gap: 20,
   },
   avatarSection: {
     alignItems: "center",
-    paddingVertical: 16,
+    paddingVertical: 20,
   },
   avatarContainer: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+    width: 110,
+    height: 110,
+    borderRadius: 55,
     position: "relative",
   },
   avatarImage: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+    width: 110,
+    height: 110,
+    borderRadius: 55,
   },
   avatarPlaceholder: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+    width: 110,
+    height: 110,
+    borderRadius: 55,
     backgroundColor: "#1a0533",
     alignItems: "center",
     justifyContent: "center",
   },
   avatarInitial: {
     color: "#f0c040",
-    fontSize: 40,
+    fontSize: 44,
     fontWeight: "700",
   },
   avatarOverlay: {
@@ -272,18 +209,18 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    borderRadius: 50,
+    borderRadius: 55,
     backgroundColor: "rgba(0,0,0,0.5)",
     alignItems: "center",
     justifyContent: "center",
   },
   cameraIcon: {
     position: "absolute",
-    bottom: 0,
-    right: 0,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    bottom: 2,
+    right: 2,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     backgroundColor: "#f0c040",
     alignItems: "center",
     justifyContent: "center",
@@ -298,93 +235,51 @@ const styles = StyleSheet.create({
     color: "#687076",
     fontSize: 13,
   },
-  section: {
+  infoSection: {
     backgroundColor: "#fff",
     borderRadius: 16,
-    padding: 16,
-    gap: 10,
+    paddingHorizontal: 16,
     shadowColor: "#000",
     shadowOpacity: 0.05,
     shadowRadius: 8,
     elevation: 2,
   },
-  sectionLabel: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#1a0533",
-    textAlign: "right",
-  },
-  inputRow: {
-    borderWidth: 1.5,
-    borderColor: "#E5E7EB",
-    borderRadius: 12,
-    overflow: "hidden",
-  },
-  input: {
-    fontSize: 16,
-    color: "#11181C",
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    textAlign: "right",
-  },
-  inputError: {
-    borderColor: "#EF4444",
-  },
-  errorText: {
-    color: "#EF4444",
-    fontSize: 12,
-    textAlign: "right",
-  },
-  charCount: {
-    color: "#9BA1A6",
-    fontSize: 12,
-    textAlign: "left",
-  },
-  saveBtn: {
-    backgroundColor: "#1a0533",
-    borderRadius: 12,
-    paddingVertical: 13,
+  infoRow: {
+    flexDirection: "row",
     alignItems: "center",
-    marginTop: 4,
+    justifyContent: "space-between",
+    paddingVertical: 16,
   },
-  saveBtnDisabled: {
-    opacity: 0.6,
+  infoLabel: {
+    fontSize: 14,
+    color: "#687076",
+    fontWeight: "500",
   },
-  saveBtnText: {
+  infoValue: {
+    fontSize: 15,
+    color: "#1a0533",
+    fontWeight: "600",
+    textAlign: "right",
+  },
+  divider: {
+    height: 1,
+    backgroundColor: "#F5F7FA",
+  },
+  changePhoneBtn: {
+    backgroundColor: "#1a0533",
+    borderRadius: 14,
+    paddingVertical: 15,
+    alignItems: "center",
+  },
+  changePhoneBtnText: {
     color: "#f0c040",
     fontSize: 15,
     fontWeight: "700",
   },
-  phoneRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "#f5f5f5",
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
-  phoneValue: {
-    fontSize: 15,
-    color: "#11181C",
-    fontWeight: "500",
-    direction: "ltr",
-  },
-  changePhoneBtn: {
-    backgroundColor: "#1a0533",
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-  },
-  changePhoneBtnText: {
-    color: "#f0c040",
-    fontSize: 13,
-    fontWeight: "600",
-  },
   phoneHint: {
-    color: "#687076",
+    color: "#9BA1A6",
     fontSize: 12,
-    textAlign: "right",
+    textAlign: "center",
     lineHeight: 18,
   },
 });
