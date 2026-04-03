@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   Platform,
   Dimensions,
   Linking,
+  ActivityIndicator,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -14,127 +15,146 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import MapView, { Marker, Polyline, PROVIDER_DEFAULT } from "react-native-maps";
 import { useLocation } from "@/hooks/use-location";
 import { trpc } from "@/lib/trpc";
-import { usePassenger } from "@/lib/passenger-context";
+import { useDriver } from "@/lib/driver-context";
 
 type TripPhase = "pickup" | "in_trip" | "arrived";
 
-// مسار الرحلة في الموصل
-const PICKUP_COORD = { latitude: 36.3392, longitude: 43.1289 }; // ساحة الحدباء
-const DEST_COORD = { latitude: 36.3600, longitude: 43.1450 };   // جامعة الموصل
-const CAPTAIN_START = { latitude: 36.3350, longitude: 43.1220 }; // موقع الكابتن
-
-const ROUTE_TO_PICKUP = [
-  { latitude: 36.3350, longitude: 43.1220 },
-  { latitude: 36.3370, longitude: 43.1250 },
-  { latitude: 36.3392, longitude: 43.1289 },
-];
-
-const ROUTE_TO_DEST = [
-  { latitude: 36.3392, longitude: 43.1289 },
-  { latitude: 36.3430, longitude: 43.1330 },
-  { latitude: 36.3500, longitude: 43.1390 },
-  { latitude: 36.3600, longitude: 43.1450 },
-];
-
 export default function CaptainActiveTripScreen() {
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ rideId?: string; passengerName?: string; fare?: string }>();
-  const { driver } = usePassenger();
+  const params = useLocalSearchParams<{ rideId?: string }>();
+  const { driver } = useDriver();
   const { coords } = useLocation();
   const [phase, setPhase] = useState<TripPhase>("pickup");
-  const [captainPos, setCaptainPos] = useState(CAPTAIN_START);
   const mapRef = useRef<MapView>(null);
 
-  const updateStatus = trpc.rides.updateStatus.useMutation();
+  const rideId = params.rideId ? parseInt(params.rideId) : 0;
+  const driverId = driver?.id ?? 0;
 
-  const rideId = params.rideId ? parseInt(params.rideId) : null;
+  // جلب بيانات الرحلة الحقيقية من السيرفر
+  const rideQuery = trpc.rides.driverActiveRide.useQuery(
+    { driverId },
+    {
+      enabled: driverId > 0,
+      refetchInterval: 8000,
+      staleTime: 0,
+    }
+  );
+
+  const ride = rideQuery.data;
+
+  const pickupCoord = ride
+    ? { latitude: ride.pickupLat, longitude: ride.pickupLng }
+    : { latitude: 36.3392, longitude: 43.1289 };
+
+  const destCoord = ride
+    ? { latitude: ride.dropoffLat, longitude: ride.dropoffLng }
+    : { latitude: 36.3600, longitude: 43.1450 };
+
+  // تمركز الخريطة على موقع الراكب عند التحميل
+  useEffect(() => {
+    if (ride && mapRef.current) {
+      mapRef.current.animateToRegion({
+        latitude: ride.pickupLat,
+        longitude: ride.pickupLng,
+        latitudeDelta: 0.04,
+        longitudeDelta: 0.04,
+      }, 800);
+    }
+  }, [ride?.id]);
+
+  const updateStatus = trpc.rides.updateStatus.useMutation();
 
   const phaseConfig = {
     pickup: {
       title: "في الطريق لاستلام الراكب",
-      subtitle: "ساحة الحدباء، الموصل",
       btnText: "وصلت لموقع الراكب ✓",
       btnColor: "#FFD700",
       btnTextColor: "#1A0533",
-      route: ROUTE_TO_PICKUP,
-      target: PICKUP_COORD,
+      route: [coords, pickupCoord],
+      target: pickupCoord,
+      statusToSet: "driver_arrived" as const,
     },
     in_trip: {
       title: "الرحلة جارية 🛣️",
-      subtitle: "جامعة الموصل، الدندان",
       btnText: "إنهاء الرحلة ✓",
       btnColor: "#22C55E",
       btnTextColor: "#FFFFFF",
-      route: ROUTE_TO_DEST,
-      target: DEST_COORD,
+      route: [pickupCoord, destCoord],
+      target: destCoord,
+      statusToSet: "in_progress" as const,
     },
     arrived: {
       title: "وصلنا للوجهة! 🎉",
-      subtitle: "جامعة الموصل، الدندان",
       btnText: "تأكيد إنهاء الرحلة",
       btnColor: "#FFD700",
       btnTextColor: "#1A0533",
-      route: ROUTE_TO_DEST,
-      target: DEST_COORD,
+      route: [pickupCoord, destCoord],
+      target: destCoord,
+      statusToSet: "completed" as const,
     },
   };
 
   const config = phaseConfig[phase];
 
   const handlePhaseAction = () => {
+    const actualRideId = ride?.id ?? rideId;
+    if (!actualRideId) return;
+
     if (phase === "pickup") {
-      // Driver arrived at pickup
-      if (rideId) updateStatus.mutate({ rideId, status: "driver_arrived" });
+      updateStatus.mutate({ rideId: actualRideId, status: "driver_arrived" });
       setPhase("in_trip");
-      setCaptainPos(PICKUP_COORD);
-      mapRef.current?.animateToRegion({ ...PICKUP_COORD, latitudeDelta: 0.04, longitudeDelta: 0.04 }, 800);
+      mapRef.current?.animateToRegion({ ...pickupCoord, latitudeDelta: 0.04, longitudeDelta: 0.04 }, 800);
     } else if (phase === "in_trip") {
-      // Trip started
-      if (rideId) updateStatus.mutate({ rideId, status: "in_progress" });
+      updateStatus.mutate({ rideId: actualRideId, status: "in_progress" });
       setPhase("arrived");
-      setCaptainPos(DEST_COORD);
-      mapRef.current?.animateToRegion({ ...DEST_COORD, latitudeDelta: 0.04, longitudeDelta: 0.04 }, 800);
+      mapRef.current?.animateToRegion({ ...destCoord, latitudeDelta: 0.04, longitudeDelta: 0.04 }, 800);
     } else {
-      // Trip completed
-      if (rideId) updateStatus.mutate({ rideId, status: "completed" });
-      router.push("/captain/trip-summary" as any);
+      updateStatus.mutate(
+        { rideId: actualRideId, status: "completed" },
+        {
+          onSuccess: () => router.push("/captain/trip-summary" as any),
+        }
+      );
     }
   };
+
+  if (rideQuery.isLoading) {
+    return (
+      <View style={[styles.container, { alignItems: "center", justifyContent: "center" }]}>
+        <ActivityIndicator size="large" color="#FFD700" />
+        <Text style={{ color: "#FFD700", marginTop: 12 }}>جاري تحميل بيانات الرحلة...</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
       <StatusBar style="light" />
 
-      {/* خريطة الموصل */}
+      {/* خريطة حقيقية */}
       {Platform.OS !== "web" ? (
         <MapView
           ref={mapRef}
           style={styles.map}
           provider={PROVIDER_DEFAULT}
           initialRegion={{
-            latitude: 36.3500,
-            longitude: 43.1350,
+            latitude: pickupCoord.latitude,
+            longitude: pickupCoord.longitude,
             latitudeDelta: 0.05,
             longitudeDelta: 0.05,
           }}
-          showsUserLocation={false}
+          showsUserLocation
+          showsMyLocationButton={false}
         >
-          {/* موقع الكابتن */}
-          <Marker coordinate={captainPos} title="موقعك">
-            <View style={styles.captainMarker}>
-              <Text style={{ fontSize: 22 }}>⭐</Text>
-            </View>
-          </Marker>
-
           {/* موقع الراكب */}
-          <Marker coordinate={PICKUP_COORD} title="الراكب">
+          <Marker coordinate={pickupCoord} title="موقع الراكب">
             <View style={styles.pickupMarker}>
               <Text style={{ fontSize: 20 }}>👤</Text>
             </View>
           </Marker>
 
           {/* الوجهة */}
-          <Marker coordinate={DEST_COORD} title="الوجهة">
+          <Marker coordinate={destCoord} title="الوجهة">
             <View style={styles.destMarker}>
               <Text style={{ fontSize: 20 }}>🏁</Text>
             </View>
@@ -152,14 +172,15 @@ export default function CaptainActiveTripScreen() {
         <View style={[styles.map, styles.webMap]}>
           <Text style={{ fontSize: 56 }}>🗺️</Text>
           <Text style={styles.webMapLabel}>{config.title}</Text>
-          <Text style={styles.webMapSub}>خريطة الموصل — الرحلة النشطة</Text>
         </View>
       )}
 
-      {/* شريط الحالة العلوي */}
+      {/* زر الرجوع */}
       <TouchableOpacity style={[styles.backBtn, { top: insets.top + 8, left: 16 }]} onPress={() => router.back()}>
         <Text style={styles.backBtnText}>←</Text>
       </TouchableOpacity>
+
+      {/* شريط الحالة */}
       <View style={[styles.statusBar, { top: insets.top + 8 }]}>
         <View style={[styles.statusDot, phase === "in_trip" && styles.statusDotGreen]} />
         <Text style={styles.statusTitle}>{config.title}</Text>
@@ -175,18 +196,14 @@ export default function CaptainActiveTripScreen() {
             <Text style={{ fontSize: 26 }}>👤</Text>
           </View>
           <View style={styles.passengerInfo}>
-            <Text style={styles.passengerName}>محمد علي</Text>
-            <Text style={styles.passengerDest}>{config.subtitle}</Text>
+            <Text style={styles.passengerName}>راكب</Text>
+            <Text style={styles.passengerDest} numberOfLines={1}>
+              {phase === "pickup" ? (ride?.pickupAddress || "موقع الراكب") : (ride?.dropoffAddress || "الوجهة")}
+            </Text>
           </View>
           <View style={styles.actionBtns}>
-            <TouchableOpacity
-              style={styles.actionBtn}
-              onPress={() => Linking.openURL("tel:07901234567")}
-            >
-              <Text style={styles.actionIcon}>📞</Text>
-            </TouchableOpacity>
             <TouchableOpacity style={styles.actionBtn}>
-              <Text style={styles.actionIcon}>💬</Text>
+              <Text style={styles.actionIcon}>📞</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -195,28 +212,31 @@ export default function CaptainActiveTripScreen() {
         <View style={styles.routeBox}>
           <View style={styles.routeRow}>
             <View style={styles.dotGreen} />
-            <Text style={styles.routeText}>ساحة الحدباء</Text>
+            <Text style={styles.routeText} numberOfLines={1}>{ride?.pickupAddress || "موقع الانطلاق"}</Text>
           </View>
           <View style={styles.routeLine} />
           <View style={styles.routeRow}>
             <View style={styles.dotRed} />
-            <Text style={styles.routeText}>جامعة الموصل</Text>
+            <Text style={styles.routeText} numberOfLines={1}>{ride?.dropoffAddress || "الوجهة"}</Text>
           </View>
         </View>
 
-        {/* زر الإجراء الرئيسي */}
-        <TouchableOpacity
-          style={[styles.mainBtn, { backgroundColor: config.btnColor }]}
-          onPress={handlePhaseAction}
-        >
-          <Text style={[styles.mainBtnText, { color: config.btnTextColor }]}>
-            {config.btnText}
-          </Text>
-        </TouchableOpacity>
+        {/* الأجرة والمسافة */}
+        <View style={styles.fareRow}>
+          <Text style={styles.fareItem}>💰 {ride?.fare?.toLocaleString("ar-IQ") ?? "—"} دينار</Text>
+          <Text style={styles.fareItem}>📏 {ride?.estimatedDistance?.toFixed(1) ?? "—"} كم</Text>
+          <Text style={styles.fareItem}>⏱ {ride?.estimatedDuration ?? "—"} دقيقة</Text>
+        </View>
 
-        {/* زر الطوارئ */}
-        <TouchableOpacity style={styles.sosBtn}>
-          <Text style={styles.sosBtnText}>🆘 الإبلاغ عن مشكلة</Text>
+        {/* زر الإجراء */}
+        <TouchableOpacity
+          style={[styles.actionMainBtn, { backgroundColor: config.btnColor }]}
+          onPress={handlePhaseAction}
+          disabled={updateStatus.isPending}
+        >
+          <Text style={[styles.actionMainBtnText, { color: config.btnTextColor }]}>
+            {updateStatus.isPending ? "جاري التحديث..." : config.btnText}
+          </Text>
         </TouchableOpacity>
 
         <View style={{ height: insets.bottom + 8 }} />
@@ -227,8 +247,6 @@ export default function CaptainActiveTripScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#1A0533" },
-  backBtn: { position: "absolute", zIndex: 10, width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(26,5,51,0.9)", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#3D2070" },
-  backBtnText: { color: "#FFFFFF", fontSize: 20, fontWeight: "bold" },
   map: { flex: 1 },
   webMap: {
     backgroundColor: "#2D1B4E",
@@ -237,26 +255,41 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   webMapLabel: { color: "#FFD700", fontSize: 18, fontWeight: "bold" },
-  webMapSub: { color: "#9B8EC4", fontSize: 13 },
-  captainMarker: { alignItems: "center" },
-  pickupMarker: { alignItems: "center" },
-  destMarker: { alignItems: "center" },
+  backBtn: {
+    position: "absolute",
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(26,5,51,0.85)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#FFD700",
+  },
+  backBtnText: { color: "#FFD700", fontSize: 18, fontWeight: "bold" },
   statusBar: {
     position: "absolute",
     alignSelf: "center",
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
     backgroundColor: "rgba(26,5,51,0.9)",
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingVertical: 8,
     borderRadius: 20,
     borderWidth: 1,
     borderColor: "#FFD700",
+    gap: 8,
   },
-  statusDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: "#FFD700" },
+  statusDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: "#FFD700",
+  },
   statusDotGreen: { backgroundColor: "#22C55E" },
-  statusTitle: { color: "#FFFFFF", fontSize: 13, fontWeight: "600" },
+  statusTitle: { color: "#FFD700", fontSize: 13, fontWeight: "600" },
+  pickupMarker: { alignItems: "center" },
+  destMarker: { alignItems: "center" },
   tripSheet: {
     backgroundColor: "#1A0533",
     borderTopLeftRadius: 24,
@@ -280,9 +313,9 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   avatarCircle: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: "#2D1B4E",
     alignItems: "center",
     justifyContent: "center",
@@ -309,30 +342,31 @@ const styles = StyleSheet.create({
     backgroundColor: "#2D1B4E",
     borderRadius: 12,
     padding: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "#3D2070",
+  },
+  routeRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  routeLine: { width: 2, height: 16, backgroundColor: "#3D2070", marginLeft: 5, marginVertical: 2 },
+  dotGreen: { width: 10, height: 10, borderRadius: 5, backgroundColor: "#22C55E" },
+  dotRed: { width: 10, height: 10, borderRadius: 5, backgroundColor: "#EF4444" },
+  routeText: { color: "#ECEDEE", fontSize: 13, flex: 1 },
+  fareRow: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    backgroundColor: "#2D1B4E",
+    borderRadius: 12,
+    padding: 10,
     marginBottom: 14,
     borderWidth: 1,
     borderColor: "#3D2070",
   },
-  routeRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-  dotGreen: { width: 10, height: 10, borderRadius: 5, backgroundColor: "#22C55E" },
-  dotRed: { width: 10, height: 10, borderRadius: 5, backgroundColor: "#EF4444" },
-  routeLine: { width: 2, height: 16, backgroundColor: "#3D2070", marginLeft: 4, marginVertical: 3 },
-  routeText: { color: "#FFFFFF", fontSize: 14 },
-  mainBtn: {
+  fareItem: { color: "#FFD700", fontSize: 13, fontWeight: "600" },
+  actionMainBtn: {
     borderRadius: 14,
     paddingVertical: 16,
     alignItems: "center",
-    marginBottom: 10,
+    marginBottom: 8,
   },
-  mainBtnText: { fontSize: 15, fontWeight: "bold" },
-  sosBtn: {
-    backgroundColor: "transparent",
-    borderRadius: 12,
-    paddingVertical: 10,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#EF4444",
-    marginBottom: 4,
-  },
-  sosBtnText: { color: "#EF4444", fontSize: 13, fontWeight: "600" },
+  actionMainBtnText: { fontSize: 16, fontWeight: "bold" },
 });

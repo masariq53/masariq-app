@@ -9,72 +9,15 @@ import {
   Dimensions,
   Alert,
   Linking,
+  ActivityIndicator,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import MapView, { Marker, Polyline, PROVIDER_DEFAULT } from "react-native-maps";
-import * as Notifications from "expo-notifications";
-
-// Configure notification handler for foreground display
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-});
-
-async function setupNotifications() {
-  if (Platform.OS === "web") return;
-  if (Platform.OS === "android") {
-    await Notifications.setNotificationChannelAsync("masar-ride", {
-      name: "تحديثات الرحلة",
-      importance: Notifications.AndroidImportance.HIGH,
-      vibrationPattern: [0, 250, 250, 250],
-    });
-  }
-  const { status } = await Notifications.getPermissionsAsync();
-  if (status !== "granted") {
-    await Notifications.requestPermissionsAsync();
-  }
-}
-
-async function sendRideNotification(title: string, body: string) {
-  if (Platform.OS === "web") return;
-  try {
-    await Notifications.scheduleNotificationAsync({
-      content: { title, body, sound: true },
-      trigger: null, // immediate
-    });
-  } catch (e) {
-    // Silently fail if permissions not granted
-  }
-}
+import { trpc } from "@/lib/trpc";
 
 const { height } = Dimensions.get("window");
-
-// مسار تجريبي في الموصل — من ساحة الحدباء إلى جامعة الموصل
-const ROUTE_COORDS = [
-  { latitude: 36.3392, longitude: 43.1289 }, // ساحة الحدباء
-  { latitude: 36.3420, longitude: 43.1310 },
-  { latitude: 36.3450, longitude: 43.1350 },
-  { latitude: 36.3480, longitude: 43.1380 },
-  { latitude: 36.3520, longitude: 43.1410 },
-  { latitude: 36.3560, longitude: 43.1440 },
-  { latitude: 36.3600, longitude: 43.1450 }, // جامعة الموصل
-];
-
-const driverInfo = {
-  name: "أحمد محمد",
-  rating: "4.9",
-  car: "تويوتا كورولا - أبيض",
-  plate: "م ٢٣٤٥ ن",
-  phone: "07901234567",
-  avatar: "👨",
-};
 
 const steps = [
   { id: 0, label: "جاري البحث عن سائق...", icon: "🔍" },
@@ -84,10 +27,20 @@ const steps = [
   { id: 4, label: "في الطريق إلى وجهتك", icon: "🛣️" },
 ];
 
+const STATUS_TO_STEP: Record<string, number> = {
+  pending: 0,
+  accepted: 1,
+  driver_on_way: 2,
+  arrived: 3,
+  in_progress: 4,
+  completed: 4,
+};
+
 export default function TrackingScreen() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{
     rideId?: string;
+    passengerId?: string;
     fare?: string;
     distance?: string;
     duration?: string;
@@ -98,46 +51,64 @@ export default function TrackingScreen() {
     pickupAddress?: string;
     dropoffAddress?: string;
   }>();
+
+  const rideId = params.rideId ? parseInt(params.rideId) : 0;
   const fare = params.fare ? parseInt(params.fare) : 3500;
+  const pickupCoord = {
+    latitude: params.pickupLat ? parseFloat(params.pickupLat) : 36.3392,
+    longitude: params.pickupLng ? parseFloat(params.pickupLng) : 43.1289,
+  };
+  const dropoffCoord = {
+    latitude: params.dropoffLat ? parseFloat(params.dropoffLat) : 36.3600,
+    longitude: params.dropoffLng ? parseFloat(params.dropoffLng) : 43.1450,
+  };
+
   const [currentStep, setCurrentStep] = useState(0);
-  const [driverPos, setDriverPos] = useState(0); // index in ROUTE_COORDS
+  const [passengerId, setPassengerId] = useState<number | null>(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const mapRef = useRef<MapView>(null);
 
+  // جلب passengerId من params أو AsyncStorage
   useEffect(() => {
-    // Setup notifications on mount
-    setupNotifications();
+    const pid = params.passengerId ? parseInt(params.passengerId as string) : null;
+    if (pid) setPassengerId(pid);
+  }, []);
 
-    // تقدم الخطوات تلقائياً للعرض
-    const timers = [
-      setTimeout(() => {
-        setCurrentStep(1);
-        sendRideNotification("تم العثور على سائق! 🚗", `${driverInfo.name} في طريقه إليك - ${driverInfo.car}`);
-      }, 2000),
-      setTimeout(() => setCurrentStep(2), 4500),
-      setTimeout(() => {
-        setCurrentStep(3);
-        sendRideNotification("السائق وصل! 📍", `${driverInfo.name} ينتظرك - ${driverInfo.plate}`);
-      }, 9000),
-      setTimeout(() => setCurrentStep(4), 13000),
-    ];
+  // Polling حقيقي لحالة الرحلة كل 5 ثوانٍ
+  const rideQuery = trpc.rides.passengerActiveRide.useQuery(
+    { passengerId: passengerId ?? 0 },
+    {
+      enabled: !!passengerId,
+      refetchInterval: 5000,
+      staleTime: 0,
+    }
+  );
 
-    // تحريك السائق على الخريطة
-    let posIndex = 0;
-    const moveDriver = setInterval(() => {
-      posIndex = Math.min(posIndex + 1, ROUTE_COORDS.length - 1);
-      setDriverPos(posIndex);
-      if (mapRef.current) {
-        mapRef.current.animateToRegion({
-          ...ROUTE_COORDS[posIndex],
-          latitudeDelta: 0.03,
-          longitudeDelta: 0.03,
-        }, 800);
-      }
-      if (posIndex === ROUTE_COORDS.length - 1) clearInterval(moveDriver);
-    }, 3000);
+  const ride = rideQuery.data;
 
-    // نبضة
+  // تحديث الخطوة بناءً على حالة الرحلة من السيرفر
+  useEffect(() => {
+    if (!ride) return;
+    const step = STATUS_TO_STEP[ride.status] ?? 0;
+    setCurrentStep(step);
+
+    // إذا اكتملت الرحلة، انتقل لشاشة التقييم
+    if (ride.status === "completed") {
+      router.replace({
+        pathname: "/ride/rating" as any,
+        params: {
+          driverName: ride.driver?.name ?? "السائق",
+          driverAvatar: "👨",
+          driverRating: ride.driver?.rating ?? "5.0",
+          fare: fare.toString(),
+          rideId: rideId.toString(),
+        },
+      });
+    }
+  }, [ride?.status]);
+
+  // نبضة
+  useEffect(() => {
     const pulse = Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, { toValue: 1.3, duration: 700, useNativeDriver: true }),
@@ -145,70 +116,76 @@ export default function TrackingScreen() {
       ])
     );
     pulse.start();
-
-    return () => {
-      timers.forEach(clearTimeout);
-      clearInterval(moveDriver);
-      pulse.stop();
-    };
+    return () => pulse.stop();
   }, []);
 
-  const currentDriverCoord = ROUTE_COORDS[driverPos];
+  // إلغاء الرحلة
+  const [cancelling, setCancelling] = useState(false);
+  const handleCancel = () => {
+    setCancelling(true);
+    router.replace("/(tabs)" as any);
+  };
+
   const step = steps[currentStep];
+  const driverName = ride?.driver?.name ?? "جاري البحث...";
+  const driverCar = ride?.driver ? `${ride.driver.vehicleModel ?? ""} ${ride.driver.vehicleColor ?? ""}`.trim() || "—" : "—";
+  const driverPlate = ride?.driver?.vehiclePlate ?? "—";
+  const driverRating = ride?.driver?.rating ?? "5.0";
+  const driverPhone = ride?.driver?.phone;
+  const driverLat = ride?.driver?.currentLat;
+  const driverLng = ride?.driver?.currentLng;
 
   return (
     <View style={styles.container}>
       <StatusBar style="light" />
 
-      {/* خريطة تتبع الموصل */}
+      {/* خريطة تتبع حقيقية */}
       {Platform.OS !== "web" ? (
         <MapView
           ref={mapRef}
           style={styles.map}
           provider={PROVIDER_DEFAULT}
           initialRegion={{
-            latitude: 36.3500,
-            longitude: 43.1370,
+            latitude: pickupCoord.latitude,
+            longitude: pickupCoord.longitude,
             latitudeDelta: 0.05,
             longitudeDelta: 0.05,
           }}
           showsUserLocation
           showsMyLocationButton={false}
         >
-          {/* نقطة الراكب */}
-          <Marker coordinate={ROUTE_COORDS[ROUTE_COORDS.length - 1]} title="وجهتك">
-            <View style={styles.destMarker}>
-              <Text style={{ fontSize: 22 }}>🏁</Text>
-            </View>
-          </Marker>
-
           {/* نقطة الانطلاق */}
-          <Marker coordinate={ROUTE_COORDS[0]} title="نقطة الانطلاق">
+          <Marker coordinate={pickupCoord} title="نقطة الانطلاق">
             <View style={styles.originMarker}>
               <Text style={{ fontSize: 18 }}>📍</Text>
             </View>
           </Marker>
 
-          {/* موقع السائق المتحرك */}
-          <Marker coordinate={currentDriverCoord} title={`السائق: ${driverInfo.name}`}>
-            <Animated.View style={[styles.driverMarker, { transform: [{ scale: pulseAnim }] }]}>
-              <Text style={{ fontSize: 22 }}>🚗</Text>
-            </Animated.View>
+          {/* نقطة الوجهة */}
+          <Marker coordinate={dropoffCoord} title="وجهتك">
+            <View style={styles.destMarker}>
+              <Text style={{ fontSize: 22 }}>🏁</Text>
+            </View>
           </Marker>
 
-          {/* مسار الرحلة */}
+          {/* موقع السائق الحقيقي */}
+          {driverLat && driverLng && (
+            <Marker
+              coordinate={{ latitude: driverLat, longitude: driverLng }}
+              title={`السائق: ${driverName}`}
+            >
+              <Animated.View style={[styles.driverMarker, { transform: [{ scale: pulseAnim }] }]}>
+                <Text style={{ fontSize: 22 }}>🚗</Text>
+              </Animated.View>
+            </Marker>
+          )}
+
+          {/* خط المسار */}
           <Polyline
-            coordinates={ROUTE_COORDS}
+            coordinates={[pickupCoord, dropoffCoord]}
             strokeColor="#FFD700"
             strokeWidth={4}
             lineDashPattern={[10, 5]}
-          />
-
-          {/* المسار المقطوع */}
-          <Polyline
-            coordinates={ROUTE_COORDS.slice(0, driverPos + 1)}
-            strokeColor="#22C55E"
-            strokeWidth={4}
           />
         </MapView>
       ) : (
@@ -217,9 +194,6 @@ export default function TrackingScreen() {
             🚗
           </Animated.Text>
           <Text style={styles.webMapLabel}>تتبع السائق — الموصل</Text>
-          <Text style={styles.webMapCoords}>
-            {currentDriverCoord.latitude.toFixed(4)}° N, {currentDriverCoord.longitude.toFixed(4)}° E
-          </Text>
         </View>
       )}
 
@@ -244,25 +218,31 @@ export default function TrackingScreen() {
         {/* معلومات السائق */}
         <View style={styles.driverRow}>
           <View style={styles.avatarCircle}>
-            <Text style={styles.avatarText}>{driverInfo.avatar}</Text>
+            {currentStep === 0 ? (
+              <ActivityIndicator color="#FFD700" />
+            ) : (
+              <Text style={styles.avatarText}>👨</Text>
+            )}
           </View>
           <View style={styles.driverInfo}>
-            <Text style={styles.driverName}>{driverInfo.name}</Text>
-            <Text style={styles.driverCar}>{driverInfo.car}</Text>
+            <Text style={styles.driverName}>{driverName}</Text>
+            <Text style={styles.driverCar}>{driverCar}</Text>
             <View style={styles.ratingRow}>
               <Text style={styles.star}>⭐</Text>
-              <Text style={styles.rating}>{driverInfo.rating}</Text>
-              <Text style={styles.plate}> • {driverInfo.plate}</Text>
+              <Text style={styles.rating}>{driverRating}</Text>
+              {driverPlate !== "—" && <Text style={styles.plate}> • {driverPlate}</Text>}
             </View>
           </View>
-          <View style={styles.driverActions}>
-            <TouchableOpacity style={styles.actionBtn}>
-              <Text style={styles.actionIcon}>📞</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.actionBtn}>
-              <Text style={styles.actionIcon}>💬</Text>
-            </TouchableOpacity>
-          </View>
+          {currentStep > 0 && (
+            <View style={styles.driverActions}>
+              <TouchableOpacity
+                style={styles.actionBtn}
+                onPress={() => driverPhone && Linking.openURL(`tel:${driverPhone}`)}
+              >
+                <Text style={styles.actionIcon}>📞</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
 
         {/* شريط التقدم */}
@@ -279,47 +259,48 @@ export default function TrackingScreen() {
           ))}
         </View>
 
-        {/* زر الطوارئ */}
-        {/* Fare info */}
+        {/* معلومات الأجرة */}
         <View style={styles.fareRow}>
           <Text style={styles.fareLabel}>الأجرة المتوقعة</Text>
-          <Text style={styles.fareValue}>{fare.toLocaleString('ar-IQ')} دينار</Text>
+          <Text style={styles.fareValue}>{fare.toLocaleString("ar-IQ")} دينار</Text>
           <Text style={styles.fareMethod}>💵 نقداً</Text>
         </View>
 
         <View style={styles.bottomRow}>
-          <TouchableOpacity style={styles.sosBtn} onPress={() => Linking.openURL('tel:122')}>
+          <TouchableOpacity style={styles.sosBtn} onPress={() => Linking.openURL("tel:122")}>
             <Text style={styles.sosBtnText}>🆘 طوارئ</Text>
           </TouchableOpacity>
           {currentStep >= 4 ? (
             <TouchableOpacity
-              style={[styles.cancelBtn, { backgroundColor: '#22C55E', borderColor: '#22C55E' }]}
+              style={[styles.cancelBtn, { backgroundColor: "#22C55E", borderColor: "#22C55E" }]}
               onPress={() => {
                 router.replace({
-                  pathname: '/ride/rating' as any,
+                  pathname: "/ride/rating" as any,
                   params: {
-                    driverName: driverInfo.name,
-                    driverAvatar: driverInfo.avatar,
-                    driverRating: driverInfo.rating,
+                    driverName: driverName,
+                    driverAvatar: "👨",
+                    driverRating: driverRating,
                     fare: fare.toString(),
-                    rideId: params.rideId ?? '0',
+                    rideId: rideId.toString(),
                   },
                 });
               }}
             >
-              <Text style={[styles.cancelBtnText, { color: '#FFFFFF' }]}>✅ إنهاء الرحلة</Text>
+              <Text style={[styles.cancelBtnText, { color: "#FFFFFF" }]}>✅ إنهاء الرحلة</Text>
             </TouchableOpacity>
           ) : (
             <TouchableOpacity
               style={styles.cancelBtn}
               onPress={() => {
-                Alert.alert('إلغاء الرحلة', 'هل أنت متأكد من إلغاء الرحلة؟', [
-                  { text: 'لا', style: 'cancel' },
-                  { text: 'نعم', style: 'destructive', onPress: () => router.replace('/(tabs)') },
+                Alert.alert("إلغاء الرحلة", "هل أنت متأكد من إلغاء الرحلة؟", [
+                  { text: "لا", style: "cancel" },
+                  { text: "نعم", style: "destructive", onPress: handleCancel },
                 ]);
               }}
             >
-              <Text style={styles.cancelBtnText}>إلغاء الرحلة</Text>
+              <Text style={styles.cancelBtnText}>
+                {cancelling ? "جاري الإلغاء..." : "إلغاء الرحلة"}
+              </Text>
             </TouchableOpacity>
           )}
         </View>
@@ -340,7 +321,6 @@ const styles = StyleSheet.create({
   },
   webMapCar: { fontSize: 64, marginBottom: 12 },
   webMapLabel: { color: "#FFD700", fontSize: 18, fontWeight: "bold" },
-  webMapCoords: { color: "#9B8EC4", fontSize: 13, marginTop: 6 },
   backBtn: {
     position: "absolute",
     left: 16,
@@ -401,18 +381,18 @@ const styles = StyleSheet.create({
     backgroundColor: "#2D1B4E",
     alignItems: "center",
     justifyContent: "center",
+    marginRight: 12,
     borderWidth: 2,
     borderColor: "#FFD700",
-    marginRight: 12,
   },
   avatarText: { fontSize: 26 },
   driverInfo: { flex: 1 },
   driverName: { color: "#FFFFFF", fontSize: 16, fontWeight: "bold" },
   driverCar: { color: "#9B8EC4", fontSize: 13, marginTop: 2 },
-  ratingRow: { flexDirection: "row", alignItems: "center", marginTop: 4 },
+  ratingRow: { flexDirection: "row", alignItems: "center", gap: 3, marginTop: 3 },
   star: { fontSize: 12 },
-  rating: { color: "#FFD700", fontSize: 13, fontWeight: "bold", marginLeft: 2 },
-  plate: { color: "#6B5B8A", fontSize: 12 },
+  rating: { color: "#FFD700", fontSize: 13, fontWeight: "600" },
+  plate: { color: "#9B8EC4", fontSize: 12 },
   driverActions: { flexDirection: "row", gap: 8 },
   actionBtn: {
     width: 40,
@@ -439,17 +419,37 @@ const styles = StyleSheet.create({
   },
   progressDotActive: { backgroundColor: "#FFD700" },
   progressDotDone: { backgroundColor: "#22C55E" },
-  bottomRow: { flexDirection: "row", gap: 12, marginBottom: 8 },
+  fareRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#2D1B4E",
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "#3D2070",
+  },
+  fareLabel: { color: "#9B8EC4", fontSize: 13 },
+  fareValue: { color: "#FFD700", fontSize: 15, fontWeight: "bold" },
+  fareMethod: { color: "#9B8EC4", fontSize: 13 },
+  bottomRow: {
+    flexDirection: "row",
+    gap: 12,
+    marginBottom: 8,
+  },
   sosBtn: {
-    flex: 1,
-    backgroundColor: "#EF4444",
+    backgroundColor: "#2D1B4E",
     borderRadius: 12,
     paddingVertical: 14,
+    paddingHorizontal: 16,
     alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#EF4444",
   },
-  sosBtnText: { color: "#FFFFFF", fontSize: 14, fontWeight: "bold" },
+  sosBtnText: { color: "#EF4444", fontSize: 13, fontWeight: "bold" },
   cancelBtn: {
-    flex: 2,
+    flex: 1,
     backgroundColor: "#2D1B4E",
     borderRadius: 12,
     paddingVertical: 14,
@@ -457,18 +457,5 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#3D2070",
   },
-  cancelBtnText: { color: "#9B8EC4", fontSize: 14, fontWeight: "600" },
-  fareRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    backgroundColor: "#2D1B4E",
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    marginBottom: 12,
-  },
-  fareLabel: { color: "#9B8EC4", fontSize: 13 },
-  fareValue: { color: "#FFD700", fontSize: 15, fontWeight: "800" },
-  fareMethod: { color: "#C4B5D4", fontSize: 13 },
+  cancelBtnText: { color: "#9B8EC4", fontSize: 14, fontWeight: "bold" },
 });

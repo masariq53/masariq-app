@@ -29,6 +29,13 @@
       "when": 1775218638005,
       "tag": "0003_omniscient_living_lightning",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1775228317825,
+      "tag": "0004_smart_bucky",
+      "breakpoints": true
     }
   ]
 }

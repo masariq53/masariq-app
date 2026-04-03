@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import MapView, { Marker, Polyline, PROVIDER_DEFAULT } from "react-native-maps";
 import { trpc } from "@/lib/trpc";
 import { usePassenger } from "@/lib/passenger-context";
+import { useLocation } from "@/hooks/use-location";
 
 const { height, width } = Dimensions.get("window");
 
@@ -47,10 +48,26 @@ const MOSUL_PLACES = [
 export default function BookRideScreen() {
   const insets = useSafeAreaInsets();
   const { passenger } = usePassenger();
+  const { coords, isRealLocation } = useLocation();
   const [from, setFrom] = useState("موقعي الحالي");
   const [to, setTo] = useState("");
   const [selectedRide, setSelectedRide] = useState("economy");
   const [pickupPin, setPickupPin] = useState({ latitude: 36.3392, longitude: 43.1289 });
+
+  // تحديث نقطة الانطلاق بموقع GPS الحقيقي
+  useEffect(() => {
+    if (isRealLocation) {
+      setPickupPin({ latitude: coords.latitude, longitude: coords.longitude });
+      if (mapRef.current) {
+        mapRef.current.animateToRegion({
+          latitude: coords.latitude,
+          longitude: coords.longitude,
+          latitudeDelta: 0.05,
+          longitudeDelta: 0.05,
+        }, 800);
+      }
+    }
+  }, [isRealLocation, coords.latitude, coords.longitude]);
   const [dropPin, setDropPin] = useState<{ latitude: number; longitude: number } | null>(null);
   const mapRef = useRef<MapView>(null);
 
@@ -72,6 +89,7 @@ export default function BookRideScreen() {
         pathname: "/ride/tracking",
         params: {
           rideId: data.ride.id,
+          passengerId: passenger?.id ?? 0,
           fare: data.ride.fare,
           distance: data.ride.estimatedDistance,
           duration: data.ride.estimatedDuration,

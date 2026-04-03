@@ -1,6 +1,18 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { registerDriverPushToken } from "@/lib/driver-notifications";
+import { createTRPCClient, httpBatchLink } from "@trpc/client";
+import superjson from "superjson";
+import type { AppRouter } from "@/server/routers";
+
+// Minimal tRPC client for push token registration (outside React context)
+function getApiBaseUrl() {
+  if (typeof window !== "undefined") return "";
+  return "http://localhost:3000";
+}
+const _trpcClient = createTRPCClient<AppRouter>({
+  links: [httpBatchLink({ url: `${getApiBaseUrl()}/api/trpc`, transformer: superjson })],
+});
 
 const DRIVER_STORAGE_KEY = "@masar_driver_session";
 
@@ -55,8 +67,21 @@ export function DriverProvider({ children }: { children: React.ReactNode }) {
     setDriverState(newDriver);
     if (newDriver) {
       await AsyncStorage.setItem(DRIVER_STORAGE_KEY, JSON.stringify(newDriver));
-      // تسجيل push token للإشعارات عند تسجيل الدخول
-      registerDriverPushToken().catch(() => {});
+      // تسجيل push token وإرساله للسيرفر
+      registerDriverPushToken()
+        .then(async (token) => {
+          if (token && newDriver.id) {
+            try {
+              await _trpcClient.rides.savePushToken.mutate({
+                driverId: newDriver.id,
+                token,
+              });
+            } catch (e) {
+              console.warn("[DriverContext] Failed to save push token:", e);
+            }
+          }
+        })
+        .catch(() => {});
     } else {
       await AsyncStorage.removeItem(DRIVER_STORAGE_KEY);
     }

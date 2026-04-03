@@ -9,6 +9,8 @@ import {
   Animated,
   Dimensions,
   Image,
+  Alert,
+  Vibration,
 } from "react-native";
 import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -16,6 +18,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import MapView, { Marker, Circle, PROVIDER_DEFAULT } from "react-native-maps";
 import { useDriver } from "@/lib/driver-context";
 import { useLocation } from "@/hooks/use-location";
+import { trpc } from "@/lib/trpc";
 
 const { width } = Dimensions.get("window");
 
@@ -27,11 +30,30 @@ const MOSUL_CENTER = {
   longitudeDelta: 0.06,
 };
 
+type PendingRide = {
+  id: number;
+  passengerId: number;
+  pickupLat: number;
+  pickupLng: number;
+  pickupAddress: string;
+  dropoffLat: number;
+  dropoffLng: number;
+  dropoffAddress: string;
+  fare: number;
+  estimatedDistance: number;
+  estimatedDuration: number;
+  createdAt: string;
+};
+
 export default function CaptainHomeScreen() {
   const insets = useSafeAreaInsets();
   const { driver, logout } = useDriver();
   const { coords, isRealLocation } = useLocation();
   const [isOnline, setIsOnline] = useState(false);
+  const [currentRequest, setCurrentRequest] = useState<PendingRide | null>(null);
+  const [seenRideIds, setSeenRideIds] = useState<Set<number>>(new Set());
+  const [timer, setTimer] = useState(30);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const todayEarnings = 0;
   const todayTrips = driver?.totalRides ?? 0;
   const rating = parseFloat(driver?.rating ?? "4.9");
@@ -49,6 +71,130 @@ export default function CaptainHomeScreen() {
     }
   }, [isRealLocation, coords.latitude, coords.longitude]);
 
+  // تحديث موقع السائق على السيرفر كل 15 ثانية عندما يكون متاحاً
+  const updateLocationMutation = trpc.driver.updateLocation.useMutation();
+  useEffect(() => {
+    if (!isOnline || !driver?.id) return;
+    const interval = setInterval(() => {
+      if (isRealLocation) {
+        updateLocationMutation.mutate({
+          driverId: driver.id,
+          lat: coords.latitude,
+          lng: coords.longitude,
+        });
+      }
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [isOnline, driver?.id, coords.latitude, coords.longitude, isRealLocation]);
+
+  // تحديث حالة السائق على السيرفر
+  const setStatusMutation = trpc.driver.setStatus.useMutation();
+  const handleToggleOnline = () => {
+    const newStatus = !isOnline;
+    setIsOnline(newStatus);
+    if (driver?.id) {
+      setStatusMutation.mutate({
+        driverId: driver.id,
+        isOnline: newStatus,
+        isAvailable: newStatus,
+      });
+    }
+    if (!newStatus) {
+      setCurrentRequest(null);
+      if (timerRef.current) clearInterval(timerRef.current);
+    }
+  };
+
+  // Polling للطلبات الجديدة كل 5 ثوانٍ عندما يكون متاحاً
+  const pendingRidesQuery = trpc.rides.pendingRides.useQuery(undefined, {
+    enabled: isOnline,
+    refetchInterval: 5000,
+    staleTime: 0,
+  });
+
+  // معالجة الطلبات الجديدة
+  useEffect(() => {
+    if (!isOnline || !pendingRidesQuery.data) return;
+    const rides = pendingRidesQuery.data;
+    if (rides.length === 0) return;
+
+    // إذا في طلب حالي، لا تُظهر طلباً جديداً
+    if (currentRequest) return;
+
+    // ابحث عن أول طلب لم يُرَ بعد
+    const newRide = rides.find((r) => !seenRideIds.has(r.id));
+    if (!newRide) return;
+
+    // أضف الطلب للقائمة المرئية وأظهره
+    setSeenRideIds((prev) => new Set([...prev, newRide.id]));
+    setCurrentRequest(newRide);
+    setTimer(30);
+
+    // اهتزاز الجهاز للتنبيه
+    if (Platform.OS !== "web") {
+      Vibration.vibrate([0, 300, 200, 300]);
+    }
+  }, [pendingRidesQuery.data, isOnline, currentRequest]);
+
+  // مؤقت الطلب (30 ثانية)
+  useEffect(() => {
+    if (!currentRequest) return;
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = setInterval(() => {
+      setTimer((t) => {
+        if (t <= 1) {
+          clearInterval(timerRef.current!);
+          setCurrentRequest(null);
+          return 30;
+        }
+        return t - 1;
+      });
+    }, 1000);
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [currentRequest]);
+
+  // قبول الطلب
+  const acceptRideMutation = trpc.rides.accept.useMutation({
+    onSuccess: () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+      const rideId = currentRequest!.id;
+      setCurrentRequest(null);
+      router.push({
+        pathname: "/captain/active-trip",
+        params: { rideId: rideId.toString() },
+      } as any);
+    },
+    onError: () => {
+      Alert.alert("خطأ", "لم نتمكن من قبول الطلب. حاول مجدداً.");
+    },
+  });
+
+  // رفض الطلب
+  const rejectRideMutation = trpc.rides.reject.useMutation({
+    onSuccess: () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+      setCurrentRequest(null);
+    },
+  });
+
+  const handleAccept = () => {
+    if (!currentRequest || !driver?.id) return;
+    acceptRideMutation.mutate({
+      rideId: currentRequest.id,
+      driverId: driver.id,
+    });
+  };
+
+  const handleReject = () => {
+    if (!currentRequest || !driver?.id) return;
+    rejectRideMutation.mutate({
+      rideId: currentRequest.id,
+      driverId: driver.id,
+    });
+  };
+
   // نبضة عند الاتصال
   const pulseAnim = useRef(new Animated.Value(1)).current;
   useEffect(() => {
@@ -62,6 +208,8 @@ export default function CaptainHomeScreen() {
     pulse.start();
     return () => pulse.stop();
   }, [isOnline]);
+
+  const timerPercent = timer / 30;
 
   return (
     <View style={styles.container}>
@@ -87,6 +235,18 @@ export default function CaptainHomeScreen() {
             </Animated.View>
           </Marker>
 
+          {/* موقع الراكب إذا في طلب */}
+          {currentRequest && (
+            <Marker
+              coordinate={{ latitude: currentRequest.pickupLat, longitude: currentRequest.pickupLng }}
+              title="موقع الراكب"
+            >
+              <View style={styles.passengerMarker}>
+                <Text style={{ fontSize: 24 }}>📍</Text>
+              </View>
+            </Marker>
+          )}
+
           {/* دائرة نطاق الاستقبال */}
           {isOnline && (
             <Circle
@@ -97,8 +257,6 @@ export default function CaptainHomeScreen() {
               strokeWidth={1.5}
             />
           )}
-
-          {/* لا توجد سيارات وهمية - سيتم عرض السائقين الحقيقيين من قاعدة البيانات لاحقاً */}
         </MapView>
       ) : (
         <View style={[styles.map, styles.webMap]}>
@@ -146,7 +304,7 @@ export default function CaptainHomeScreen() {
       <View style={styles.onlineContainer}>
         <TouchableOpacity
           style={[styles.onlineBtn, isOnline && styles.onlineBtnActive]}
-          onPress={() => setIsOnline(!isOnline)}
+          onPress={handleToggleOnline}
         >
           <Animated.View style={isOnline ? { transform: [{ scale: pulseAnim }] } : {}}>
             <Text style={styles.onlineBtnIcon}>{isOnline ? "🟢" : "⚫"}</Text>
@@ -183,7 +341,93 @@ export default function CaptainHomeScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* لا يوجد طلب تجريبي - الطلبات ستأتي من المستخدمين الحقيقيين فقط */}
+      {/* Modal طلب رحلة حقيقي */}
+      <Modal
+        visible={!!currentRequest}
+        transparent
+        animationType="slide"
+        onRequestClose={handleReject}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.requestCard}>
+            {/* مؤقت */}
+            <View style={styles.timerRow}>
+              <View style={styles.timerCircle}>
+                <Text style={styles.timerText}>{timer}</Text>
+              </View>
+              <View style={styles.timerBarBg}>
+                <View style={[styles.timerBarFill, { width: `${timerPercent * 100}%` }]} />
+              </View>
+            </View>
+
+            <Text style={styles.requestTitle}>🚗 طلب رحلة جديد!</Text>
+
+            {/* معلومات الراكب */}
+            <View style={styles.passengerRow}>
+              <View style={styles.passengerAvatar}>
+                <Text style={{ fontSize: 24 }}>👤</Text>
+              </View>
+              <View style={styles.passengerInfo}>
+                <Text style={styles.passengerName}>راكب</Text>
+                <View style={styles.passengerRating}>
+                  <Text style={styles.passengerRatingText}>⭐ 5.0</Text>
+                </View>
+              </View>
+              <View style={styles.priceTag}>
+                <Text style={styles.priceValue}>{currentRequest?.fare?.toLocaleString()}</Text>
+                <Text style={styles.priceCurrency}>دينار</Text>
+              </View>
+            </View>
+
+            {/* المسار */}
+            <View style={styles.routeBox}>
+              <View style={styles.routeRow}>
+                <View style={styles.dotGreen} />
+                <Text style={styles.routeText} numberOfLines={1}>
+                  {currentRequest?.pickupAddress || "موقع الراكب"}
+                </Text>
+              </View>
+              <View style={styles.routeLine} />
+              <View style={styles.routeRow}>
+                <View style={styles.dotRed} />
+                <Text style={styles.routeText} numberOfLines={1}>
+                  {currentRequest?.dropoffAddress || "الوجهة"}
+                </Text>
+              </View>
+            </View>
+
+            {/* التفاصيل */}
+            <View style={styles.detailsRow}>
+              <Text style={styles.detailItem}>
+                📏 {currentRequest?.estimatedDistance?.toFixed(1)} كم
+              </Text>
+              <Text style={styles.detailItem}>
+                ⏱ {currentRequest?.estimatedDuration} دقيقة
+              </Text>
+            </View>
+
+            {/* أزرار */}
+            <View style={styles.requestBtns}>
+              <TouchableOpacity
+                style={styles.rejectBtn}
+                onPress={handleReject}
+                disabled={rejectRideMutation.isPending}
+              >
+                <Text style={styles.rejectText}>رفض</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.acceptBtn}
+                onPress={handleAccept}
+                disabled={acceptRideMutation.isPending}
+              >
+                <Text style={styles.acceptText}>
+                  {acceptRideMutation.isPending ? "جاري القبول..." : "✅ قبول"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -266,8 +510,7 @@ const styles = StyleSheet.create({
   onlineBtnText: { color: "#9B8EC4", fontSize: 16, fontWeight: "bold" },
   onlineBtnTextActive: { color: "#22C55E" },
   myMarker: { alignItems: "center" },
-  nearbyMarker: { alignItems: "center" },
-  requestMarker: { alignItems: "center" },
+  passengerMarker: { alignItems: "center" },
   statsBar: {
     position: "absolute",
     left: 16,

@@ -36,6 +36,11 @@ import {
   getPendingDrivers,
   updateDriverRegistrationStatus,
   deleteDriver,
+  getPendingRides,
+  getDriverActiveRide,
+  saveDriverPushToken,
+  driverPushTokens,
+  getDriverPushToken,
 } from "./db";
 import { storagePut } from "./storage";
 
@@ -280,7 +285,7 @@ export const appRouter = router({
         const fare = calculateFare(distance);
         const duration = Math.ceil((distance / 30) * 60); // Assume 30 km/h avg speed
 
-        const ride = await createRide({
+         const ride = await createRide({
           passengerId: input.passengerId,
           pickupLat: input.pickupLat.toString(),
           pickupLng: input.pickupLng.toString(),
@@ -294,6 +299,28 @@ export const appRouter = router({
           paymentMethod: input.paymentMethod,
           status: "searching",
         });
+
+        // Send push notifications to all online drivers with push tokens
+        const onlineDriverTokens = Array.from(driverPushTokens.entries());
+        if (onlineDriverTokens.length > 0) {
+          const messages = onlineDriverTokens
+            .filter(([, token]) => token.startsWith("ExponentPushToken["))
+            .map(([, token]) => ({
+              to: token,
+              sound: "default" as const,
+              title: "🚗 طلب رحلة جديد!",
+              body: `من: ${input.pickupAddress || "موقع الراكب"} — ${Math.round(fare).toLocaleString("ar-IQ")} دينار`,
+              data: { rideId: ride.id, type: "new_ride" },
+              priority: "high" as const,
+            }));
+          if (messages.length > 0) {
+            fetch("https://exp.host/--/api/v2/push/send", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "Accept": "application/json" },
+              body: JSON.stringify(messages),
+            }).catch((err) => console.warn("[Push] Failed to send notifications:", err));
+          }
+        }
 
         return {
           success: true,
@@ -397,6 +424,125 @@ export const appRouter = router({
       .input(z.object({ driverId: z.number(), limit: z.number().default(20) }))
       .query(async ({ input }) => {
         return getDriverRideHistory(input.driverId, input.limit);
+      }),
+
+    /**
+     * Get pending rides for available drivers (polling)
+     */
+    pendingRides: publicProcedure
+      .query(async () => {
+        const pending = await getPendingRides();
+        return pending.map((r) => ({
+          id: r.id,
+          passengerId: r.passengerId,
+          pickupLat: r.pickupLat ? parseFloat(r.pickupLat.toString()) : 0,
+          pickupLng: r.pickupLng ? parseFloat(r.pickupLng.toString()) : 0,
+          pickupAddress: r.pickupAddress ?? "",
+          dropoffLat: r.dropoffLat ? parseFloat(r.dropoffLat.toString()) : 0,
+          dropoffLng: r.dropoffLng ? parseFloat(r.dropoffLng.toString()) : 0,
+          dropoffAddress: r.dropoffAddress ?? "",
+          fare: r.fare ? Math.round(parseFloat(r.fare.toString())) : 0,
+          estimatedDistance: r.estimatedDistance ? parseFloat(r.estimatedDistance.toString()) : 0,
+          estimatedDuration: r.estimatedDuration ?? 0,
+          createdAt: r.createdAt.toISOString(),
+        }));
+      }),
+
+    /**
+     * Get active ride for driver
+     */
+    driverActiveRide: publicProcedure
+      .input(z.object({ driverId: z.number() }))
+      .query(async ({ input }) => {
+        const ride = await getDriverActiveRide(input.driverId);
+        if (!ride) return null;
+        return {
+          id: ride.id,
+          status: ride.status,
+          passengerId: ride.passengerId,
+          pickupLat: ride.pickupLat ? parseFloat(ride.pickupLat.toString()) : 0,
+          pickupLng: ride.pickupLng ? parseFloat(ride.pickupLng.toString()) : 0,
+          pickupAddress: ride.pickupAddress ?? "",
+          dropoffLat: ride.dropoffLat ? parseFloat(ride.dropoffLat.toString()) : 0,
+          dropoffLng: ride.dropoffLng ? parseFloat(ride.dropoffLng.toString()) : 0,
+          dropoffAddress: ride.dropoffAddress ?? "",
+          fare: ride.fare ? Math.round(parseFloat(ride.fare.toString())) : 0,
+          estimatedDistance: ride.estimatedDistance ? parseFloat(ride.estimatedDistance.toString()) : 0,
+          estimatedDuration: ride.estimatedDuration ?? 0,
+        };
+      }),
+
+    /**
+     * Get active ride for passenger (polling)
+     */
+    passengerActiveRide: publicProcedure
+      .input(z.object({ passengerId: z.number() }))
+      .query(async ({ input }) => {
+        const { getDb } = await import("./db");
+        const { rides: ridesTable, drivers: driversTable } = await import("../drizzle/schema");
+        const { and: andOp, eq: eqOp, inArray: inArrayOp } = await import("drizzle-orm");
+        const db = await getDb();
+        if (!db) return null;
+        const result = await db
+          .select()
+          .from(ridesTable)
+          .where(
+            andOp(
+              eqOp(ridesTable.passengerId, input.passengerId),
+              inArrayOp(ridesTable.status, ["searching", "accepted", "driver_arrived", "in_progress"])
+            )
+          )
+          .limit(1);
+        if (result.length === 0) return null;
+        const ride = result[0]!;
+        // Get driver info if assigned
+        let driverInfo = null;
+        if (ride.driverId) {
+          const driverResult = await db.select().from(driversTable).where(eqOp(driversTable.id, ride.driverId)).limit(1);
+          if (driverResult.length > 0) {
+            const d = driverResult[0]!;
+            driverInfo = {
+              name: d.name,
+              phone: d.phone,
+              rating: d.rating ?? "5.0",
+              vehicleModel: d.vehicleModel ?? "",
+              vehicleColor: d.vehicleColor ?? "",
+              vehiclePlate: d.vehiclePlate ?? "",
+              currentLat: d.currentLat ? parseFloat(d.currentLat.toString()) : null,
+              currentLng: d.currentLng ? parseFloat(d.currentLng.toString()) : null,
+            };
+          }
+        }
+        return {
+          id: ride.id,
+          status: ride.status,
+          fare: ride.fare ? Math.round(parseFloat(ride.fare.toString())) : 0,
+          estimatedDistance: ride.estimatedDistance ? parseFloat(ride.estimatedDistance.toString()) : 0,
+          estimatedDuration: ride.estimatedDuration ?? 0,
+          pickupAddress: ride.pickupAddress ?? "",
+          dropoffAddress: ride.dropoffAddress ?? "",
+          driver: driverInfo,
+        };
+      }),
+
+    /**
+     * Reject a ride (driver action - pass to next driver)
+     */
+    reject: publicProcedure
+      .input(z.object({ rideId: z.number(), driverId: z.number() }))
+      .mutation(async () => {
+        // For now, just return success - ride stays in searching state for other drivers
+        return { success: true };
+      }),
+
+    /**
+     * Save driver push notification token
+     */
+    savePushToken: publicProcedure
+      .input(z.object({ driverId: z.number(), token: z.string() }))
+      .mutation(async ({ input }) => {
+        await saveDriverPushToken(input.driverId, input.token);
+        return { success: true };
       }),
 
     /**

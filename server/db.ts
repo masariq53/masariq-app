@@ -1,4 +1,4 @@
-import { and, eq, gt, desc } from "drizzle-orm";
+import { and, eq, gt, desc, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   InsertUser,
@@ -555,6 +555,70 @@ export async function getDriverRideHistory(driverId: number, limit = 20) {
     .orderBy(desc(rides.createdAt))
     .limit(limit);
 }
+
+/**
+ * Get pending rides (searching status) for nearby available drivers
+ */
+export async function getPendingRides() {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(rides)
+    .where(eq(rides.status, "searching"))
+    .orderBy(desc(rides.createdAt))
+    .limit(10);
+}
+
+/**
+ * Get active ride for a specific driver (accepted/driver_arrived/in_progress)
+ */
+export async function getDriverActiveRide(driverId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db
+    .select()
+    .from(rides)
+    .where(
+      and(
+        eq(rides.driverId, driverId),
+        inArray(rides.status, ["accepted", "driver_arrived", "in_progress"])
+      )
+    )
+    .limit(1);
+  return result.length > 0 ? result[0] : null;
+}
+
+/**
+ * Save push notification token for a driver
+ */
+export async function saveDriverPushToken(driverId: number, token: string) {
+  const db = await getDb();
+  if (!db) return;
+  // Save push token to database for persistence across server restarts
+  await db.update(drivers).set({ pushToken: token, lastActiveAt: new Date() }).where(eq(drivers.id, driverId));
+  // Also cache in memory for fast access
+  driverPushTokens.set(driverId, token);
+}
+
+export async function getDriverPushToken(driverId: number): Promise<string | null> {
+  // Check memory cache first
+  if (driverPushTokens.has(driverId)) {
+    return driverPushTokens.get(driverId) ?? null;
+  }
+  // Fallback to database
+  const db = await getDb();
+  if (!db) return null;
+  const [driver] = await db.select({ pushToken: drivers.pushToken }).from(drivers).where(eq(drivers.id, driverId)).limit(1);
+  if (driver?.pushToken) {
+    driverPushTokens.set(driverId, driver.pushToken);
+    return driver.pushToken;
+  }
+  return null;
+}
+
+// In-memory push token store (cache layer)
+export const driverPushTokens = new Map<number, string>();
 
 // ─── Admin / Dashboard ───────────────────────────────────────────────────────
 
