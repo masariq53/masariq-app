@@ -407,6 +407,15 @@ export async function updateDriverRegistrationStatus(
   }).where(eq(drivers.id, driverId));
 }
 
+/**
+ * Delete a driver account permanently
+ */
+export async function deleteDriver(driverId: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(drivers).where(eq(drivers.id, driverId));
+}
+
 export async function updateDriverLocation(driverId: number, lat: number, lng: number) {
   const db = await getDb();
   if (!db) return;

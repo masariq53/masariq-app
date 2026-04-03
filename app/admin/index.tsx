@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -9,6 +9,8 @@ import {
   Dimensions,
   ActivityIndicator,
   Alert,
+  Image,
+  Modal,
 } from "react-native";
 import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -78,6 +80,10 @@ export default function AdminDashboard() {
   const reviewDriver = trpc.admin.reviewDriver.useMutation({
     onSuccess: () => { refetchPending(); refetchDrivers(); refetchStats(); },
   });
+  const deleteDriverMutation = trpc.admin.deleteDriver.useMutation({
+    onSuccess: () => { refetchPending(); refetchDrivers(); refetchStats(); },
+  });
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -377,22 +383,32 @@ export default function AdminDashboard() {
                         </View>
                       )}
 
-                      {/* Documents */}
+                      {/* Documents - Show actual images */}
                       <View style={styles.pendingDocs}>
                         <Text style={styles.pendingDocsTitle}>الوثائق المرفوعة:</Text>
-                        <View style={styles.pendingDocsRow}>
-                          <Text style={[styles.pendingDoc, driver.photoUrl ? styles.pendingDocDone : styles.pendingDocMissing]}>
-                            {driver.photoUrl ? "✅" : "❌"} صورة شخصية
-                          </Text>
-                          <Text style={[styles.pendingDoc, driver.nationalIdPhotoUrl ? styles.pendingDocDone : styles.pendingDocMissing]}>
-                            {driver.nationalIdPhotoUrl ? "✅" : "❌"} الهوية
-                          </Text>
-                          <Text style={[styles.pendingDoc, driver.licensePhotoUrl ? styles.pendingDocDone : styles.pendingDocMissing]}>
-                            {driver.licensePhotoUrl ? "✅" : "❌"} الرخصة
-                          </Text>
-                          <Text style={[styles.pendingDoc, driver.vehiclePhotoUrl ? styles.pendingDocDone : styles.pendingDocMissing]}>
-                            {driver.vehiclePhotoUrl ? "✅" : "❌"} السيارة
-                          </Text>
+                        <View style={styles.docsImagesRow}>
+                          {[
+                            { url: driver.photoUrl, label: "صورة شخصية" },
+                            { url: driver.nationalIdPhotoUrl, label: "الهوية" },
+                            { url: driver.licensePhotoUrl, label: "الرخصة" },
+                            { url: driver.vehiclePhotoUrl, label: "السيارة" },
+                          ].map((doc, idx) => (
+                            <TouchableOpacity
+                              key={idx}
+                              style={styles.docImageBox}
+                              onPress={() => doc.url && setPreviewImage(doc.url)}
+                              disabled={!doc.url}
+                            >
+                              {doc.url ? (
+                                <Image source={{ uri: doc.url }} style={styles.docImage} />
+                              ) : (
+                                <View style={styles.docImageMissing}>
+                                  <Text style={styles.docImageMissingIcon}>❌</Text>
+                                </View>
+                              )}
+                              <Text style={styles.docImageLabel}>{doc.label}</Text>
+                            </TouchableOpacity>
+                          ))}
                         </View>
                       </View>
 
@@ -474,6 +490,26 @@ export default function AdminDashboard() {
                           </TouchableOpacity>
                         </View>
                       )}
+                      {/* Delete button - always visible */}
+                      <TouchableOpacity
+                        style={styles.deleteBtn}
+                        onPress={() =>
+                          Alert.alert(
+                            "حذف الحساب",
+                            `هل تريد حذف حساب السائق ${driver.name} نهائياً؟ لا يمكن التراجع.`,
+                            [
+                              { text: "إلغاء", style: "cancel" },
+                              {
+                                text: "حذف نهائي",
+                                style: "destructive",
+                                onPress: () => deleteDriverMutation.mutate({ driverId: driver.id }),
+                              },
+                            ]
+                          )
+                        }
+                      >
+                        <Text style={styles.deleteBtnText}>🗑️ حذف الحساب</Text>
+                      </TouchableOpacity>
                     </View>
                   ))
                 ) : (
@@ -526,6 +562,18 @@ export default function AdminDashboard() {
         )}
         <View style={{ height: 40 }} />
       </ScrollView>
+
+      {/* Image Preview Modal */}
+      <Modal visible={!!previewImage} transparent animationType="fade" onRequestClose={() => setPreviewImage(null)}>
+        <View style={styles.modalOverlay}>
+          {previewImage && (
+            <Image source={{ uri: previewImage }} style={styles.modalImage} resizeMode="contain" />
+          )}
+          <TouchableOpacity style={styles.modalClose} onPress={() => setPreviewImage(null)}>
+            <Text style={styles.modalCloseText}>إغلاق</Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -727,4 +775,36 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: "#22C55E",
   },
   approveBtnText: { color: "#4ADE80", fontSize: 14, fontWeight: "700" },
+
+  // Delete Button
+  deleteBtn: {
+    marginTop: 8, paddingVertical: 10, borderRadius: 10,
+    backgroundColor: "#1a0000", alignItems: "center",
+    borderWidth: 1, borderColor: "#7F1D1D",
+  },
+  deleteBtnText: { color: "#F87171", fontSize: 13, fontWeight: "700" },
+
+  // Document Images
+  docsImagesRow: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
+  docImageBox: { alignItems: "center", width: 70 },
+  docImage: { width: 70, height: 70, borderRadius: 8, borderWidth: 1, borderColor: "#4ADE80" },
+  docImageMissing: {
+    width: 70, height: 70, borderRadius: 8,
+    backgroundColor: "#450A0A", alignItems: "center", justifyContent: "center",
+    borderWidth: 1, borderColor: "#7F1D1D",
+  },
+  docImageMissingIcon: { fontSize: 24 },
+  docImageLabel: { color: "#9B8EC4", fontSize: 10, marginTop: 4, textAlign: "center" },
+
+  // Image Preview Modal
+  modalOverlay: {
+    flex: 1, backgroundColor: "rgba(0,0,0,0.92)",
+    alignItems: "center", justifyContent: "center",
+  },
+  modalImage: { width: "90%", height: "70%", borderRadius: 12 },
+  modalClose: {
+    marginTop: 20, backgroundColor: "#FFD700",
+    paddingHorizontal: 32, paddingVertical: 12, borderRadius: 12,
+  },
+  modalCloseText: { color: "#1A0533", fontWeight: "800", fontSize: 16 },
 });

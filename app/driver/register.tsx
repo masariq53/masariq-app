@@ -167,8 +167,8 @@ export default function DriverRegisterScreen() {
 
       Alert.alert(
         "✅ تم استلام طلبك!",
-        `شكراً ${name}! تم تسجيل طلبك بنجاح.\n\nسيتم مراجعة بياناتك خلال 24-48 ساعة وسنتواصل معك على رقم ${normalizedPhone}.`,
-        [{ text: "حسناً", onPress: () => router.replace("/auth/login" as any) }]
+        `شكراً ${name}! تم تسجيل طلبك بنجاح.\n\nسيتم مراجعة بياناتك خلال 24-48 ساعة وإشعارك عند القبول.`,
+        [{ text: "حسناً", onPress: () => router.replace("/(tabs)/profile" as any) }]
       );
     } catch (err: any) {
       Alert.alert("خطأ", err.message || "حدث خطأ أثناء إرسال الطلب، يرجى المحاولة مجدداً");

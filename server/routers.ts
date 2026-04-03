@@ -35,6 +35,7 @@ import {
   getDriverByPhone,
   getPendingDrivers,
   updateDriverRegistrationStatus,
+  deleteDriver,
 } from "./db";
 import { storagePut } from "./storage";
 
@@ -838,6 +839,16 @@ export const appRouter = router({
     pendingDrivers: publicProcedure.query(async () => {
       return getPendingDrivers();
     }),
+
+    /**
+     * Delete a driver account permanently
+     */
+    deleteDriver: publicProcedure
+      .input(z.object({ driverId: z.number() }))
+      .mutation(async ({ input }) => {
+        await deleteDriver(input.driverId);
+        return { success: true, message: "تم حذف حساب السائق بنجاح" };
+      }),
 
     /**
      * Approve or reject a driver registration
