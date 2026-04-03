@@ -166,17 +166,6 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        {/* Admin Dashboard Banner */}
-        <TouchableOpacity style={styles.adminBanner} onPress={() => router.push("/admin" as any)}>
-          <View style={styles.captainBannerContent}>
-            <View>
-              <Text style={styles.adminBannerTitle}>📊  لوحة التحكم</Text>
-              <Text style={styles.captainBannerSub}>إدارة الرحلات والسائقين والمستخدمين</Text>
-            </View>
-            <Text style={styles.captainBannerArrow}>←</Text>
-          </View>
-        </TouchableOpacity>
-
         {/* Captain Mode Banner */}
         <TouchableOpacity style={styles.captainBanner} onPress={goToCaptainMode}>
           <View style={styles.captainBannerContent}>
