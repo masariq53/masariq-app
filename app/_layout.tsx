@@ -111,6 +111,7 @@ export default function RootLayout() {
             <Stack.Screen name="oauth/callback" />
             <Stack.Screen name="privacy" />
             <Stack.Screen name="about" />
+            <Stack.Screen name="help" />
           </Stack>
           <StatusBar style="auto" />
         </QueryClientProvider>

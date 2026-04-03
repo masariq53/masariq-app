@@ -10,6 +10,7 @@ import {
 import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useThemeContext } from "@/lib/theme-provider";
 
 const plans = [
   {
@@ -45,25 +46,33 @@ const plans = [
 ];
 
 const corporatePlans = [
-  {
-    id: "school",
-    icon: "🎓",
-    name: "المدارس",
-    desc: "خطة خاصة لنقل الطلاب",
-    price: "تواصل معنا",
-  },
-  {
-    id: "company",
-    icon: "🏢",
-    name: "الشركات",
-    desc: "نقل موظفي شركتك",
-    price: "تواصل معنا",
-  },
+  { id: "school", icon: "🎓", name: "المدارس", desc: "خطة خاصة لنقل الطلاب", price: "تواصل معنا" },
+  { id: "company", icon: "🏢", name: "الشركات", desc: "نقل موظفي شركتك", price: "تواصل معنا" },
 ];
 
 export default function SubscriptionScreen() {
   const insets = useSafeAreaInsets();
   const [selectedPlan, setSelectedPlan] = useState("standard");
+  const { colorScheme } = useThemeContext();
+  const isDark = colorScheme === "dark";
+
+  const colors = {
+    scrollBg: isDark ? "#0D0019" : "#F5F7FA",
+    heroTitle: isDark ? "#FFFFFF" : "#1A0533",
+    heroSubtitle: isDark ? "#9B8AB0" : "#6B7A8D",
+    sectionTitle: isDark ? "#C4B5D4" : "#1A0533",
+    planCard: isDark ? "#1E0F4A" : "#FFFFFF",
+    planName: isDark ? "#FFFFFF" : "#1A0533",
+    planPeriod: isDark ? "#9B8AB0" : "#6B7A8D",
+    planRides: isDark ? "#9B8AB0" : "#6B7A8D",
+    featureBorder: isDark ? "#2D1B69" : "#F5F7FA",
+    featureText: isDark ? "#C4B5D4" : "#1A0533",
+    corpCard: isDark ? "#1E0F4A" : "#FFFFFF",
+    corpName: isDark ? "#FFFFFF" : "#1A0533",
+    corpDesc: isDark ? "#9B8AB0" : "#6B7A8D",
+    popularBadge: isDark ? "#FFD700" : "#1A0533",
+    popularBadgeBg: isDark ? "#1A0533" : "#1A0533",
+  };
 
   const handleSubscribe = () => {
     Alert.alert(
@@ -95,24 +104,28 @@ export default function SubscriptionScreen() {
         <View style={{ width: 44 }} />
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} style={styles.scroll}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        style={[styles.scroll, { backgroundColor: colors.scrollBg }]}
+      >
         {/* Hero */}
         <View style={styles.hero}>
           <Text style={styles.heroEmoji}>⭐</Text>
-          <Text style={styles.heroTitle}>وفّر أكثر مع الاشتراك</Text>
-          <Text style={styles.heroSubtitle}>خطط مرنة تناسب احتياجاتك</Text>
+          <Text style={[styles.heroTitle, { color: colors.heroTitle }]}>وفّر أكثر مع الاشتراك</Text>
+          <Text style={[styles.heroSubtitle, { color: colors.heroSubtitle }]}>خطط مرنة تناسب احتياجاتك</Text>
         </View>
 
         {/* Plans */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>خطط الأفراد</Text>
+          <Text style={[styles.sectionTitle, { color: colors.sectionTitle }]}>خطط الأفراد</Text>
           {plans.map((plan) => (
             <TouchableOpacity
               key={plan.id}
               style={[
                 styles.planCard,
+                { backgroundColor: colors.planCard },
                 selectedPlan === plan.id && styles.planCardActive,
-                plan.popular && styles.planCardPopular,
+                plan.popular && !isDark && styles.planCardPopular,
               ]}
               onPress={() => setSelectedPlan(plan.id)}
             >
@@ -123,28 +136,23 @@ export default function SubscriptionScreen() {
               )}
               <View style={styles.planHeader}>
                 <View>
-                  <Text style={[styles.planPrice, { color: plan.color }]}>
-                    {plan.price} <Text style={styles.planPeriod}>د.ع/{plan.period}</Text>
+                  <Text style={[styles.planPrice, { color: plan.id === "standard" && isDark ? "#C4B5D4" : plan.color }]}>
+                    {plan.price} <Text style={[styles.planPeriod, { color: colors.planPeriod }]}>د.ع/{plan.period}</Text>
                   </Text>
-                  <Text style={styles.planRides}>{plan.rides} رحلة</Text>
+                  <Text style={[styles.planRides, { color: colors.planRides }]}>{plan.rides} رحلة</Text>
                 </View>
                 <View>
-                  <Text style={styles.planName}>{plan.name}</Text>
-                  <View
-                    style={[
-                      styles.selectCircle,
-                      selectedPlan === plan.id && styles.selectCircleActive,
-                    ]}
-                  >
+                  <Text style={[styles.planName, { color: colors.planName }]}>{plan.name}</Text>
+                  <View style={[styles.selectCircle, selectedPlan === plan.id && styles.selectCircleActive]}>
                     {selectedPlan === plan.id && <View style={styles.selectDot} />}
                   </View>
                 </View>
               </View>
 
-              <View style={styles.featuresList}>
+              <View style={[styles.featuresList, { borderTopColor: colors.featureBorder }]}>
                 {plan.features.map((f, i) => (
                   <View key={i} style={styles.featureRow}>
-                    <Text style={styles.featureText}>{f}</Text>
+                    <Text style={[styles.featureText, { color: colors.featureText }]}>{f}</Text>
                     <Text style={styles.featureCheck}>✓</Text>
                   </View>
                 ))}
@@ -155,15 +163,15 @@ export default function SubscriptionScreen() {
 
         {/* Corporate Plans */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>خطط الشركات والمدارس</Text>
+          <Text style={[styles.sectionTitle, { color: colors.sectionTitle }]}>خطط الشركات والمدارس</Text>
           {corporatePlans.map((plan) => (
-            <TouchableOpacity key={plan.id} style={styles.corpCard}>
+            <TouchableOpacity key={plan.id} style={[styles.corpCard, { backgroundColor: colors.corpCard }]}>
               <View style={styles.corpLeft}>
                 <Text style={styles.corpPrice}>{plan.price}</Text>
               </View>
               <View style={styles.corpInfo}>
-                <Text style={styles.corpName}>{plan.name}</Text>
-                <Text style={styles.corpDesc}>{plan.desc}</Text>
+                <Text style={[styles.corpName, { color: colors.corpName }]}>{plan.name}</Text>
+                <Text style={[styles.corpDesc, { color: colors.corpDesc }]}>{plan.desc}</Text>
               </View>
               <Text style={styles.corpIcon}>{plan.icon}</Text>
             </TouchableOpacity>
@@ -184,227 +192,70 @@ export default function SubscriptionScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#1A0533",
-  },
+  container: { flex: 1, backgroundColor: "#1A0533" },
   header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    paddingHorizontal: 20, paddingVertical: 16, backgroundColor: "#1A0533",
   },
   backBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: "rgba(255,255,255,0.1)",
-    alignItems: "center",
-    justifyContent: "center",
+    width: 44, height: 44, borderRadius: 22,
+    backgroundColor: "rgba(255,255,255,0.1)", alignItems: "center", justifyContent: "center",
   },
-  backText: {
-    color: "#FFFFFF",
-    fontSize: 20,
-    fontWeight: "700",
-  },
-  headerTitle: {
-    color: "#FFFFFF",
-    fontSize: 20,
-    fontWeight: "800",
-  },
-  scroll: {
-    flex: 1,
-    backgroundColor: "#F5F7FA",
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-  },
-  hero: {
-    alignItems: "center",
-    paddingVertical: 28,
-    gap: 8,
-  },
-  heroEmoji: {
-    fontSize: 48,
-  },
-  heroTitle: {
-    color: "#1A0533",
-    fontSize: 22,
-    fontWeight: "800",
-  },
-  heroSubtitle: {
-    color: "#6B7A8D",
-    fontSize: 14,
-  },
-  section: {
-    paddingHorizontal: 16,
-    marginBottom: 20,
-  },
-  sectionTitle: {
-    color: "#1A0533",
-    fontSize: 16,
-    fontWeight: "800",
-    textAlign: "right",
-    marginBottom: 12,
-  },
+  backText: { color: "#FFFFFF", fontSize: 20, fontWeight: "700" },
+  headerTitle: { color: "#FFFFFF", fontSize: 20, fontWeight: "800" },
+  scroll: { flex: 1, borderTopLeftRadius: 28, borderTopRightRadius: 28 },
+  hero: { alignItems: "center", paddingVertical: 28, gap: 8 },
+  heroEmoji: { fontSize: 48 },
+  heroTitle: { fontSize: 22, fontWeight: "800" },
+  heroSubtitle: { fontSize: 14 },
+  section: { paddingHorizontal: 16, marginBottom: 20 },
+  sectionTitle: { fontSize: 16, fontWeight: "800", textAlign: "right", marginBottom: 12 },
   planCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 20,
-    padding: 18,
-    marginBottom: 12,
-    borderWidth: 2,
-    borderColor: "transparent",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 3,
-    position: "relative",
-    overflow: "hidden",
+    borderRadius: 20, padding: 18, marginBottom: 12, borderWidth: 2, borderColor: "transparent",
+    shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06,
+    shadowRadius: 8, elevation: 3, position: "relative", overflow: "hidden",
   },
-  planCardActive: {
-    borderColor: "#FFD700",
-  },
-  planCardPopular: {
-    borderColor: "#1A0533",
-  },
+  planCardActive: { borderColor: "#FFD700" },
+  planCardPopular: { borderColor: "#1A0533" },
   popularBadge: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    backgroundColor: "#1A0533",
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderBottomRightRadius: 12,
+    position: "absolute", top: 0, left: 0, backgroundColor: "#1A0533",
+    paddingHorizontal: 12, paddingVertical: 4, borderBottomRightRadius: 12,
   },
-  popularText: {
-    color: "#FFD700",
-    fontSize: 11,
-    fontWeight: "700",
-  },
+  popularText: { color: "#FFD700", fontSize: 11, fontWeight: "700" },
   planHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: 14,
-    marginTop: 8,
+    flexDirection: "row", justifyContent: "space-between",
+    alignItems: "flex-start", marginBottom: 14, marginTop: 8,
   },
-  planName: {
-    color: "#1A0533",
-    fontSize: 18,
-    fontWeight: "800",
-    textAlign: "right",
-    marginBottom: 6,
-  },
-  planPrice: {
-    fontSize: 20,
-    fontWeight: "800",
-  },
-  planPeriod: {
-    fontSize: 13,
-    fontWeight: "500",
-    color: "#6B7A8D",
-  },
-  planRides: {
-    color: "#6B7A8D",
-    fontSize: 13,
-    marginTop: 2,
-  },
+  planName: { fontSize: 18, fontWeight: "800", textAlign: "right", marginBottom: 6 },
+  planPrice: { fontSize: 20, fontWeight: "800" },
+  planPeriod: { fontSize: 13, fontWeight: "500" },
+  planRides: { fontSize: 13, marginTop: 2 },
   selectCircle: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 2,
-    borderColor: "#E2E8F0",
-    alignItems: "center",
-    justifyContent: "center",
-    alignSelf: "flex-end",
+    width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: "#E2E8F0",
+    alignItems: "center", justifyContent: "center", alignSelf: "flex-end",
   },
-  selectCircleActive: {
-    borderColor: "#FFD700",
-  },
-  selectDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: "#FFD700",
-  },
-  featuresList: {
-    gap: 8,
-    borderTopWidth: 1,
-    borderTopColor: "#F5F7FA",
-    paddingTop: 12,
-  },
-  featureRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  featureText: {
-    color: "#1A0533",
-    fontSize: 13,
-    textAlign: "right",
-  },
-  featureCheck: {
-    color: "#22C55E",
-    fontSize: 14,
-    fontWeight: "700",
-  },
+  selectCircleActive: { borderColor: "#FFD700" },
+  selectDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: "#FFD700" },
+  featuresList: { gap: 8, borderTopWidth: 1, paddingTop: 12 },
+  featureRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  featureText: { fontSize: 13, textAlign: "right" },
+  featureCheck: { color: "#22C55E", fontSize: 14, fontWeight: "700" },
   corpCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 10,
-    gap: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
+    flexDirection: "row", alignItems: "center", borderRadius: 16, padding: 16,
+    marginBottom: 10, gap: 12, shadowColor: "#000", shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05, shadowRadius: 4, elevation: 2,
   },
-  corpIcon: {
-    fontSize: 32,
-  },
-  corpInfo: {
-    flex: 1,
-    alignItems: "flex-end",
-  },
-  corpName: {
-    color: "#1A0533",
-    fontSize: 15,
-    fontWeight: "700",
-  },
-  corpDesc: {
-    color: "#6B7A8D",
-    fontSize: 12,
-    marginTop: 2,
-  },
-  corpLeft: {
-    alignItems: "flex-start",
-  },
-  corpPrice: {
-    color: "#FFD700",
-    fontSize: 13,
-    fontWeight: "700",
-  },
+  corpIcon: { fontSize: 32 },
+  corpInfo: { flex: 1, alignItems: "flex-end" },
+  corpName: { fontSize: 15, fontWeight: "700" },
+  corpDesc: { fontSize: 12, marginTop: 2 },
+  corpLeft: { alignItems: "flex-start" },
+  corpPrice: { color: "#FFD700", fontSize: 13, fontWeight: "700" },
   subscribeBtn: {
-    backgroundColor: "#FFD700",
-    borderRadius: 18,
-    paddingVertical: 18,
-    marginHorizontal: 16,
-    alignItems: "center",
-    shadowColor: "#FFD700",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
-    elevation: 8,
-    marginBottom: 16,
+    backgroundColor: "#FFD700", borderRadius: 18, paddingVertical: 18,
+    marginHorizontal: 16, alignItems: "center", shadowColor: "#FFD700",
+    shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.35,
+    shadowRadius: 10, elevation: 8, marginBottom: 16,
   },
-  subscribeBtnText: {
-    color: "#1A0533",
-    fontSize: 17,
-    fontWeight: "800",
-  },
+  subscribeBtnText: { color: "#1A0533", fontSize: 17, fontWeight: "800" },
 });

@@ -119,7 +119,7 @@ export default function LoginScreen() {
           بتسجيل دخولك، أنت توافق على{" "}
           <Text style={styles.termsLink}>شروط الاستخدام</Text>
           {" "}و{" "}
-          <Text style={styles.termsLink}>سياسة الخصوصية</Text>
+          <Text style={styles.termsLink} onPress={() => router.push("/privacy" as any)}>سياسة الخصوصية</Text>
         </Text>
       </ScrollView>
     </KeyboardAvoidingView>
