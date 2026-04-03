@@ -70,9 +70,18 @@ export default function HomeScreen() {
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <TouchableOpacity onPress={() => router.push("/(tabs)/profile" as any)}>
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>م</Text>
-            </View>
+            {passenger?.photoUrl ? (
+              <Image
+                source={{ uri: passenger.photoUrl }}
+                style={styles.avatarImage}
+              />
+            ) : (
+              <View style={styles.avatar}>
+                <Text style={styles.avatarText}>
+                  {passenger?.name ? passenger.name.charAt(0).toUpperCase() : "م"}
+                </Text>
+              </View>
+            )}
           </TouchableOpacity>
           <View>
             <Text style={styles.greeting}>مرحباً 👋</Text>
@@ -196,6 +205,13 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFD700",
     alignItems: "center",
     justifyContent: "center",
+  },
+  avatarImage: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 2,
+    borderColor: "#FFD700",
   },
   avatarText: {
     color: "#1A0533",
