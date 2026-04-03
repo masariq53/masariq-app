@@ -13,7 +13,7 @@ import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import MapView, { Marker, Circle, PROVIDER_DEFAULT } from "react-native-maps";
-import { usePassenger } from "@/lib/passenger-context";
+import { useDriver } from "@/lib/driver-context";
 import { useLocation } from "@/hooks/use-location";
 
 const { width } = Dimensions.get("window");
@@ -49,14 +49,14 @@ const DEMO_REQUEST = {
 
 export default function CaptainHomeScreen() {
   const insets = useSafeAreaInsets();
-  const { driver } = usePassenger();
+  const { driver, logout } = useDriver();
   const { coords, isRealLocation } = useLocation();
   const [isOnline, setIsOnline] = useState(false);
   const [showRequest, setShowRequest] = useState(false);
   const [requestTimer, setRequestTimer] = useState(25);
-  const [todayEarnings] = useState(47500);
-  const [todayTrips] = useState(8);
-  const [rating] = useState(4.9);
+  const todayEarnings = 0; // سيُربط بـ API لاحقاً
+  const todayTrips = driver?.totalRides ?? 0;
+  const rating = parseFloat(driver?.rating ?? "4.9");
   const timerAnim = useRef(new Animated.Value(1)).current;
   const mapRef = useRef<MapView>(null);
 
@@ -168,7 +168,7 @@ export default function CaptainHomeScreen() {
             <Text style={styles.logoText}>م</Text>
           </View>
           <View>
-            <Text style={styles.headerName}>كابتن أحمد</Text>
+            <Text style={styles.headerName}>{driver?.name ?? "كابتن مسار"}</Text>
             <View style={styles.ratingRow}>
               <Text style={styles.star}>⭐</Text>
               <Text style={styles.ratingText}>{rating}</Text>

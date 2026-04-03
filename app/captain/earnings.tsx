@@ -1,44 +1,84 @@
-import React, { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   ScrollView,
+  FlatList,
+  ActivityIndicator,
   Dimensions,
 } from "react-native";
 import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useDriver } from "@/lib/driver-context";
+import { trpc } from "@/lib/trpc";
 
 const { width } = Dimensions.get("window");
 
-const weekData = [
-  { day: "السبت", amount: 42000, trips: 7 },
-  { day: "الأحد", amount: 55000, trips: 9 },
-  { day: "الاثنين", amount: 38000, trips: 6 },
-  { day: "الثلاثاء", amount: 61000, trips: 10 },
-  { day: "الأربعاء", amount: 47500, trips: 8 },
-  { day: "الخميس", amount: 72000, trips: 12 },
-  { day: "الجمعة", amount: 35000, trips: 5 },
-];
+function formatDate(isoStr: string) {
+  const d = new Date(isoStr);
+  const now = new Date();
+  const diffMs = now.getTime() - d.getTime();
+  const diffH = Math.floor(diffMs / 3600000);
+  const diffD = Math.floor(diffMs / 86400000);
+  if (diffH < 1) return "منذ قليل";
+  if (diffH < 24) return `منذ ${diffH} ساعة`;
+  if (diffD === 1) return "أمس";
+  return d.toLocaleDateString("ar-IQ", { month: "short", day: "numeric" });
+}
 
-const maxAmount = Math.max(...weekData.map((d) => d.amount));
-
-const transactions = [
-  { id: "1", type: "ride", name: "محمد علي", amount: 8000, time: "منذ ساعة", icon: "🚗" },
-  { id: "2", type: "ride", name: "سارة أحمد", amount: 12000, time: "منذ 2 ساعة", icon: "🚗" },
-  { id: "3", type: "delivery", name: "توصيل طرد", amount: 5000, time: "منذ 3 ساعات", icon: "📦" },
-  { id: "4", type: "ride", name: "عمر خالد", amount: 9500, time: "منذ 4 ساعات", icon: "🚗" },
-  { id: "5", type: "ride", name: "فاطمة حسن", amount: 13000, time: "أمس", icon: "🚗" },
-];
+function getStatusLabel(status: string) {
+  const map: Record<string, string> = {
+    completed: "مكتملة ✅",
+    cancelled: "ملغاة ❌",
+    in_progress: "جارية 🚗",
+    accepted: "مقبولة",
+    searching: "بحث",
+    driver_arrived: "وصلت",
+  };
+  return map[status] ?? status;
+}
 
 export default function CaptainEarningsScreen() {
   const insets = useSafeAreaInsets();
+  const { driver } = useDriver();
   const [activeTab, setActiveTab] = useState<"day" | "week" | "month">("week");
 
-  const totalWeek = weekData.reduce((sum, d) => sum + d.amount, 0);
-  const totalTrips = weekData.reduce((sum, d) => sum + d.trips, 0);
+  const { data, isLoading, refetch } = trpc.driver.getTrips.useQuery(
+    { driverId: driver?.id ?? 0, limit: 50 },
+    { enabled: !!driver?.id }
+  );
+
+  const trips = data?.trips ?? [];
+  const totalEarnings = data?.totalEarnings ?? 0;
+  const totalTrips = data?.totalTrips ?? 0;
+
+  // Filter by period
+  const filteredTrips = useMemo(() => {
+    const now = new Date();
+    return trips.filter((t) => {
+      const d = new Date(t.createdAt);
+      const diffMs = now.getTime() - d.getTime();
+      if (activeTab === "day") return diffMs < 86400000;
+      if (activeTab === "week") return diffMs < 7 * 86400000;
+      return diffMs < 30 * 86400000;
+    });
+  }, [trips, activeTab]);
+
+  const periodEarnings = filteredTrips
+    .filter((t) => t.status === "completed")
+    .reduce((sum, t) => sum + parseFloat(t.fare), 0);
+
+  const periodTrips = filteredTrips.filter((t) => t.status === "completed").length;
+  const avgPerTrip = periodTrips > 0 ? Math.round(periodEarnings / periodTrips) : 0;
+
+  const TABS = [
+    { key: "day", label: "اليوم" },
+    { key: "week", label: "الأسبوع" },
+    { key: "month", label: "الشهر" },
+  ] as const;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -50,313 +90,201 @@ export default function CaptainEarningsScreen() {
           <Text style={styles.backIcon}>→</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>أرباحي</Text>
-        <TouchableOpacity style={styles.withdrawBtn}>
-          <Text style={styles.withdrawText}>سحب</Text>
-        </TouchableOpacity>
+        <View style={{ width: 44 }} />
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false}>
-        {/* Total Earnings Card */}
-        <View style={styles.totalCard}>
-          <Text style={styles.totalLabel}>إجمالي الأسبوع</Text>
-          <View style={styles.totalRow}>
-            <Text style={styles.totalAmount}>{totalWeek.toLocaleString()}</Text>
-            <Text style={styles.totalCurrency}>د.ع</Text>
+        {/* Driver Info */}
+        <View style={styles.driverCard}>
+          <View style={styles.driverAvatar}>
+            <Text style={styles.driverAvatarText}>
+              {driver?.name?.charAt(0) ?? "ك"}
+            </Text>
           </View>
-          <View style={styles.totalStats}>
-            <View style={styles.totalStat}>
-              <Text style={styles.totalStatValue}>{totalTrips}</Text>
-              <Text style={styles.totalStatLabel}>رحلة</Text>
-            </View>
-            <View style={styles.totalStatDivider} />
-            <View style={styles.totalStat}>
-              <Text style={styles.totalStatValue}>
-                {Math.round(totalWeek / totalTrips).toLocaleString()}
-              </Text>
-              <Text style={styles.totalStatLabel}>متوسط/رحلة</Text>
-            </View>
-            <View style={styles.totalStatDivider} />
-            <View style={styles.totalStat}>
-              <Text style={[styles.totalStatValue, { color: "#22C55E" }]}>+12%</Text>
-              <Text style={styles.totalStatLabel}>مقارنة بالأسبوع</Text>
-            </View>
+          <View>
+            <Text style={styles.driverName}>{driver?.name ?? "كابتن مسار"}</Text>
+            <Text style={styles.driverMeta}>
+              ⭐ {driver?.rating ?? "4.9"} · {driver?.vehicleModel ?? "سيارة مسار"}
+            </Text>
+          </View>
+          <View style={styles.walletBox}>
+            <Text style={styles.walletLabel}>المحفظة</Text>
+            <Text style={styles.walletValue}>
+              {parseFloat(driver?.walletBalance ?? "0").toLocaleString("ar-IQ")}
+            </Text>
+            <Text style={styles.walletCurrency}>دينار</Text>
           </View>
         </View>
 
         {/* Period Tabs */}
-        <View style={styles.tabsContainer}>
-          {(["day", "week", "month"] as const).map((tab) => (
+        <View style={styles.tabsRow}>
+          {TABS.map((tab) => (
             <TouchableOpacity
-              key={tab}
-              style={[styles.tab, activeTab === tab && styles.tabActive]}
-              onPress={() => setActiveTab(tab)}
+              key={tab.key}
+              style={[styles.tab, activeTab === tab.key && styles.tabActive]}
+              onPress={() => setActiveTab(tab.key)}
             >
-              <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>
-                {tab === "day" ? "اليوم" : tab === "week" ? "الأسبوع" : "الشهر"}
+              <Text style={[styles.tabText, activeTab === tab.key && styles.tabTextActive]}>
+                {tab.label}
               </Text>
             </TouchableOpacity>
           ))}
         </View>
 
-        {/* Bar Chart */}
-        <View style={styles.chartContainer}>
-          <Text style={styles.chartTitle}>أرباح الأسبوع</Text>
-          <View style={styles.chart}>
-            {weekData.map((d, i) => (
-              <View key={i} style={styles.barGroup}>
-                <Text style={styles.barAmount}>
-                  {Math.round(d.amount / 1000)}k
-                </Text>
-                <View style={styles.barWrapper}>
-                  <View
-                    style={[
-                      styles.bar,
-                      {
-                        height: (d.amount / maxAmount) * 100,
-                        backgroundColor: i === 4 ? "#FFD700" : "#3D2580",
-                      },
-                    ]}
-                  />
-                </View>
-                <Text style={styles.barDay}>{d.day.slice(0, 3)}</Text>
-              </View>
-            ))}
+        {/* Earnings Summary */}
+        <View style={styles.totalCard}>
+          <Text style={styles.totalLabel}>
+            إجمالي {activeTab === "day" ? "اليوم" : activeTab === "week" ? "الأسبوع" : "الشهر"}
+          </Text>
+          <View style={styles.totalRow}>
+            <Text style={styles.totalAmount}>{periodEarnings.toLocaleString("ar-IQ")}</Text>
+            <Text style={styles.totalCurrency}>د.ع</Text>
+          </View>
+          <View style={styles.totalStats}>
+            <View style={styles.totalStat}>
+              <Text style={styles.totalStatValue}>{periodTrips}</Text>
+              <Text style={styles.totalStatLabel}>رحلة</Text>
+            </View>
+            <View style={styles.totalStatDivider} />
+            <View style={styles.totalStat}>
+              <Text style={styles.totalStatValue}>
+                {avgPerTrip.toLocaleString("ar-IQ")}
+              </Text>
+              <Text style={styles.totalStatLabel}>متوسط/رحلة</Text>
+            </View>
+            <View style={styles.totalStatDivider} />
+            <View style={styles.totalStat}>
+              <Text style={styles.totalStatValue}>{driver?.totalRides ?? 0}</Text>
+              <Text style={styles.totalStatLabel}>إجمالي الرحلات</Text>
+            </View>
           </View>
         </View>
 
-        {/* Recent Transactions */}
-        <View style={styles.transactionsSection}>
-          <Text style={styles.sectionTitle}>آخر المعاملات</Text>
-          {transactions.map((t) => (
-            <View key={t.id} style={styles.transactionCard}>
-              <View style={styles.transactionIcon}>
-                <Text style={styles.transactionEmoji}>{t.icon}</Text>
-              </View>
-              <View style={styles.transactionInfo}>
-                <Text style={styles.transactionName}>{t.name}</Text>
-                <Text style={styles.transactionTime}>{t.time}</Text>
-              </View>
-              <Text style={styles.transactionAmount}>+{t.amount.toLocaleString()} د.ع</Text>
+        {/* Trips List */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>سجل الرحلات</Text>
+
+          {isLoading ? (
+            <ActivityIndicator color="#FFD700" style={{ marginTop: 32 }} />
+          ) : filteredTrips.length === 0 ? (
+            <View style={styles.emptyBox}>
+              <Text style={styles.emptyIcon}>🚗</Text>
+              <Text style={styles.emptyText}>لا توجد رحلات في هذه الفترة</Text>
             </View>
-          ))}
+          ) : (
+            filteredTrips.map((trip) => (
+              <View key={trip.id} style={styles.tripCard}>
+                <View style={styles.tripIcon}>
+                  <Text style={{ fontSize: 22 }}>🚗</Text>
+                </View>
+                <View style={styles.tripInfo}>
+                  <Text style={styles.tripRoute} numberOfLines={1}>
+                    {trip.pickupAddress} ← {trip.dropoffAddress}
+                  </Text>
+                  <Text style={styles.tripMeta}>
+                    {getStatusLabel(trip.status)} · {formatDate(trip.createdAt)}
+                  </Text>
+                </View>
+                <View style={styles.tripFare}>
+                  <Text style={[
+                    styles.tripAmount,
+                    trip.status !== "completed" && { color: "#6B7280" },
+                  ]}>
+                    {trip.status === "completed"
+                      ? `+${parseFloat(trip.fare).toLocaleString("ar-IQ")}`
+                      : "—"}
+                  </Text>
+                  {trip.status === "completed" && (
+                    <Text style={styles.tripCurrency}>دينار</Text>
+                  )}
+                </View>
+              </View>
+            ))
+          )}
         </View>
 
-        <View style={{ height: 40 }} />
+        <View style={{ height: 32 }} />
       </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#1A0533",
-  },
+  container: { flex: 1, backgroundColor: "#0F0A1E" },
+
   header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    paddingHorizontal: 20, paddingVertical: 14,
+    borderBottomWidth: 1, borderBottomColor: "#1E1035",
   },
   backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#2D1B69",
-    alignItems: "center",
-    justifyContent: "center",
+    width: 44, height: 44, borderRadius: 22,
+    backgroundColor: "#1E1035", alignItems: "center", justifyContent: "center",
   },
-  backIcon: {
-    color: "#FFD700",
-    fontSize: 18,
-    fontWeight: "bold",
+  backIcon: { color: "#FFD700", fontSize: 20, fontWeight: "bold" },
+  headerTitle: { color: "#FFFFFF", fontSize: 20, fontWeight: "800" },
+
+  driverCard: {
+    flexDirection: "row", alignItems: "center", gap: 12,
+    margin: 20, backgroundColor: "#1E1035", borderRadius: 18,
+    padding: 16, borderWidth: 1, borderColor: "#2D1B4E",
   },
-  headerTitle: {
-    color: "#FFFFFF",
-    fontSize: 20,
-    fontWeight: "bold",
+  driverAvatar: {
+    width: 50, height: 50, borderRadius: 25,
+    backgroundColor: "#FFD700", alignItems: "center", justifyContent: "center",
   },
-  withdrawBtn: {
-    backgroundColor: "#FFD700",
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
+  driverAvatarText: { fontSize: 22, fontWeight: "900", color: "#1A0533" },
+  driverName: { fontSize: 16, fontWeight: "800", color: "#FFFFFF" },
+  driverMeta: { fontSize: 12, color: "#9B8EC4", marginTop: 2 },
+  walletBox: { marginLeft: "auto", alignItems: "center" },
+  walletLabel: { fontSize: 11, color: "#6B7280" },
+  walletValue: { fontSize: 18, fontWeight: "900", color: "#22C55E" },
+  walletCurrency: { fontSize: 11, color: "#9B8EC4" },
+
+  tabsRow: {
+    flexDirection: "row", marginHorizontal: 20, marginBottom: 16,
+    backgroundColor: "#1E1035", borderRadius: 14, padding: 4,
   },
-  withdrawText: {
-    color: "#1A0533",
-    fontSize: 14,
-    fontWeight: "bold",
-  },
+  tab: { flex: 1, paddingVertical: 10, alignItems: "center", borderRadius: 10 },
+  tabActive: { backgroundColor: "#FFD700" },
+  tabText: { color: "#6B7280", fontSize: 14, fontWeight: "600" },
+  tabTextActive: { color: "#1A0533", fontWeight: "800" },
+
   totalCard: {
-    margin: 20,
-    backgroundColor: "#2D1B69",
-    borderRadius: 24,
-    padding: 24,
-    borderWidth: 1,
-    borderColor: "#FFD700",
-    shadowColor: "#FFD700",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-    elevation: 8,
+    marginHorizontal: 20, marginBottom: 20,
+    backgroundColor: "#1E1035", borderRadius: 20, padding: 20,
+    borderWidth: 1, borderColor: "#2D1B4E",
   },
-  totalLabel: {
-    color: "#9B8AB0",
-    fontSize: 13,
-    textAlign: "center",
-    marginBottom: 8,
-  },
-  totalRow: {
-    flexDirection: "row",
-    alignItems: "baseline",
-    justifyContent: "center",
-    gap: 8,
-    marginBottom: 20,
-  },
-  totalAmount: {
-    color: "#FFD700",
-    fontSize: 42,
-    fontWeight: "bold",
-  },
-  totalCurrency: {
-    color: "#9B8AB0",
-    fontSize: 16,
-  },
-  totalStats: {
-    flexDirection: "row",
-    justifyContent: "space-around",
-    alignItems: "center",
-  },
+  totalLabel: { color: "#9B8EC4", fontSize: 13, marginBottom: 8 },
+  totalRow: { flexDirection: "row", alignItems: "baseline", gap: 6, marginBottom: 16 },
+  totalAmount: { color: "#FFD700", fontSize: 40, fontWeight: "900" },
+  totalCurrency: { color: "#9B8EC4", fontSize: 16 },
+  totalStats: { flexDirection: "row", justifyContent: "space-around" },
   totalStat: { alignItems: "center" },
-  totalStatValue: {
-    color: "#FFFFFF",
-    fontSize: 16,
-    fontWeight: "bold",
+  totalStatValue: { color: "#FFFFFF", fontSize: 20, fontWeight: "800" },
+  totalStatLabel: { color: "#6B7280", fontSize: 12, marginTop: 2 },
+  totalStatDivider: { width: 1, backgroundColor: "#2D1B4E" },
+
+  section: { paddingHorizontal: 20 },
+  sectionTitle: { color: "#FFFFFF", fontSize: 16, fontWeight: "800", marginBottom: 14 },
+
+  emptyBox: { alignItems: "center", paddingVertical: 40 },
+  emptyIcon: { fontSize: 48, marginBottom: 12 },
+  emptyText: { color: "#6B7280", fontSize: 15 },
+
+  tripCard: {
+    flexDirection: "row", alignItems: "center", gap: 12,
+    backgroundColor: "#1E1035", borderRadius: 14, padding: 14,
+    marginBottom: 10, borderWidth: 1, borderColor: "#2D1B4E",
   },
-  totalStatLabel: {
-    color: "#9B8AB0",
-    fontSize: 10,
-    marginTop: 2,
+  tripIcon: {
+    width: 44, height: 44, borderRadius: 22,
+    backgroundColor: "#2D1B4E", alignItems: "center", justifyContent: "center",
   },
-  totalStatDivider: {
-    width: 1,
-    height: 30,
-    backgroundColor: "#3D2580",
-  },
-  tabsContainer: {
-    flexDirection: "row",
-    marginHorizontal: 20,
-    backgroundColor: "#2D1B69",
-    borderRadius: 14,
-    padding: 4,
-    marginBottom: 20,
-  },
-  tab: {
-    flex: 1,
-    paddingVertical: 10,
-    alignItems: "center",
-    borderRadius: 10,
-  },
-  tabActive: {
-    backgroundColor: "#FFD700",
-  },
-  tabText: {
-    color: "#9B8AB0",
-    fontSize: 13,
-    fontWeight: "600",
-  },
-  tabTextActive: {
-    color: "#1A0533",
-  },
-  chartContainer: {
-    marginHorizontal: 20,
-    backgroundColor: "#2D1B69",
-    borderRadius: 20,
-    padding: 20,
-    marginBottom: 20,
-  },
-  chartTitle: {
-    color: "#FFFFFF",
-    fontSize: 15,
-    fontWeight: "bold",
-    marginBottom: 16,
-    textAlign: "right",
-  },
-  chart: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    justifyContent: "space-between",
-    height: 130,
-  },
-  barGroup: {
-    alignItems: "center",
-    flex: 1,
-  },
-  barAmount: {
-    color: "#9B8AB0",
-    fontSize: 9,
-    marginBottom: 4,
-  },
-  barWrapper: {
-    height: 100,
-    justifyContent: "flex-end",
-    width: "70%",
-  },
-  bar: {
-    width: "100%",
-    borderRadius: 6,
-    minHeight: 8,
-  },
-  barDay: {
-    color: "#9B8AB0",
-    fontSize: 9,
-    marginTop: 6,
-  },
-  transactionsSection: {
-    paddingHorizontal: 20,
-  },
-  sectionTitle: {
-    color: "#FFFFFF",
-    fontSize: 17,
-    fontWeight: "bold",
-    marginBottom: 14,
-    textAlign: "right",
-  },
-  transactionCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#2D1B69",
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 10,
-    gap: 12,
-    borderWidth: 1,
-    borderColor: "#3D2580",
-  },
-  transactionIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: "#1A0533",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  transactionEmoji: { fontSize: 22 },
-  transactionInfo: { flex: 1 },
-  transactionName: {
-    color: "#FFFFFF",
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  transactionTime: {
-    color: "#9B8AB0",
-    fontSize: 12,
-    marginTop: 2,
-  },
-  transactionAmount: {
-    color: "#22C55E",
-    fontSize: 14,
-    fontWeight: "bold",
-  },
+  tripInfo: { flex: 1 },
+  tripRoute: { color: "#FFFFFF", fontSize: 14, fontWeight: "700" },
+  tripMeta: { color: "#6B7280", fontSize: 12, marginTop: 3 },
+  tripFare: { alignItems: "flex-end" },
+  tripAmount: { color: "#22C55E", fontSize: 16, fontWeight: "800" },
+  tripCurrency: { color: "#6B7280", fontSize: 11 },
 });

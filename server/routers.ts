@@ -590,6 +590,39 @@ export const appRouter = router({
       }),
 
     /**
+     * Get driver trips history
+     */
+    getTrips: publicProcedure
+      .input(z.object({ driverId: z.number(), limit: z.number().default(20) }))
+      .query(async ({ input }) => {
+        const db = await (await import("./db")).getDb();
+        if (!db) return { trips: [], totalEarnings: 0, totalTrips: 0 };
+        const { rides } = await import("../drizzle/schema");
+        const { eq, desc, and, inArray } = await import("drizzle-orm");
+        const driverRides = await db
+          .select()
+          .from(rides)
+          .where(eq(rides.driverId, input.driverId))
+          .orderBy(desc(rides.createdAt))
+          .limit(input.limit);
+        const completedRides = driverRides.filter(r => r.status === "completed");
+        const totalEarnings = completedRides.reduce((sum, r) => sum + parseFloat(r.fare ?? "0"), 0);
+        return {
+          trips: driverRides.map(r => ({
+            id: r.id,
+            status: r.status,
+            fare: r.fare ?? "0",
+            pickupAddress: r.pickupAddress ?? "الموصل",
+            dropoffAddress: r.dropoffAddress ?? "الوجهة",
+            createdAt: r.createdAt?.toISOString() ?? new Date().toISOString(),
+            distance: "0",
+          })),
+          totalEarnings,
+          totalTrips: completedRides.length,
+        };
+      }),
+
+    /**
      * Get driver full profile by ID
      */
     getProfile: publicProcedure

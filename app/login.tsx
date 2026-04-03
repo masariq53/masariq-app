@@ -104,14 +104,23 @@ export default function LoginScreen() {
             <View style={styles.orLine} />
           </View>
 
-          {/* Captain Register */}
-          <TouchableOpacity
-            style={styles.captainBtn}
-            onPress={() => router.push("/driver/register")}
-          >
-            <Text style={styles.captainIcon}>🚗</Text>
-            <Text style={styles.captainText}>سجّل كـ كابتن</Text>
-          </TouchableOpacity>
+          {/* Captain Buttons Row */}
+          <View style={styles.captainRow}>
+            <TouchableOpacity
+              style={[styles.captainBtn, styles.captainBtnHalf]}
+              onPress={() => router.push("/driver/login" as any)}
+            >
+              <Text style={styles.captainIcon}>🔑</Text>
+              <Text style={styles.captainText}>دخول كابتن</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.captainBtn, styles.captainBtnHalf, { borderColor: '#C4B5D4' }]}
+              onPress={() => router.push("/driver/register" as any)}
+            >
+              <Text style={styles.captainIcon}>🚗</Text>
+              <Text style={[styles.captainText, { color: '#C4B5D4' }]}>تسجيل كابتن</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Terms */}
@@ -296,6 +305,13 @@ const styles = StyleSheet.create({
     color: "#6B5B8A",
     fontSize: 13,
   },
+  captainRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  captainBtnHalf: {
+    flex: 1,
+  },
   captainBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -304,7 +320,7 @@ const styles = StyleSheet.create({
     borderColor: "#FFD700",
     borderRadius: 14,
     paddingVertical: 14,
-    gap: 10,
+    gap: 8,
   },
   captainIcon: {
     fontSize: 20,
