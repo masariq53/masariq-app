@@ -16,6 +16,9 @@ export default function TripSummaryScreen() {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <StatusBar style="light" />
+      <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+        <Text style={styles.backBtnText}>← رجوع</Text>
+      </TouchableOpacity>
 
       {/* Success Icon */}
       <View style={styles.successSection}>
@@ -110,6 +113,8 @@ const styles = StyleSheet.create({
     backgroundColor: "#1A0533",
     paddingHorizontal: 24,
   },
+  backBtn: { flexDirection: "row", alignItems: "center", paddingVertical: 8, marginBottom: 4 },
+  backBtnText: { color: "#9B8EC4", fontSize: 15, fontWeight: "600" },
   successSection: {
     alignItems: "center",
     paddingVertical: 32,

@@ -157,6 +157,9 @@ export default function CaptainActiveTripScreen() {
       )}
 
       {/* شريط الحالة العلوي */}
+      <TouchableOpacity style={[styles.backBtn, { top: insets.top + 8, left: 16 }]} onPress={() => router.back()}>
+        <Text style={styles.backBtnText}>←</Text>
+      </TouchableOpacity>
       <View style={[styles.statusBar, { top: insets.top + 8 }]}>
         <View style={[styles.statusDot, phase === "in_trip" && styles.statusDotGreen]} />
         <Text style={styles.statusTitle}>{config.title}</Text>
@@ -224,6 +227,8 @@ export default function CaptainActiveTripScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#1A0533" },
+  backBtn: { position: "absolute", zIndex: 10, width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(26,5,51,0.9)", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#3D2070" },
+  backBtnText: { color: "#FFFFFF", fontSize: 20, fontWeight: "bold" },
   map: { flex: 1 },
   webMap: {
     backgroundColor: "#2D1B4E",

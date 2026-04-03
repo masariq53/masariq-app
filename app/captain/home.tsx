@@ -160,6 +160,9 @@ export default function CaptainHomeScreen() {
 
       {/* Header */}
       <View style={[styles.header, { top: insets.top + 8 }]}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+          <Text style={styles.backBtnText}>←</Text>
+        </TouchableOpacity>
         <View style={styles.headerLeft}>
           <View style={styles.logoSmall}>
             <Text style={styles.logoText}>م</Text>
@@ -327,6 +330,8 @@ const styles = StyleSheet.create({
     borderColor: "#3D2070",
   },
   headerLeft: { flexDirection: "row", alignItems: "center", gap: 10 },
+  backBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: "rgba(108,63,197,0.3)", alignItems: "center", justifyContent: "center", marginLeft: 4 },
+  backBtnText: { color: "#FFFFFF", fontSize: 20, fontWeight: "bold" },
   logoSmall: {
     width: 36,
     height: 36,
