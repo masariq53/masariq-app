@@ -71,12 +71,15 @@ export default function TrackingScreen() {
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const mapRef = useRef<MapView>(null);
   const prevStepRef = useRef(0);
+  const navigatedToRatingRef = useRef(false); // منع الانتقال مرتين
+
+  const [completed, setCompleted] = useState(false);
 
   // Polling حقيقي لحالة الرحلة كل 5 ثوانٍ
   const rideQuery = trpc.rides.passengerActiveRide.useQuery(
     { passengerId: passengerId ?? 0 },
     {
-      enabled: !!passengerId && !cancelled,
+      enabled: !!passengerId && !cancelled && !completed,
       refetchInterval: 5000,
       staleTime: 0,
     }
@@ -119,20 +122,25 @@ export default function TrackingScreen() {
       }
     }
 
-    // انتقل لشاشة التقييم عند الاكتمال
-    if (ride.status === "completed") {
+    // انتقل لشاشة التقييم عند الاكتمال - مرة واحدة فقط
+    if (ride.status === "completed" && !navigatedToRatingRef.current) {
+      navigatedToRatingRef.current = true;
+      setCompleted(true); // إيقاف الـ polling
+      setCurrentStep(4); // عرض مرحلة "وصلت" فوراً
+      const navParams = {
+        driverName: ride.driver?.name ?? "السائق",
+        driverAvatar: "👨",
+        driverRating: ride.driver?.rating?.toString() ?? "5.0",
+        fare: (ride.fare ?? fare).toString(),
+        rideId: rideId.toString(),
+      };
+      // انتظر 1.8 ثانية حتى يرى الراكب رسالة "وصلت“ ثم ينتقل
       setTimeout(() => {
         router.replace({
           pathname: "/ride/rating" as any,
-          params: {
-            driverName: ride.driver?.name ?? "السائق",
-            driverAvatar: "👨",
-            driverRating: ride.driver?.rating ?? "5.0",
-            fare: (ride.fare ?? fare).toString(),
-            rideId: rideId.toString(),
-          },
+          params: navParams,
         });
-      }, 1500);
+      }, 1800);
     }
   }, [ride?.status]);
 

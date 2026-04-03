@@ -604,7 +604,7 @@ export const appRouter = router({
           .where(
             andOp(
               eqOp(ridesTable.passengerId, input.passengerId),
-              inArrayOp(ridesTable.status, ["searching", "accepted", "driver_arrived", "in_progress"])
+              inArrayOp(ridesTable.status, ["searching", "accepted", "driver_arrived", "in_progress", "completed"])
             )
           )
           .limit(1);
