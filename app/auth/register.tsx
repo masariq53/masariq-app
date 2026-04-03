@@ -15,30 +15,59 @@ import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { trpc } from "@/lib/trpc";
 
-export default function LoginScreen() {
+export default function RegisterScreen() {
+  const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
-  const [error, setError] = useState("");
+  const [nameError, setNameError] = useState("");
+  const [phoneError, setPhoneError] = useState("");
 
-  const sendLogin = trpc.otp.sendLogin.useMutation({
+  const sendRegister = trpc.otp.sendRegister.useMutation({
     onSuccess: (data) => {
       router.push({
         pathname: "/auth/otp",
-        params: { phone: data.phone, devCode: data.devCode || "", mode: "login" },
+        params: {
+          phone: data.phone,
+          name: data.name,
+          devCode: data.devCode || "",
+          mode: "register",
+        },
       });
     },
     onError: (err) => {
-      setError(err.message || "حدث خطأ، يرجى المحاولة مرة أخرى");
+      setPhoneError(err.message || "حدث خطأ، يرجى المحاولة مرة أخرى");
     },
   });
 
-  const handleSendOTP = () => {
+  const validate = () => {
+    let valid = true;
+
+    // التحقق من الاسم
+    const trimmedName = name.trim();
+    if (trimmedName.length < 2) {
+      setNameError("الاسم يجب أن يكون حرفين على الأقل");
+      valid = false;
+    } else if (trimmedName.length > 30) {
+      setNameError("الاسم يجب أن لا يتجاوز 30 حرفاً");
+      valid = false;
+    } else {
+      setNameError("");
+    }
+
+    // التحقق من الرقم
     const cleaned = phone.replace(/\s/g, "");
     if (cleaned.length < 10 || cleaned.length > 11) {
-      setError("رقم الهاتف يجب أن يكون 10 أو 11 رقماً");
-      return;
+      setPhoneError("رقم الهاتف يجب أن يكون 10 أو 11 رقماً");
+      valid = false;
+    } else {
+      setPhoneError("");
     }
-    setError("");
-    sendLogin.mutate({ phone: cleaned });
+
+    return valid;
+  };
+
+  const handleRegister = () => {
+    if (!validate()) return;
+    sendRegister.mutate({ phone: phone.replace(/\s/g, ""), name: name.trim() });
   };
 
   return (
@@ -48,6 +77,11 @@ export default function LoginScreen() {
     >
       <StatusBar style="light" />
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+        {/* Back Button */}
+        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+          <Text style={styles.backText}>→ رجوع</Text>
+        </TouchableOpacity>
+
         {/* Header */}
         <View style={styles.header}>
           <Image
@@ -56,16 +90,41 @@ export default function LoginScreen() {
             resizeMode="contain"
           />
           <Text style={styles.appName}>مسار</Text>
-          <Text style={styles.tagline}>تنقل بأمان وراحة</Text>
+          <Text style={styles.tagline}>إنشاء حساب جديد</Text>
         </View>
 
         {/* Card */}
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>تسجيل الدخول</Text>
-          <Text style={styles.cardSubtitle}>أدخل رقم هاتفك المسجل</Text>
+          <Text style={styles.cardTitle}>أهلاً بك!</Text>
+          <Text style={styles.cardSubtitle}>أدخل اسمك ورقم هاتفك لإنشاء حساب</Text>
+
+          {/* Name Input */}
+          <Text style={styles.label}>الاسم</Text>
+          <View style={[styles.inputContainer, nameError ? styles.inputError : null]}>
+            <Text style={styles.inputIcon}>👤</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="اسمك الكامل"
+              placeholderTextColor="#9BA1A6"
+              value={name}
+              onChangeText={(t) => {
+                // حد أقصى 30 حرف
+                if (t.length <= 30) {
+                  setName(t);
+                  setNameError("");
+                }
+              }}
+              maxLength={30}
+              textAlign="right"
+              returnKeyType="next"
+            />
+            <Text style={styles.charCount}>{name.length}/30</Text>
+          </View>
+          {nameError ? <Text style={styles.errorText}>{nameError}</Text> : null}
 
           {/* Phone Input */}
-          <View style={[styles.inputContainer, error ? styles.inputError : null]}>
+          <Text style={styles.label}>رقم الهاتف</Text>
+          <View style={[styles.inputContainer, phoneError ? styles.inputError : null]}>
             <Text style={styles.flag}>🇮🇶</Text>
             <Text style={styles.countryCode}>+964</Text>
             <TextInput
@@ -75,61 +134,44 @@ export default function LoginScreen() {
               keyboardType="phone-pad"
               value={phone}
               onChangeText={(t) => {
-                // أرقام فقط، حد أقصى 11
                 const nums = t.replace(/[^0-9]/g, "").slice(0, 11);
                 setPhone(nums);
-                setError("");
+                setPhoneError("");
               }}
               maxLength={11}
               textAlign="left"
               returnKeyType="done"
-              onSubmitEditing={handleSendOTP}
+              onSubmitEditing={handleRegister}
             />
           </View>
+          {phoneError ? <Text style={styles.errorText}>{phoneError}</Text> : null}
 
-          {error ? <Text style={styles.errorText}>{error}</Text> : null}
-
-          {/* Send OTP Button */}
+          {/* Register Button */}
           <TouchableOpacity
-            style={[styles.btn, sendLogin.isPending && styles.btnDisabled]}
-            onPress={handleSendOTP}
-            disabled={sendLogin.isPending}
+            style={[styles.btn, sendRegister.isPending && styles.btnDisabled]}
+            onPress={handleRegister}
+            disabled={sendRegister.isPending}
           >
-            {sendLogin.isPending ? (
+            {sendRegister.isPending ? (
               <ActivityIndicator color="#1A0533" />
             ) : (
-              <Text style={styles.btnText}>إرسال رمز التحقق</Text>
+              <Text style={styles.btnText}>إنشاء الحساب</Text>
             )}
           </TouchableOpacity>
 
-          {/* Divider */}
-          <View style={styles.divider}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>أو</Text>
-            <View style={styles.dividerLine} />
-          </View>
-
-          {/* Create Account */}
+          {/* Login Link */}
           <TouchableOpacity
-            style={styles.registerBtn}
-            onPress={() => router.push("/auth/register" as any)}
+            style={styles.loginLink}
+            onPress={() => router.back()}
           >
-            <Text style={styles.registerBtnText}>ليس لديك حساب؟ </Text>
-            <Text style={styles.registerBtnLink}>إنشاء حساب جديد</Text>
-          </TouchableOpacity>
-
-          {/* Driver Register */}
-          <TouchableOpacity
-            style={styles.driverBtn}
-            onPress={() => router.push("/driver/register" as any)}
-          >
-            <Text style={styles.driverBtnText}>🚗  سجّل كسائق</Text>
+            <Text style={styles.loginLinkText}>لديك حساب بالفعل؟ </Text>
+            <Text style={styles.loginLinkBold}>تسجيل الدخول</Text>
           </TouchableOpacity>
         </View>
 
         {/* Terms */}
         <Text style={styles.terms}>
-          بالمتابعة، أنت توافق على{" "}
+          بإنشاء حساب، أنت توافق على{" "}
           <Text style={styles.termsLink}>شروط الاستخدام</Text>
           {" "}و{" "}
           <Text style={styles.termsLink}>سياسة الخصوصية</Text>
@@ -149,20 +191,31 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingBottom: 40,
   },
+  backBtn: {
+    alignSelf: "flex-start",
+    paddingTop: 60,
+    paddingHorizontal: 24,
+    paddingBottom: 8,
+  },
+  backText: {
+    color: "#FFD700",
+    fontSize: 16,
+    fontWeight: "600",
+  },
   header: {
     alignItems: "center",
-    paddingTop: 80,
-    paddingBottom: 40,
+    paddingTop: 16,
+    paddingBottom: 32,
   },
   logo: {
-    width: 90,
-    height: 90,
-    borderRadius: 22,
-    marginBottom: 12,
+    width: 70,
+    height: 70,
+    borderRadius: 18,
+    marginBottom: 10,
   },
   appName: {
     color: "#FFFFFF",
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: "800",
     letterSpacing: 1,
   },
@@ -196,6 +249,13 @@ const styles = StyleSheet.create({
     textAlign: "right",
     marginBottom: 24,
   },
+  label: {
+    color: "#1A0533",
+    fontSize: 14,
+    fontWeight: "700",
+    textAlign: "right",
+    marginBottom: 8,
+  },
   inputContainer: {
     flexDirection: "row",
     alignItems: "center",
@@ -203,13 +263,16 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingHorizontal: 16,
     paddingVertical: 14,
-    marginBottom: 8,
+    marginBottom: 6,
     borderWidth: 1.5,
     borderColor: "#E2E8F0",
     gap: 8,
   },
   inputError: {
     borderColor: "#EF4444",
+  },
+  inputIcon: {
+    fontSize: 18,
   },
   flag: {
     fontSize: 22,
@@ -227,21 +290,25 @@ const styles = StyleSheet.create({
     color: "#1A0533",
     fontSize: 16,
     fontWeight: "600",
-    letterSpacing: 1,
+    letterSpacing: 0.5,
+  },
+  charCount: {
+    color: "#9BA1A6",
+    fontSize: 12,
   },
   errorText: {
     color: "#EF4444",
     fontSize: 13,
     textAlign: "right",
-    marginBottom: 8,
+    marginBottom: 12,
   },
   btn: {
-    backgroundColor: "#FFD700",
+    backgroundColor: "#7B3FE4",
     borderRadius: 14,
     paddingVertical: 16,
     alignItems: "center",
-    marginTop: 8,
-    shadowColor: "#FFD700",
+    marginTop: 16,
+    shadowColor: "#7B3FE4",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
@@ -251,57 +318,25 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   btnText: {
-    color: "#1A0533",
+    color: "#FFFFFF",
     fontSize: 17,
     fontWeight: "800",
   },
-  divider: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginVertical: 16,
-    gap: 12,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: "#E2E8F0",
-  },
-  dividerText: {
-    color: "#6B7A8D",
-    fontSize: 13,
-  },
-  registerBtn: {
+  loginLink: {
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
-    paddingVertical: 14,
-    marginBottom: 12,
-    backgroundColor: "#F0EBFF",
-    borderRadius: 14,
-    borderWidth: 1.5,
-    borderColor: "#7B3FE4",
+    marginTop: 16,
+    paddingVertical: 8,
   },
-  registerBtnText: {
+  loginLinkText: {
     color: "#6B7A8D",
-    fontSize: 15,
-    fontWeight: "500",
+    fontSize: 14,
   },
-  registerBtnLink: {
+  loginLinkBold: {
     color: "#7B3FE4",
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: "800",
-  },
-  driverBtn: {
-    borderWidth: 2,
-    borderColor: "#1A0533",
-    borderRadius: 14,
-    paddingVertical: 14,
-    alignItems: "center",
-  },
-  driverBtnText: {
-    color: "#1A0533",
-    fontSize: 16,
-    fontWeight: "700",
   },
   terms: {
     color: "rgba(255,255,255,0.6)",

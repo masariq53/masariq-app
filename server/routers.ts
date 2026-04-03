@@ -24,6 +24,9 @@ import {
   getAllDrivers,
   updateDriverVerification,
   getRecentRides,
+  checkPhoneExists,
+  registerNewPassenger,
+  loginExistingPassenger,
 } from "./db";
 
 export const appRouter = router({
@@ -113,6 +116,89 @@ export const appRouter = router({
             rating: passenger.rating,
           },
         };
+      }),
+
+    /**
+     * Check if phone is already registered (before sending OTP)
+     */
+    checkPhone: publicProcedure
+      .input(z.object({ phone: z.string().min(10).max(11) }))
+      .mutation(async ({ input }) => {
+        let phone = input.phone.replace(/\s/g, "");
+        if (phone.startsWith("0")) phone = "+964" + phone.slice(1);
+        else if (!phone.startsWith("+")) phone = "+964" + phone;
+        const exists = await checkPhoneExists(phone);
+        return { exists, phone };
+      }),
+
+    /**
+     * Send OTP for LOGIN (phone must be registered)
+     */
+    sendLogin: publicProcedure
+      .input(z.object({ phone: z.string().min(10).max(11) }))
+      .mutation(async ({ input }) => {
+        let phone = input.phone.replace(/\s/g, "");
+        if (phone.startsWith("0")) phone = "+964" + phone.slice(1);
+        else if (!phone.startsWith("+")) phone = "+964" + phone;
+
+        const exists = await checkPhoneExists(phone);
+        if (!exists) throw new Error("رقم الهاتف غير مسجل، يرجى إنشاء حساب جديد");
+
+        const code = await createOtp(phone);
+        const isDev = process.env.NODE_ENV !== "production";
+        return { success: true, phone, devCode: isDev ? code : undefined, message: isDev ? `رمز التحقق: ${code}` : "تم إرسال رمز التحقق" };
+      }),
+
+    /**
+     * Verify OTP for LOGIN
+     */
+    verifyLogin: publicProcedure
+      .input(z.object({ phone: z.string().min(10).max(15), code: z.string().length(6) }))
+      .mutation(async ({ input }) => {
+        let phone = input.phone.replace(/\s/g, "");
+        if (phone.startsWith("0")) phone = "+964" + phone.slice(1);
+        else if (!phone.startsWith("+")) phone = "+964" + phone;
+
+        const isValid = await verifyOtp(phone, input.code);
+        if (!isValid) throw new Error("رمز التحقق غير صحيح أو منتهي الصلاحية");
+
+        const passenger = await loginExistingPassenger(phone);
+        return { success: true, passenger: { id: passenger.id, phone: passenger.phone, name: passenger.name, walletBalance: passenger.walletBalance, totalRides: passenger.totalRides, rating: passenger.rating } };
+      }),
+
+    /**
+     * Send OTP for REGISTRATION (phone must NOT be registered)
+     */
+    sendRegister: publicProcedure
+      .input(z.object({ phone: z.string().min(10).max(11), name: z.string().min(2).max(30) }))
+      .mutation(async ({ input }) => {
+        let phone = input.phone.replace(/\s/g, "");
+        if (phone.startsWith("0")) phone = "+964" + phone.slice(1);
+        else if (!phone.startsWith("+")) phone = "+964" + phone;
+
+        const exists = await checkPhoneExists(phone);
+        if (exists) throw new Error("رقم الهاتف مسجل بالفعل، يرجى تسجيل الدخول");
+
+        const code = await createOtp(phone);
+        const isDev = process.env.NODE_ENV !== "production";
+        return { success: true, phone, name: input.name, devCode: isDev ? code : undefined, message: isDev ? `رمز التحقق: ${code}` : "تم إرسال رمز التحقق" };
+      }),
+
+    /**
+     * Verify OTP for REGISTRATION - creates new account
+     */
+    verifyRegister: publicProcedure
+      .input(z.object({ phone: z.string().min(10).max(15), code: z.string().length(6), name: z.string().min(2).max(30) }))
+      .mutation(async ({ input }) => {
+        let phone = input.phone.replace(/\s/g, "");
+        if (phone.startsWith("0")) phone = "+964" + phone.slice(1);
+        else if (!phone.startsWith("+")) phone = "+964" + phone;
+
+        const isValid = await verifyOtp(phone, input.code);
+        if (!isValid) throw new Error("رمز التحقق غير صحيح أو منتهي الصلاحية");
+
+        const passenger = await registerNewPassenger(phone, input.name);
+        return { success: true, passenger: { id: passenger.id, phone: passenger.phone, name: passenger.name, walletBalance: passenger.walletBalance, totalRides: passenger.totalRides, rating: passenger.rating } };
       }),
 
     /**

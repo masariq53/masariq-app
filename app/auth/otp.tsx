@@ -18,14 +18,22 @@ import { usePassenger } from "@/lib/passenger-context";
 const OTP_LENGTH = 6;
 
 export default function OTPScreen() {
-  const { phone, devCode } = useLocalSearchParams<{ phone: string; devCode?: string }>();
+  const { phone, devCode, mode, name } = useLocalSearchParams<{
+    phone: string;
+    devCode?: string;
+    mode?: "login" | "register";
+    name?: string;
+  }>();
+
   const [otp, setOtp] = useState(Array(OTP_LENGTH).fill(""));
   const [timer, setTimer] = useState(60);
   const [error, setError] = useState("");
   const inputs = useRef<(TextInput | null)[]>([]);
   const { setPassenger } = usePassenger();
 
-  // Show dev code hint if available
+  const isRegister = mode === "register";
+
+  // Show dev code hint
   useEffect(() => {
     if (devCode && devCode.length === 6) {
       Alert.alert(
@@ -36,6 +44,7 @@ export default function OTPScreen() {
     }
   }, [devCode]);
 
+  // Countdown timer
   useEffect(() => {
     const interval = setInterval(() => {
       setTimer((t) => (t > 0 ? t - 1 : 0));
@@ -43,7 +52,8 @@ export default function OTPScreen() {
     return () => clearInterval(interval);
   }, []);
 
-  const verifyOtp = trpc.otp.verify.useMutation({
+  // ─── Verify Login ────────────────────────────────────────────────────────────
+  const verifyLogin = trpc.otp.verifyLogin.useMutation({
     onSuccess: async (data) => {
       await setPassenger({
         id: data.passenger.id,
@@ -62,16 +72,47 @@ export default function OTPScreen() {
     },
   });
 
-  const sendOtp = trpc.otp.send.useMutation({
+  // ─── Verify Register ─────────────────────────────────────────────────────────
+  const verifyRegister = trpc.otp.verifyRegister.useMutation({
+    onSuccess: async (data) => {
+      await setPassenger({
+        id: data.passenger.id,
+        phone: data.passenger.phone,
+        name: data.passenger.name,
+        walletBalance: data.passenger.walletBalance?.toString() || "0.00",
+        totalRides: data.passenger.totalRides,
+        rating: data.passenger.rating?.toString() || "5.00",
+      });
+      router.replace("/(tabs)");
+    },
+    onError: (err) => {
+      setError(err.message || "رمز التحقق غير صحيح");
+      setOtp(Array(OTP_LENGTH).fill(""));
+      inputs.current[0]?.focus();
+    },
+  });
+
+  // ─── Resend ──────────────────────────────────────────────────────────────────
+  const sendLogin = trpc.otp.sendLogin.useMutation({
     onSuccess: (data) => {
       setTimer(60);
       setOtp(Array(OTP_LENGTH).fill(""));
       inputs.current[0]?.focus();
-      if (data.devCode) {
-        Alert.alert("وضع التطوير", `رمز التحقق الجديد: ${data.devCode}`);
-      }
+      if (data.devCode) Alert.alert("وضع التطوير", `رمز التحقق الجديد: ${data.devCode}`);
     },
   });
+
+  const sendRegister = trpc.otp.sendRegister.useMutation({
+    onSuccess: (data) => {
+      setTimer(60);
+      setOtp(Array(OTP_LENGTH).fill(""));
+      inputs.current[0]?.focus();
+      if (data.devCode) Alert.alert("وضع التطوير", `رمز التحقق الجديد: ${data.devCode}`);
+    },
+  });
+
+  const isPending = verifyLogin.isPending || verifyRegister.isPending;
+  const isResendPending = sendLogin.isPending || sendRegister.isPending;
 
   const handleChange = (text: string, index: number) => {
     const newOtp = [...otp];
@@ -81,12 +122,9 @@ export default function OTPScreen() {
     if (text && index < OTP_LENGTH - 1) {
       inputs.current[index + 1]?.focus();
     }
-    // Auto-submit when all filled
     if (index === OTP_LENGTH - 1 && text) {
       const code = [...newOtp.slice(0, OTP_LENGTH - 1), text.slice(-1)].join("");
-      if (code.length === OTP_LENGTH) {
-        handleVerify(code);
-      }
+      if (code.length === OTP_LENGTH) handleVerify(code);
     }
   };
 
@@ -103,12 +141,20 @@ export default function OTPScreen() {
       return;
     }
     setError("");
-    verifyOtp.mutate({ phone: phone || "", code });
+    if (isRegister) {
+      verifyRegister.mutate({ phone: phone || "", code, name: name || "" });
+    } else {
+      verifyLogin.mutate({ phone: phone || "", code });
+    }
   };
 
   const handleResend = () => {
     if (!phone) return;
-    sendOtp.mutate({ phone });
+    if (isRegister) {
+      sendRegister.mutate({ phone, name: name || "" });
+    } else {
+      sendLogin.mutate({ phone });
+    }
   };
 
   return (
@@ -127,11 +173,11 @@ export default function OTPScreen() {
         <Text style={styles.icon}>📱</Text>
         <Text style={styles.title}>رمز التحقق</Text>
         <Text style={styles.subtitle}>
-          أرسلنا رمز التحقق إلى{"\n"}
+          {isRegister ? "أرسلنا رمز تفعيل الحساب إلى" : "أرسلنا رمز التحقق إلى"}{"\n"}
           <Text style={styles.phone}>{phone}</Text>
         </Text>
 
-        {/* OTP Inputs - 6 digits */}
+        {/* OTP Inputs */}
         <View style={styles.otpContainer}>
           {otp.map((digit, index) => (
             <TextInput
@@ -153,14 +199,16 @@ export default function OTPScreen() {
 
         {/* Verify Button */}
         <TouchableOpacity
-          style={[styles.btn, verifyOtp.isPending && styles.btnDisabled]}
+          style={[styles.btn, isRegister && styles.btnRegister, isPending && styles.btnDisabled]}
           onPress={() => handleVerify()}
-          disabled={verifyOtp.isPending}
+          disabled={isPending}
         >
-          {verifyOtp.isPending ? (
-            <ActivityIndicator color="#1A0533" />
+          {isPending ? (
+            <ActivityIndicator color={isRegister ? "#FFFFFF" : "#1A0533"} />
           ) : (
-            <Text style={styles.btnText}>تحقق والمتابعة</Text>
+            <Text style={[styles.btnText, isRegister && styles.btnTextRegister]}>
+              {isRegister ? "تفعيل الحساب" : "تحقق والمتابعة"}
+            </Text>
           )}
         </TouchableOpacity>
 
@@ -170,9 +218,9 @@ export default function OTPScreen() {
             إعادة الإرسال خلال <Text style={styles.timerNum}>{timer}s</Text>
           </Text>
         ) : (
-          <TouchableOpacity onPress={handleResend} disabled={sendOtp.isPending}>
+          <TouchableOpacity onPress={handleResend} disabled={isResendPending}>
             <Text style={styles.resendText}>
-              {sendOtp.isPending ? "جاري الإرسال..." : "إعادة إرسال الرمز"}
+              {isResendPending ? "جاري الإرسال..." : "إعادة إرسال الرمز"}
             </Text>
           </TouchableOpacity>
         )}
@@ -265,11 +313,18 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 8,
   },
+  btnRegister: {
+    backgroundColor: "#7B3FE4",
+    shadowColor: "#7B3FE4",
+  },
   btnDisabled: { opacity: 0.7 },
   btnText: {
     color: "#1A0533",
     fontSize: 17,
     fontWeight: "800",
+  },
+  btnTextRegister: {
+    color: "#FFFFFF",
   },
   timerText: {
     color: "#9B8AB0",

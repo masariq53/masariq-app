@@ -159,7 +159,55 @@ export async function verifyOtp(phone: string, code: string): Promise<boolean> {
   return true;
 }
 
-// ─── Passengers ───────────────────────────────────────────────────────────────
+// ─── Passengers ───────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Check if phone number is already registered
+ */
+export async function checkPhoneExists(phone: string): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  const result = await db.select({ id: passengers.id }).from(passengers).where(eq(passengers.phone, phone)).limit(1);
+  return result.length > 0;
+}
+
+/**
+ * Create a brand new passenger (registration flow)
+ * Throws if phone already registered
+ */
+export async function registerNewPassenger(phone: string, name: string) {
+  const db = await getDb();
+  if (!db) {
+    return { id: 1, phone, name, isVerified: true, walletBalance: "10000.00", totalRides: 0, rating: "5.00", createdAt: new Date(), updatedAt: new Date(), lastActiveAt: new Date() };
+  }
+
+  const existing = await db.select({ id: passengers.id }).from(passengers).where(eq(passengers.phone, phone)).limit(1);
+  if (existing.length > 0) {
+    throw new Error("رقم الهاتف مسجل بالفعل، يرجى تسجيل الدخول");
+  }
+
+  await db.insert(passengers).values({ phone, name, isVerified: true });
+  const created = await db.select().from(passengers).where(eq(passengers.phone, phone)).limit(1);
+  return created[0]!;
+}
+
+/**
+ * Login existing passenger - throws if phone NOT registered
+ */
+export async function loginExistingPassenger(phone: string) {
+  const db = await getDb();
+  if (!db) {
+    return { id: 1, phone, name: "مستخدم تجريبي", isVerified: true, walletBalance: "10000.00", totalRides: 0, rating: "5.00", createdAt: new Date(), updatedAt: new Date(), lastActiveAt: new Date() };
+  }
+
+  const existing = await db.select().from(passengers).where(eq(passengers.phone, phone)).limit(1);
+  if (existing.length === 0) {
+    throw new Error("رقم الهاتف غير مسجل، يرجى إنشاء حساب جديد");
+  }
+
+  await db.update(passengers).set({ lastActiveAt: new Date() }).where(eq(passengers.id, existing[0]!.id));
+  return existing[0]!;
+}
 
 export async function getOrCreatePassenger(phone: string, name?: string) {
   const db = await getDb();
