@@ -31,6 +31,10 @@ import {
   setPendingPhone,
   confirmPhoneChange,
   getPassengerById,
+  registerDriver,
+  getDriverByPhone,
+  getPendingDrivers,
+  updateDriverRegistrationStatus,
 } from "./db";
 import { storagePut } from "./storage";
 
@@ -462,6 +466,68 @@ export const appRouter = router({
         await setDriverOnlineStatus(input.driverId, input.isOnline, input.isAvailable);
         return { success: true };
       }),
+
+    /**
+     * Register a new driver with full details
+     */
+    register: publicProcedure
+      .input(z.object({
+        phone: z.string().min(10).max(15),
+        name: z.string().min(2).max(100),
+        nationalId: z.string().optional(),
+        photoUrl: z.string().optional(),
+        nationalIdPhotoUrl: z.string().optional(),
+        licensePhotoUrl: z.string().optional(),
+        vehicleType: z.enum(["sedan", "suv", "minivan"]),
+        vehiclePlate: z.string().optional(),
+        vehicleModel: z.string().optional(),
+        vehicleColor: z.string().optional(),
+        vehicleYear: z.string().optional(),
+        vehiclePhotoUrl: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const driver = await registerDriver(input);
+        return {
+          success: true,
+          driverId: driver.id,
+          registrationStatus: driver.registrationStatus,
+          message: "تم استلام طلب التسجيل بنجاح، سيتم مراجعته خلال 24-48 ساعة",
+        };
+      }),
+
+    /**
+     * Upload driver document photo (base64)
+     */
+    uploadDocument: publicProcedure
+      .input(z.object({
+        phone: z.string(),
+        documentType: z.enum(["photo", "nationalId", "license", "vehicle"]),
+        base64: z.string(),
+        mimeType: z.string().default("image/jpeg"),
+      }))
+      .mutation(async ({ input }) => {
+        const buffer = Buffer.from(input.base64, "base64");
+        const key = `drivers/${input.phone.replace(/\+/g, "")}/${input.documentType}_${Date.now()}.jpg`;
+        const { url } = await storagePut(key, buffer, input.mimeType);
+        return { success: true, url };
+      }),
+
+    /**
+     * Check driver registration status by phone
+     */
+    checkStatus: publicProcedure
+      .input(z.object({ phone: z.string() }))
+      .query(async ({ input }) => {
+        const driver = await getDriverByPhone(input.phone);
+        if (!driver) return { found: false, registrationStatus: null };
+        return {
+          found: true,
+          driverId: driver.id,
+          registrationStatus: driver.registrationStatus,
+          rejectionReason: driver.rejectionReason,
+          name: driver.name,
+        };
+      }),
   }),
 
   // ─── Passenger Profile ──────────────────────────────────────────────────────
@@ -642,6 +708,27 @@ export const appRouter = router({
       .input(z.object({ rideId: z.number(), reason: z.string().optional() }))
       .mutation(async ({ input }) => {
         await updateRideStatus(input.rideId, "cancelled", { cancelReason: input.reason || "Admin cancelled" });
+        return { success: true };
+      }),
+
+    /**
+     * Get pending driver registrations
+     */
+    pendingDrivers: publicProcedure.query(async () => {
+      return getPendingDrivers();
+    }),
+
+    /**
+     * Approve or reject a driver registration
+     */
+    reviewDriver: publicProcedure
+      .input(z.object({
+        driverId: z.number(),
+        status: z.enum(["approved", "rejected"]),
+        rejectionReason: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        await updateDriverRegistrationStatus(input.driverId, input.status, input.rejectionReason);
         return { success: true };
       }),
   }),

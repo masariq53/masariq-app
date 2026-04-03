@@ -8,6 +8,7 @@ import {
   RefreshControl,
   Dimensions,
   ActivityIndicator,
+  Alert,
 } from "react-native";
 import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -59,13 +60,14 @@ function StatCard({
 export default function AdminDashboard() {
   const insets = useSafeAreaInsets();
   const [refreshing, setRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState<"overview" | "rides" | "drivers" | "passengers">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "rides" | "drivers" | "passengers" | "pending">("overview");
 
   const { data: stats, isLoading: statsLoading, refetch: refetchStats } = trpc.admin.stats.useQuery();
   const { data: recentRides, isLoading: ridesLoading, refetch: refetchRides } = trpc.admin.recentRides.useQuery({ limit: 8 });
   const { data: allDrivers, isLoading: driversLoading, refetch: refetchDrivers } = trpc.admin.drivers.useQuery({ limit: 30 });
   const { data: allPassengers, isLoading: passengersLoading, refetch: refetchPassengers } = trpc.admin.passengers.useQuery({ limit: 30 });
   const { data: allRides, isLoading: allRidesLoading, refetch: refetchAllRides } = trpc.admin.rides.useQuery({ limit: 50 });
+  const { data: pendingDrivers, isLoading: pendingLoading, refetch: refetchPending } = trpc.admin.pendingDrivers.useQuery();
 
   const verifyDriver = trpc.admin.verifyDriver.useMutation({
     onSuccess: () => refetchDrivers(),
@@ -73,18 +75,24 @@ export default function AdminDashboard() {
   const cancelRide = trpc.admin.cancelRide.useMutation({
     onSuccess: () => { refetchRides(); refetchAllRides(); refetchStats(); },
   });
+  const reviewDriver = trpc.admin.reviewDriver.useMutation({
+    onSuccess: () => { refetchPending(); refetchDrivers(); refetchStats(); },
+  });
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await Promise.all([refetchStats(), refetchRides(), refetchDrivers(), refetchPassengers(), refetchAllRides()]);
+    await Promise.all([refetchStats(), refetchRides(), refetchDrivers(), refetchPassengers(), refetchAllRides(), refetchPending()]);
     setRefreshing(false);
   };
 
   const isLoading = statsLoading && ridesLoading && driversLoading;
 
+  const pendingCount = pendingDrivers?.length ?? 0;
+
   const tabs = [
     { id: "overview", label: "نظرة عامة", icon: "📊" },
     { id: "rides", label: "الرحلات", icon: "🚗" },
+    { id: "pending", label: `طلبات${pendingCount > 0 ? ` (${pendingCount})` : ""}`, icon: "⏳" },
     { id: "drivers", label: "السائقون", icon: "👨‍✈️" },
     { id: "passengers", label: "المستخدمون", icon: "👥" },
   ] as const;
@@ -315,6 +323,131 @@ export default function AdminDashboard() {
               </View>
             )}
 
+            {/* ── Pending Drivers Tab ── */}
+            {activeTab === "pending" && (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>
+                  طلبات تسجيل السائقين ({pendingDrivers?.length ?? 0})
+                </Text>
+                {pendingLoading ? (
+                  <ActivityIndicator color="#FFD700" style={{ marginVertical: 20 }} />
+                ) : pendingDrivers && pendingDrivers.length > 0 ? (
+                  pendingDrivers.map((driver) => (
+                    <View key={driver.id} style={styles.pendingCard}>
+                      {/* Driver Info */}
+                      <View style={styles.pendingHeader}>
+                        <View style={styles.pendingAvatar}>
+                          <Text style={styles.pendingAvatarText}>
+                            {(driver.name || "؟").charAt(0)}
+                          </Text>
+                        </View>
+                        <View style={styles.pendingInfo}>
+                          <Text style={styles.pendingName}>{driver.name || "بدون اسم"}</Text>
+                          <Text style={styles.pendingPhone}>{driver.phone}</Text>
+                          <Text style={styles.pendingDate}>
+                            {driver.createdAt ? new Date(driver.createdAt).toLocaleDateString("ar-IQ") : ""}
+                          </Text>
+                        </View>
+                        <View style={styles.pendingBadge}>
+                          <Text style={styles.pendingBadgeText}>⏳ قيد المراجعة</Text>
+                        </View>
+                      </View>
+
+                      {/* Vehicle Info */}
+                      {(driver.vehicleModel || driver.vehiclePlate) && (
+                        <View style={styles.pendingVehicle}>
+                          <Text style={styles.pendingVehicleText}>
+                            🚗 {driver.vehicleModel || ""} {driver.vehicleColor ? `• ${driver.vehicleColor}` : ""} {driver.vehicleYear ? `(${driver.vehicleYear})` : ""}
+                          </Text>
+                          {driver.vehiclePlate && (
+                            <Text style={styles.pendingVehicleText}>🔢 {driver.vehiclePlate}</Text>
+                          )}
+                          {driver.nationalId && (
+                            <Text style={styles.pendingVehicleText}>🪪 الهوية: {driver.nationalId}</Text>
+                          )}
+                        </View>
+                      )}
+
+                      {/* Documents */}
+                      <View style={styles.pendingDocs}>
+                        <Text style={styles.pendingDocsTitle}>الوثائق المرفوعة:</Text>
+                        <View style={styles.pendingDocsRow}>
+                          <Text style={[styles.pendingDoc, driver.photoUrl ? styles.pendingDocDone : styles.pendingDocMissing]}>
+                            {driver.photoUrl ? "✅" : "❌"} صورة شخصية
+                          </Text>
+                          <Text style={[styles.pendingDoc, driver.nationalIdPhotoUrl ? styles.pendingDocDone : styles.pendingDocMissing]}>
+                            {driver.nationalIdPhotoUrl ? "✅" : "❌"} الهوية
+                          </Text>
+                          <Text style={[styles.pendingDoc, driver.licensePhotoUrl ? styles.pendingDocDone : styles.pendingDocMissing]}>
+                            {driver.licensePhotoUrl ? "✅" : "❌"} الرخصة
+                          </Text>
+                          <Text style={[styles.pendingDoc, driver.vehiclePhotoUrl ? styles.pendingDocDone : styles.pendingDocMissing]}>
+                            {driver.vehiclePhotoUrl ? "✅" : "❌"} السيارة
+                          </Text>
+                        </View>
+                      </View>
+
+                      {/* Actions */}
+                      <View style={styles.pendingActions}>
+                        <TouchableOpacity
+                          style={styles.rejectBtn}
+                          onPress={() =>
+                            Alert.alert(
+                              "رفض الطلب",
+                              `هل تريد رفض طلب ${driver.name}؟`,
+                              [
+                                { text: "إلغاء", style: "cancel" },
+                                {
+                                  text: "رفض",
+                                  style: "destructive",
+                                  onPress: () =>
+                                    reviewDriver.mutate({
+                                      driverId: driver.id,
+                                      status: "rejected",
+                                      rejectionReason: "لا تستوفي المتطلبات",
+                                    }),
+                                },
+                              ]
+                            )
+                          }
+                        >
+                          <Text style={styles.rejectBtnText}>❌ رفض</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.approveBtn}
+                          onPress={() =>
+                            Alert.alert(
+                              "قبول الطلب",
+                              `هل تريد قبول طلب ${driver.name}؟`,
+                              [
+                                { text: "إلغاء", style: "cancel" },
+                                {
+                                  text: "قبول",
+                                  onPress: () =>
+                                    reviewDriver.mutate({
+                                      driverId: driver.id,
+                                      status: "approved",
+                                    }),
+                                },
+                              ]
+                            )
+                          }
+                        >
+                          <Text style={styles.approveBtnText}>✅ قبول</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ))
+                ) : (
+                  <View style={styles.emptyState}>
+                    <Text style={styles.emptyIcon}>✅</Text>
+                    <Text style={styles.emptyText}>لا توجد طلبات معلقة</Text>
+                    <Text style={styles.emptySubText}>جميع الطلبات تمت مراجعتها</Text>
+                  </View>
+                )}
+              </View>
+            )}
+
             {/* ── Passengers Tab ── */}
             {activeTab === "passengers" && (
               <View style={styles.section}>
@@ -509,4 +642,51 @@ const styles = StyleSheet.create({
   emptyState: { alignItems: "center", paddingVertical: 40 },
   emptyIcon: { fontSize: 48, marginBottom: 12 },
   emptyText: { fontSize: 14, color: "#9B8EC4" },
+  emptySubText: { fontSize: 12, color: "#6B7280", marginTop: 4 },
+
+  // Pending Driver Cards
+  pendingCard: {
+    backgroundColor: "#1E1035", borderRadius: 16, padding: 16, marginBottom: 12,
+    borderWidth: 1, borderColor: "#FFD70033",
+  },
+  pendingHeader: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 12 },
+  pendingAvatar: {
+    width: 48, height: 48, borderRadius: 24,
+    backgroundColor: "#FFD70033", alignItems: "center", justifyContent: "center",
+    borderWidth: 2, borderColor: "#FFD700",
+  },
+  pendingAvatarText: { fontSize: 20, fontWeight: "800", color: "#FFD700" },
+  pendingInfo: { flex: 1 },
+  pendingName: { fontSize: 15, fontWeight: "800", color: "#FFFFFF" },
+  pendingPhone: { fontSize: 12, color: "#9B8EC4", marginTop: 2 },
+  pendingDate: { fontSize: 11, color: "#6B7280", marginTop: 2 },
+  pendingBadge: {
+    backgroundColor: "#FFF3CD", borderRadius: 8,
+    paddingHorizontal: 8, paddingVertical: 4,
+  },
+  pendingBadgeText: { fontSize: 11, color: "#856404", fontWeight: "700" },
+  pendingVehicle: {
+    backgroundColor: "rgba(255,255,255,0.04)", borderRadius: 10, padding: 10,
+    marginBottom: 10, gap: 4,
+  },
+  pendingVehicleText: { fontSize: 12, color: "#CBD5E1" },
+  pendingDocs: { marginBottom: 12 },
+  pendingDocsTitle: { fontSize: 12, color: "#9B8EC4", marginBottom: 6, fontWeight: "600" },
+  pendingDocsRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  pendingDoc: { fontSize: 12, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+  pendingDocDone: { backgroundColor: "#14532D", color: "#4ADE80" },
+  pendingDocMissing: { backgroundColor: "#450A0A", color: "#F87171" },
+  pendingActions: { flexDirection: "row", gap: 10 },
+  rejectBtn: {
+    flex: 1, paddingVertical: 10, borderRadius: 10,
+    backgroundColor: "#450A0A", alignItems: "center",
+    borderWidth: 1, borderColor: "#EF4444",
+  },
+  rejectBtnText: { color: "#F87171", fontSize: 14, fontWeight: "700" },
+  approveBtn: {
+    flex: 1, paddingVertical: 10, borderRadius: 10,
+    backgroundColor: "#14532D", alignItems: "center",
+    borderWidth: 1, borderColor: "#22C55E",
+  },
+  approveBtnText: { color: "#4ADE80", fontSize: 14, fontWeight: "700" },
 });

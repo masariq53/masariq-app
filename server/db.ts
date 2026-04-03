@@ -293,7 +293,7 @@ export async function confirmPhoneChange(passengerId: number) {
 export async function getOrCreateDriver(phone: string, name: string) {
   const db = await getDb();
   if (!db) {
-    return { id: 1, phone, name, isVerified: false, isOnline: false, isAvailable: false, vehicleType: "sedan" as const, vehiclePlate: null, vehicleModel: null, vehicleColor: null, currentLat: null, currentLng: null, rating: "5.00", totalRides: 0, walletBalance: "0.00", createdAt: new Date(), updatedAt: new Date(), lastActiveAt: new Date() };
+    return { id: 1, phone, name, registrationStatus: "pending" as const, rejectionReason: null, isVerified: false, isOnline: false, isAvailable: false, nationalId: null, photoUrl: null, nationalIdPhotoUrl: null, licensePhotoUrl: null, vehicleType: "sedan" as const, vehiclePlate: null, vehicleModel: null, vehicleColor: null, vehicleYear: null, vehiclePhotoUrl: null, currentLat: null, currentLng: null, rating: "5.00", totalRides: 0, walletBalance: "0.00", createdAt: new Date(), updatedAt: new Date(), lastActiveAt: new Date() };
   }
 
   const existing = await db.select().from(drivers).where(eq(drivers.phone, phone)).limit(1);
@@ -302,6 +302,108 @@ export async function getOrCreateDriver(phone: string, name: string) {
   await db.insert(drivers).values({ phone, name });
   const created = await db.select().from(drivers).where(eq(drivers.phone, phone)).limit(1);
   return created[0]!;
+}
+
+/**
+ * Register a new driver with full details
+ */
+export async function registerDriver(data: {
+  phone: string;
+  name: string;
+  nationalId?: string;
+  photoUrl?: string;
+  nationalIdPhotoUrl?: string;
+  licensePhotoUrl?: string;
+  vehicleType: "sedan" | "suv" | "minivan";
+  vehiclePlate?: string;
+  vehicleModel?: string;
+  vehicleColor?: string;
+  vehicleYear?: string;
+  vehiclePhotoUrl?: string;
+}) {
+  const db = await getDb();
+  if (!db) {
+    return { id: Math.floor(Math.random() * 1000), ...data, registrationStatus: "pending" as const, isVerified: false, isOnline: false, isAvailable: false, rating: "5.00", totalRides: 0, walletBalance: "0.00", createdAt: new Date(), updatedAt: new Date(), lastActiveAt: new Date() };
+  }
+
+  // Check if phone already registered
+  const existing = await db.select({ id: drivers.id, registrationStatus: drivers.registrationStatus }).from(drivers).where(eq(drivers.phone, data.phone)).limit(1);
+  if (existing.length > 0) {
+    // Update existing registration with new data
+    await db.update(drivers).set({
+      name: data.name,
+      nationalId: data.nationalId || null,
+      photoUrl: data.photoUrl || null,
+      nationalIdPhotoUrl: data.nationalIdPhotoUrl || null,
+      licensePhotoUrl: data.licensePhotoUrl || null,
+      vehicleType: data.vehicleType,
+      vehiclePlate: data.vehiclePlate || null,
+      vehicleModel: data.vehicleModel || null,
+      vehicleColor: data.vehicleColor || null,
+      vehicleYear: data.vehicleYear || null,
+      vehiclePhotoUrl: data.vehiclePhotoUrl || null,
+      registrationStatus: "pending",
+      updatedAt: new Date(),
+    }).where(eq(drivers.id, existing[0]!.id));
+    const updated = await db.select().from(drivers).where(eq(drivers.id, existing[0]!.id)).limit(1);
+    return updated[0]!;
+  }
+
+  await db.insert(drivers).values({
+    phone: data.phone,
+    name: data.name,
+    nationalId: data.nationalId || null,
+    photoUrl: data.photoUrl || null,
+    nationalIdPhotoUrl: data.nationalIdPhotoUrl || null,
+    licensePhotoUrl: data.licensePhotoUrl || null,
+    vehicleType: data.vehicleType,
+    vehiclePlate: data.vehiclePlate || null,
+    vehicleModel: data.vehicleModel || null,
+    vehicleColor: data.vehicleColor || null,
+    vehicleYear: data.vehicleYear || null,
+    vehiclePhotoUrl: data.vehiclePhotoUrl || null,
+    registrationStatus: "pending",
+  });
+
+  const created = await db.select().from(drivers).where(eq(drivers.phone, data.phone)).limit(1);
+  return created[0]!;
+}
+
+/**
+ * Get driver registration status by phone
+ */
+export async function getDriverByPhone(phone: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db.select().from(drivers).where(eq(drivers.phone, phone)).limit(1);
+  return result.length > 0 ? result[0] : null;
+}
+
+/**
+ * Get all pending driver registrations
+ */
+export async function getPendingDrivers() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(drivers).where(eq(drivers.registrationStatus, "pending")).orderBy(desc(drivers.createdAt));
+}
+
+/**
+ * Approve or reject a driver registration
+ */
+export async function updateDriverRegistrationStatus(
+  driverId: number,
+  status: "approved" | "rejected",
+  rejectionReason?: string
+) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(drivers).set({
+    registrationStatus: status,
+    isVerified: status === "approved",
+    rejectionReason: rejectionReason || null,
+    updatedAt: new Date(),
+  }).where(eq(drivers.id, driverId));
 }
 
 export async function updateDriverLocation(driverId: number, lat: number, lng: number) {

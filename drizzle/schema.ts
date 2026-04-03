@@ -67,13 +67,25 @@ export const drivers = mysqlTable("drivers", {
   id: int("id").autoincrement().primaryKey(),
   phone: varchar("phone", { length: 20 }).notNull().unique(),
   name: varchar("name", { length: 100 }).notNull(),
+  // Registration status
+  registrationStatus: mysqlEnum("registrationStatus", ["pending", "approved", "rejected"]).default("pending").notNull(),
+  rejectionReason: text("rejectionReason"),
   isVerified: boolean("isVerified").default(false).notNull(),
   isOnline: boolean("isOnline").default(false).notNull(),
   isAvailable: boolean("isAvailable").default(false).notNull(),
+  // Personal info
+  nationalId: varchar("nationalId", { length: 30 }),
+  photoUrl: text("photoUrl"),
+  nationalIdPhotoUrl: text("nationalIdPhotoUrl"),
+  licensePhotoUrl: text("licensePhotoUrl"),
+  // Vehicle info
   vehicleType: mysqlEnum("vehicleType", ["sedan", "suv", "minivan"]).default("sedan").notNull(),
   vehiclePlate: varchar("vehiclePlate", { length: 20 }),
   vehicleModel: varchar("vehicleModel", { length: 100 }),
   vehicleColor: varchar("vehicleColor", { length: 50 }),
+  vehicleYear: varchar("vehicleYear", { length: 4 }),
+  vehiclePhotoUrl: text("vehiclePhotoUrl"),
+  // Location & stats
   currentLat: decimal("currentLat", { precision: 10, scale: 7 }),
   currentLng: decimal("currentLng", { precision: 10, scale: 7 }),
   rating: decimal("rating", { precision: 3, scale: 2 }).default("5.00"),
