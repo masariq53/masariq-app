@@ -19,7 +19,7 @@ import { useLocation } from "@/hooks/use-location";
 
 const { width } = Dimensions.get("window");
 
-// موقع الموصل المركزي
+// موقع الموصل المركزي (fallback فقط)
 const MOSUL_CENTER = {
   latitude: 36.3392,
   longitude: 43.1289,
@@ -27,52 +27,27 @@ const MOSUL_CENTER = {
   longitudeDelta: 0.06,
 };
 
-// سيارات الكباتن القريبين (محاكاة)
-const NEARBY_CAPTAINS = [
-  { id: "1", lat: 36.3350, lng: 43.1250, name: "كابتن 1" },
-  { id: "2", lat: 36.3420, lng: 43.1350, name: "كابتن 2" },
-  { id: "3", lat: 36.3480, lng: 43.1200, name: "كابتن 3" },
-  { id: "4", lat: 36.3300, lng: 43.1400, name: "كابتن 4" },
-];
-
-// طلب رحلة وهمي للعرض
-const DEMO_REQUEST = {
-  passenger: "محمد علي",
-  rating: "4.8",
-  from: "ساحة الحدباء",
-  to: "جامعة الموصل",
-  distance: "4.2 كم",
-  price: "5,500",
-  time: "12 دقيقة",
-  fromCoord: { latitude: 36.3392, longitude: 43.1289 },
-  toCoord: { latitude: 36.3600, longitude: 43.1450 },
-};
-
 export default function CaptainHomeScreen() {
   const insets = useSafeAreaInsets();
   const { driver, logout } = useDriver();
   const { coords, isRealLocation } = useLocation();
   const [isOnline, setIsOnline] = useState(false);
-  const [showRequest, setShowRequest] = useState(false);
-  const [requestTimer, setRequestTimer] = useState(25);
-  const todayEarnings = 0; // سيُربط بـ API لاحقاً
+  const todayEarnings = 0;
   const todayTrips = driver?.totalRides ?? 0;
   const rating = parseFloat(driver?.rating ?? "4.9");
-  const timerAnim = useRef(new Animated.Value(1)).current;
   const mapRef = useRef<MapView>(null);
 
+  // تمركز الخريطة على موقع GPS الحقيقي عند تحميل الشاشة
   useEffect(() => {
-    if (!isOnline) return;
-    const t = setTimeout(() => setShowRequest(true), 3000);
-    return () => clearTimeout(t);
-  }, [isOnline]);
-
-  useEffect(() => {
-    if (!showRequest) { setRequestTimer(25); return; }
-    if (requestTimer <= 0) { setShowRequest(false); return; }
-    const t = setTimeout(() => setRequestTimer((v) => v - 1), 1000);
-    return () => clearTimeout(t);
-  }, [showRequest, requestTimer]);
+    if (isRealLocation && mapRef.current) {
+      mapRef.current.animateToRegion({
+        latitude: coords.latitude,
+        longitude: coords.longitude,
+        latitudeDelta: 0.04,
+        longitudeDelta: 0.04,
+      }, 800);
+    }
+  }, [isRealLocation, coords.latitude, coords.longitude]);
 
   // نبضة عند الاتصال
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -87,8 +62,6 @@ export default function CaptainHomeScreen() {
     pulse.start();
     return () => pulse.stop();
   }, [isOnline]);
-
-  const timerPercent = requestTimer / 25;
 
   return (
     <View style={styles.container}>
@@ -125,27 +98,7 @@ export default function CaptainHomeScreen() {
             />
           )}
 
-          {/* الكباتن القريبون */}
-          {NEARBY_CAPTAINS.map((c) => (
-            <Marker
-              key={c.id}
-              coordinate={{ latitude: c.lat, longitude: c.lng }}
-              title={c.name}
-            >
-              <View style={styles.nearbyMarker}>
-                <Text style={{ fontSize: 16 }}>🚗</Text>
-              </View>
-            </Marker>
-          ))}
-
-          {/* موقع الطلب الجديد */}
-          {showRequest && (
-            <Marker coordinate={DEMO_REQUEST.fromCoord} title={DEMO_REQUEST.from}>
-              <View style={styles.requestMarker}>
-                <Text style={{ fontSize: 20 }}>📍</Text>
-              </View>
-            </Marker>
-          )}
+          {/* لا توجد سيارات وهمية - سيتم عرض السائقين الحقيقيين من قاعدة البيانات لاحقاً */}
         </MapView>
       ) : (
         <View style={[styles.map, styles.webMap]}>
@@ -230,82 +183,7 @@ export default function CaptainHomeScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Modal طلب رحلة جديد */}
-      <Modal visible={showRequest} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.requestCard}>
-            {/* عداد الوقت */}
-            <View style={styles.timerRow}>
-              <View style={styles.timerCircle}>
-                <Text style={styles.timerText}>{requestTimer}</Text>
-              </View>
-              <View style={styles.timerBarBg}>
-                <Animated.View
-                  style={[styles.timerBarFill, { width: `${timerPercent * 100}%` }]}
-                />
-              </View>
-            </View>
-
-            <Text style={styles.requestTitle}>طلب رحلة جديد! 🚀</Text>
-
-            {/* معلومات الراكب */}
-            <View style={styles.passengerRow}>
-              <View style={styles.passengerAvatar}>
-                <Text style={{ fontSize: 24 }}>👤</Text>
-              </View>
-              <View style={styles.passengerInfo}>
-                <Text style={styles.passengerName}>{DEMO_REQUEST.passenger}</Text>
-                <View style={styles.passengerRating}>
-                  <Text style={styles.star}>⭐</Text>
-                  <Text style={styles.passengerRatingText}>{DEMO_REQUEST.rating}</Text>
-                </View>
-              </View>
-              <View style={styles.priceTag}>
-                <Text style={styles.priceValue}>{DEMO_REQUEST.price}</Text>
-                <Text style={styles.priceCurrency}>دينار</Text>
-              </View>
-            </View>
-
-            {/* المسار */}
-            <View style={styles.routeBox}>
-              <View style={styles.routeRow}>
-                <View style={styles.dotGreen} />
-                <Text style={styles.routeText}>{DEMO_REQUEST.from}</Text>
-              </View>
-              <View style={styles.routeLine} />
-              <View style={styles.routeRow}>
-                <View style={styles.dotRed} />
-                <Text style={styles.routeText}>{DEMO_REQUEST.to}</Text>
-              </View>
-            </View>
-
-            {/* تفاصيل */}
-            <View style={styles.detailsRow}>
-              <Text style={styles.detailItem}>📏 {DEMO_REQUEST.distance}</Text>
-              <Text style={styles.detailItem}>⏱️ {DEMO_REQUEST.time}</Text>
-            </View>
-
-            {/* أزرار */}
-            <View style={styles.requestBtns}>
-              <TouchableOpacity
-                style={styles.rejectBtn}
-                onPress={() => setShowRequest(false)}
-              >
-                <Text style={styles.rejectText}>رفض</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.acceptBtn}
-                onPress={() => {
-                  setShowRequest(false);
-                  router.push("/captain/active-trip" as any);
-                }}
-              >
-                <Text style={styles.acceptText}>قبول الرحلة ✓</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      {/* لا يوجد طلب تجريبي - الطلبات ستأتي من المستخدمين الحقيقيين فقط */}
     </View>
   );
 }
