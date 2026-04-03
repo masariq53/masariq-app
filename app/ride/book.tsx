@@ -15,6 +15,7 @@ import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import MapView, { Marker, Polyline, PROVIDER_DEFAULT } from "react-native-maps";
+import * as Location from "expo-location";
 import { trpc } from "@/lib/trpc";
 import { usePassenger } from "@/lib/passenger-context";
 import { useLocation } from "@/hooks/use-location";
@@ -54,7 +55,7 @@ export default function BookRideScreen() {
   const [selectedRide, setSelectedRide] = useState("economy");
   const [pickupPin, setPickupPin] = useState({ latitude: 36.3392, longitude: 43.1289 });
 
-  // تحديث نقطة الانطلاق بموقع GPS الحقيقي
+  // تحديث نقطة الانطلاق بموقع GPS الحقيقي مع reverse geocoding
   useEffect(() => {
     if (isRealLocation) {
       setPickupPin({ latitude: coords.latitude, longitude: coords.longitude });
@@ -66,8 +67,19 @@ export default function BookRideScreen() {
           longitudeDelta: 0.05,
         }, 800);
       }
+      // الحصول على العنوان الحقيقي لموقع الانطلاق
+      Location.reverseGeocodeAsync({ latitude: coords.latitude, longitude: coords.longitude })
+        .then((results) => {
+          if (results && results.length > 0) {
+            const r = results[0];
+            const parts = [r.street, r.district, r.city].filter(Boolean);
+            const address = parts.length > 0 ? parts.join("، ") : (r.formattedAddress ?? "موقعي الحالي");
+            setFrom(address);
+          }
+        })
+        .catch(() => {});
     }
-  }, [isRealLocation, coords.latitude, coords.longitude]);
+  }, [isRealLocation]);
   const [dropPin, setDropPin] = useState<{ latitude: number; longitude: number } | null>(null);
   const mapRef = useRef<MapView>(null);
 
@@ -107,10 +119,26 @@ export default function BookRideScreen() {
     },
   });
 
-  const handleMapPress = (e: any) => {
+  const handleMapPress = async (e: any) => {
     const coord = e.nativeEvent.coordinate;
     setDropPin(coord);
-    setTo("الوجهة المحددة");
+    setTo("جارٍ تحديد العنوان...");
+    try {
+      const results = await Location.reverseGeocodeAsync({
+        latitude: coord.latitude,
+        longitude: coord.longitude,
+      });
+      if (results && results.length > 0) {
+        const r = results[0];
+        const parts = [r.street, r.district, r.city].filter(Boolean);
+        const address = parts.length > 0 ? parts.join("، ") : (r.formattedAddress ?? "الوجهة المحددة");
+        setTo(address);
+      } else {
+        setTo("الوجهة المحددة");
+      }
+    } catch {
+      setTo("الوجهة المدددة");
+    }
   };
 
   const handleConfirm = () => {
