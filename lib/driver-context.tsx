@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { registerDriverPushToken } from "@/lib/driver-notifications";
 
 const DRIVER_STORAGE_KEY = "@masar_driver_session";
 
@@ -54,6 +55,8 @@ export function DriverProvider({ children }: { children: React.ReactNode }) {
     setDriverState(newDriver);
     if (newDriver) {
       await AsyncStorage.setItem(DRIVER_STORAGE_KEY, JSON.stringify(newDriver));
+      // تسجيل push token للإشعارات عند تسجيل الدخول
+      registerDriverPushToken().catch(() => {});
     } else {
       await AsyncStorage.removeItem(DRIVER_STORAGE_KEY);
     }

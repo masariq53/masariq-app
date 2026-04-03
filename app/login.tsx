@@ -104,23 +104,14 @@ export default function LoginScreen() {
             <View style={styles.orLine} />
           </View>
 
-          {/* Captain Buttons Row */}
-          <View style={styles.captainRow}>
-            <TouchableOpacity
-              style={[styles.captainBtn, styles.captainBtnHalf]}
-              onPress={() => router.push("/driver/login" as any)}
-            >
-              <Text style={styles.captainIcon}>🔑</Text>
-              <Text style={styles.captainText}>دخول كابتن</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.captainBtn, styles.captainBtnHalf, { borderColor: '#C4B5D4' }]}
-              onPress={() => router.push("/driver/register" as any)}
-            >
-              <Text style={styles.captainIcon}>🚗</Text>
-              <Text style={[styles.captainText, { color: '#C4B5D4' }]}>تسجيل كابتن</Text>
-            </TouchableOpacity>
-          </View>
+          {/* Captain Register Only */}
+          <TouchableOpacity
+            style={styles.captainBtn}
+            onPress={() => router.push("/driver/register" as any)}
+          >
+            <Text style={styles.captainIcon}>🚗</Text>
+            <Text style={styles.captainText}>سجّل كـ كابتن</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Terms */}

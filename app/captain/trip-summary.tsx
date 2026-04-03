@@ -92,9 +92,9 @@ export default function TripSummaryScreen() {
       <View style={styles.actions}>
         <TouchableOpacity
           style={styles.newTripBtn}
-          onPress={() => router.replace("/captain/home" as any)}
+          onPress={() => router.push({ pathname: "/captain/rate-passenger" as any, params: { passengerName: "محمد علي" } })}
         >
-          <Text style={styles.newTripText}>رحلة جديدة</Text>
+          <Text style={styles.newTripText}>تقييم الراكب ⭐</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.earningsBtn}

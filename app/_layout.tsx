@@ -107,6 +107,7 @@ export default function RootLayout() {
             <Stack.Screen name="captain/active-trip" />
             <Stack.Screen name="captain/trip-summary" />
             <Stack.Screen name="captain/profile" />
+            <Stack.Screen name="captain/rate-passenger" />
             <Stack.Screen name="captain/trips" />
             <Stack.Screen name="captain/documents" />
             <Stack.Screen name="captain/support" />

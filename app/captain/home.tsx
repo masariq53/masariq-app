@@ -8,6 +8,7 @@ import {
   Platform,
   Animated,
   Dimensions,
+  Image,
 } from "react-native";
 import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -163,10 +164,14 @@ export default function CaptainHomeScreen() {
         <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
           <Text style={styles.backBtnText}>←</Text>
         </TouchableOpacity>
-        <View style={styles.headerLeft}>
-          <View style={styles.logoSmall}>
-            <Text style={styles.logoText}>م</Text>
-          </View>
+        <TouchableOpacity style={styles.headerLeft} onPress={() => router.push("/captain/profile" as any)}>
+          {driver?.photoUrl ? (
+            <Image source={{ uri: driver.photoUrl }} style={styles.logoSmallImg} />
+          ) : (
+            <View style={styles.logoSmall}>
+              <Text style={styles.logoText}>{driver?.name?.charAt(0) ?? "ك"}</Text>
+            </View>
+          )}
           <View>
             <Text style={styles.headerName}>{driver?.name ?? "كابتن مسار"}</Text>
             <View style={styles.ratingRow}>
@@ -174,7 +179,7 @@ export default function CaptainHomeScreen() {
               <Text style={styles.ratingText}>{rating}</Text>
             </View>
           </View>
-        </View>
+        </TouchableOpacity>
         <TouchableOpacity
           style={styles.earningsBtn}
           onPress={() => router.push("/captain/earnings" as any)}
@@ -332,6 +337,13 @@ const styles = StyleSheet.create({
   headerLeft: { flexDirection: "row", alignItems: "center", gap: 10 },
   backBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: "rgba(108,63,197,0.3)", alignItems: "center", justifyContent: "center", marginLeft: 4 },
   backBtnText: { color: "#FFFFFF", fontSize: 20, fontWeight: "bold" },
+  logoSmallImg: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 2,
+    borderColor: "#FFD700",
+  },
   logoSmall: {
     width: 36,
     height: 36,

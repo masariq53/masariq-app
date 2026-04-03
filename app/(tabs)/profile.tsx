@@ -14,15 +14,24 @@ import { ScreenContainer } from "@/components/screen-container";
 import { StatusBar } from "expo-status-bar";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { usePassenger } from "@/lib/passenger-context";
+import { useDriver } from "@/lib/driver-context";
 import { useThemeContext } from "@/lib/theme-provider";
+import { trpc } from "@/lib/trpc";
 
 const DARK_MODE_KEY = "@masar_dark_mode";
 
 export default function ProfileScreen() {
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const { passenger, logout } = usePassenger();
+  const { driver } = useDriver();
   const { colorScheme, setColorScheme } = useThemeContext();
   const isDark = colorScheme === "dark";
+
+  // Check if passenger has a linked driver account
+  const { data: driverStatus } = trpc.driver.checkStatus.useQuery(
+    { phone: passenger?.phone ?? "" },
+    { enabled: !!passenger?.phone }
+  );
 
   // Load dark mode preference on mount
   useEffect(() => {
@@ -68,7 +77,71 @@ export default function ProfileScreen() {
   };
 
   const goToCaptainMode = () => {
-    router.push("/captain/home" as any);
+    // إذا كان السائق مسجّل دخول بالفعل
+    if (driver) {
+      if (driver.registrationStatus === "approved") {
+        router.push("/captain/home" as any);
+        return;
+      } else if (driver.registrationStatus === "pending") {
+        Alert.alert(
+          "طلبك قيد المراجعة",
+          "تسجيلك كسائق لا يزال تحت المراجعة. سيتم إشعارك عند القبول.",
+          [{ text: "حسناً" }]
+        );
+        return;
+      } else if (driver.registrationStatus === "rejected") {
+        Alert.alert(
+          "تم رفض طلبك",
+          "للأسف تم رفض طلب تسجيلك كسائق. يمكنك إعادة التسجيل.",
+          [
+            { text: "إلغاء", style: "cancel" },
+            { text: "تسجيل جديد", onPress: () => router.push("/driver/register" as any) },
+          ]
+        );
+        return;
+      }
+    }
+
+    // إذا كان لديه طلب معلق بنفس رقم الهاتف ولم يسجّل دخولاً
+    if (driverStatus?.found) {
+      if (driverStatus.registrationStatus === "approved") {
+        // يجب تسجيل الدخول أولاً
+        Alert.alert(
+          "تسجيل دخول الكابتن",
+          "لديك حساب كابتن معتمد. سجّل دخولك للوصول إليه.",
+          [
+            { text: "إلغاء", style: "cancel" },
+            { text: "تسجيل الدخول", onPress: () => router.push("/driver/login" as any) },
+          ]
+        );
+      } else if (driverStatus.registrationStatus === "pending") {
+        Alert.alert(
+          "طلبك قيد المراجعة",
+          "تسجيلك كسائق لا يزال تحت المراجعة. سيتم إشعارك عند القبول.",
+          [{ text: "حسناً" }]
+        );
+      } else {
+        Alert.alert(
+          "تم رفض طلبك",
+          "للأسف تم رفض طلب تسجيلك كسائق. يمكنك إعادة التسجيل.",
+          [
+            { text: "إلغاء", style: "cancel" },
+            { text: "تسجيل جديد", onPress: () => router.push("/driver/register" as any) },
+          ]
+        );
+      }
+      return;
+    }
+
+    // لا يوجد حساب كابتن بتاتاً
+    Alert.alert(
+      "لا تمتلك حساب كابتن 🚗",
+      "هذا الخيار مخصص للسائقين المعتمدين فقط.\n\nهل تريد تسجيل حساب سائق والانضمام إلى فريق مسار?",
+      [
+        { text: "لا، شكراً", style: "cancel" },
+        { text: "نعم، سجّلني", onPress: () => router.push("/driver/register" as any) },
+      ]
+    );
   };
 
   // Dynamic colors based on dark mode
