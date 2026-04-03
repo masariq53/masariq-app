@@ -77,59 +77,46 @@ export default function ProfileScreen() {
   };
 
   const goToCaptainMode = () => {
-    // إذا كان السائق مسجّل دخول بالفعل
-    if (driver) {
-      if (driver.registrationStatus === "approved") {
-        router.push("/captain/home" as any);
-        return;
-      } else if (driver.registrationStatus === "pending") {
-        Alert.alert(
-          "طلبك قيد المراجعة",
-          "تسجيلك كسائق لا يزال تحت المراجعة. سيتم إشعارك عند القبول.",
-          [{ text: "حسناً" }]
-        );
-        return;
-      } else if (driver.registrationStatus === "rejected") {
-        Alert.alert(
-          "تم رفض طلبك",
-          "للأسف تم رفض طلب تسجيلك كسائق. يمكنك إعادة التسجيل.",
-          [
-            { text: "إلغاء", style: "cancel" },
-            { text: "تسجيل جديد", onPress: () => router.push("/driver/register" as any) },
-          ]
-        );
-        return;
-      }
-    }
-
-    // إذا كان لديه طلب معلق بنفس رقم الهاتف ولم يسجّل دخولاً
+    // أولاً: تحقق من قاعدة البيانات مباشرة (أحدث وأدق)
     if (driverStatus?.found) {
-      if (driverStatus.registrationStatus === "approved") {
-        // يجب تسجيل الدخول أولاً
+      const liveStatus = driverStatus.registrationStatus;
+
+      if (liveStatus === "approved") {
+        // إذا كان مسجّل دخول بالفعل وحسابه معتمد → انتقل مباشرة
+        if (driver && driver.registrationStatus === "approved") {
+          router.push("/captain/home" as any);
+          return;
+        }
+        // لديه حساب معتمد لكن لم يسجّل دخول بعد → اطلب تسجيل الدخول
         Alert.alert(
-          "تسجيل دخول الكابتن",
-          "لديك حساب كابتن معتمد. سجّل دخولك للوصول إليه.",
+          "حسابك معتمد ✔️",
+          "تم قبول حسابك كسائق. سجّل دخولك للبدء باستقبال الرحلات!",
           [
             { text: "إلغاء", style: "cancel" },
-            { text: "تسجيل الدخول", onPress: () => router.push("/driver/login" as any) },
+            { text: "دخول كابتن 🚗", onPress: () => router.push("/driver/login" as any) },
           ]
         );
-      } else if (driverStatus.registrationStatus === "pending") {
+        return;
+      }
+
+      if (liveStatus === "pending") {
         Alert.alert(
-          "طلبك قيد المراجعة",
+          "طلبك قيد المراجعة ⏳",
           "تسجيلك كسائق لا يزال تحت المراجعة. سيتم إشعارك عند القبول.",
           [{ text: "حسناً" }]
         );
-      } else {
-        Alert.alert(
-          "تم رفض طلبك",
-          "للأسف تم رفض طلب تسجيلك كسائق. يمكنك إعادة التسجيل.",
-          [
-            { text: "إلغاء", style: "cancel" },
-            { text: "تسجيل جديد", onPress: () => router.push("/driver/register" as any) },
-          ]
-        );
+        return;
       }
+
+      // rejected
+      Alert.alert(
+        "تم رفض طلبك ❌",
+        "للأسف تم رفض طلب تسجيلك كسائق. يمكنك إعادة التسجيل.",
+        [
+          { text: "إلغاء", style: "cancel" },
+          { text: "تسجيل جديد", onPress: () => router.push("/driver/register" as any) },
+        ]
+      );
       return;
     }
 
