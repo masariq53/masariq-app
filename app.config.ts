@@ -87,6 +87,12 @@ const config: ExpoConfig = {
   plugins: [
     "expo-router",
     [
+      "expo-image-picker",
+      {
+        "photosPermission": "السماح لمسار بالوصول إلى صورك لتحديث صورة الملف الشخصي."
+      }
+    ],
+    [
       "expo-location",
       {
         locationAlwaysAndWhenInUsePermission: "السماح لـ مسار باستخدام موقعك لتحديد أقرب سائق إليك.",

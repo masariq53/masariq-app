@@ -46,6 +46,8 @@ export const passengers = mysqlTable("passengers", {
   id: int("id").autoincrement().primaryKey(),
   phone: varchar("phone", { length: 20 }).notNull().unique(),
   name: varchar("name", { length: 100 }),
+  photoUrl: text("photoUrl"),
+  pendingPhone: varchar("pendingPhone", { length: 20 }),
   isVerified: boolean("isVerified").default(false).notNull(),
   walletBalance: decimal("walletBalance", { precision: 10, scale: 2 }).default("0.00").notNull(),
   totalRides: int("totalRides").default(0).notNull(),

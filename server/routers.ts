@@ -27,7 +27,12 @@ import {
   checkPhoneExists,
   registerNewPassenger,
   loginExistingPassenger,
+  updatePassengerProfile,
+  setPendingPhone,
+  confirmPhoneChange,
+  getPassengerById,
 } from "./db";
+import { storagePut } from "./storage";
 
 export const appRouter = router({
   system: systemRouter,
@@ -455,6 +460,122 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         await setDriverOnlineStatus(input.driverId, input.isOnline, input.isAvailable);
         return { success: true };
+      }),
+  }),
+
+  // ─── Passenger Profile ──────────────────────────────────────────────────────
+  passenger: router({
+    /**
+     * Get passenger profile by ID
+     */
+    get: publicProcedure
+      .input(z.object({ passengerId: z.number() }))
+      .query(async ({ input }) => {
+        const p = await getPassengerById(input.passengerId);
+        if (!p) throw new Error("المستخدم غير موجود");
+        return { id: p.id, phone: p.phone, name: p.name, photoUrl: p.photoUrl, walletBalance: p.walletBalance, totalRides: p.totalRides, rating: p.rating };
+      }),
+
+    /**
+     * Update passenger name
+     */
+    updateName: publicProcedure
+      .input(z.object({ passengerId: z.number(), name: z.string().min(2).max(30).trim() }))
+      .mutation(async ({ input }) => {
+        const updated = await updatePassengerProfile(input.passengerId, { name: input.name });
+        return { success: true, name: updated?.name };
+      }),
+
+    /**
+     * Upload profile photo - accepts base64 image
+     */
+    uploadPhoto: publicProcedure
+      .input(z.object({
+        passengerId: z.number(),
+        base64: z.string(), // base64 encoded image
+        mimeType: z.string().default("image/jpeg"),
+      }))
+      .mutation(async ({ input }) => {
+        // Convert base64 to Buffer and upload to storage
+        const buffer = Buffer.from(input.base64, "base64");
+        const key = `profiles/passenger_${input.passengerId}_${Date.now()}.jpg`;
+        const { url } = await storagePut(key, buffer, input.mimeType);
+        // Save URL to DB
+        await updatePassengerProfile(input.passengerId, { photoUrl: url });
+        return { success: true, photoUrl: url };
+      }),
+
+    /**
+     * Step 1: Request phone change - send OTP to OLD phone to verify identity
+     */
+    requestPhoneChange: publicProcedure
+      .input(z.object({ passengerId: z.number(), newPhone: z.string().min(10).max(11) }))
+      .mutation(async ({ input }) => {
+        let newPhone = input.newPhone.replace(/\s/g, "");
+        if (newPhone.startsWith("0")) newPhone = "+964" + newPhone.slice(1);
+        else if (!newPhone.startsWith("+")) newPhone = "+964" + newPhone;
+
+        // Get current passenger to get old phone
+        const passenger = await getPassengerById(input.passengerId);
+        if (!passenger) throw new Error("المستخدم غير موجود");
+
+        // Save pending phone & check it's not taken
+        await setPendingPhone(input.passengerId, newPhone);
+
+        // Send OTP to OLD phone for identity verification
+        const code = await (await import("./db")).createOtp(passenger.phone);
+        const isDev = process.env.NODE_ENV !== "production";
+        return {
+          success: true,
+          oldPhone: passenger.phone,
+          newPhone,
+          devCode: isDev ? code : undefined,
+          message: isDev ? `رمز التحقق على رقمك القديم: ${code}` : "تم إرسال رمز التحقق إلى رقمك القديم",
+        };
+      }),
+
+    /**
+     * Step 2: Verify OTP on OLD phone, then send OTP to NEW phone
+     */
+    verifyOldPhoneOtp: publicProcedure
+      .input(z.object({ passengerId: z.number(), code: z.string().length(6) }))
+      .mutation(async ({ input }) => {
+        const passenger = await getPassengerById(input.passengerId);
+        if (!passenger) throw new Error("المستخدم غير موجود");
+        if (!passenger.pendingPhone) throw new Error("لا يوجد طلب تغيير رقم نشط");
+
+        // Verify OTP on OLD phone
+        const isValid = await verifyOtp(passenger.phone, input.code);
+        if (!isValid) throw new Error("رمز التحقق غير صحيح أو منتهي الصلاحية");
+
+        // Now send OTP to NEW phone
+        const code = await (await import("./db")).createOtp(passenger.pendingPhone);
+        const isDev = process.env.NODE_ENV !== "production";
+        return {
+          success: true,
+          newPhone: passenger.pendingPhone,
+          devCode: isDev ? code : undefined,
+          message: isDev ? `رمز التحقق على رقمك الجديد: ${code}` : "تم إرسال رمز التحقق إلى رقمك الجديد",
+        };
+      }),
+
+    /**
+     * Step 3: Verify OTP on NEW phone and confirm the change
+     */
+    verifyNewPhoneOtp: publicProcedure
+      .input(z.object({ passengerId: z.number(), code: z.string().length(6) }))
+      .mutation(async ({ input }) => {
+        const passenger = await getPassengerById(input.passengerId);
+        if (!passenger) throw new Error("المستخدم غير موجود");
+        if (!passenger.pendingPhone) throw new Error("لا يوجد طلب تغيير رقم نشط");
+
+        // Verify OTP on NEW phone
+        const isValid = await verifyOtp(passenger.pendingPhone, input.code);
+        if (!isValid) throw new Error("رمز التحقق غير صحيح أو منتهي الصلاحية");
+
+        // Confirm the phone change
+        const newPhone = await confirmPhoneChange(input.passengerId);
+        return { success: true, newPhone };
       }),
   }),
 

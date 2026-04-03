@@ -7,6 +7,7 @@ import {
   ScrollView,
   Switch,
   Alert,
+  Image,
 } from "react-native";
 import { router } from "expo-router";
 import { ScreenContainer } from "@/components/screen-container";
@@ -67,6 +68,7 @@ export default function ProfileScreen() {
   const handleMenuItem = (id: string) => {
     if (id === "wallet") router.push("/wallet" as any);
     else if (id === "subscription") router.push("/subscription" as any);
+    else if (id === "edit") router.push("/profile/edit" as any);
   };
 
   const goToCaptainMode = () => {
@@ -85,9 +87,17 @@ export default function ProfileScreen() {
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Profile Card */}
         <View style={styles.profileCard}>
-          <View style={styles.avatarLarge}>
-            <Text style={styles.avatarText}>م</Text>
-          </View>
+          <TouchableOpacity onPress={() => router.push("/profile/edit" as any)}>
+            {passenger?.photoUrl ? (
+              <Image source={{ uri: passenger.photoUrl }} style={styles.avatarLarge} />
+            ) : (
+              <View style={styles.avatarLarge}>
+                <Text style={styles.avatarText}>
+                  {passenger?.name ? passenger.name.charAt(0).toUpperCase() : 'م'}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
           <View style={styles.profileInfo}>
             <Text style={styles.profileName}>{passenger?.name || 'مستخدم مسار'}</Text>
             <Text style={styles.profilePhone}>{passenger?.phone ? `+964 ${passenger.phone}` : '+964 07XX XXX XXXX'}</Text>
@@ -96,7 +106,7 @@ export default function ProfileScreen() {
               <Text style={styles.ratingCount}>• {passenger?.totalRides || 0} رحلة</Text>
             </View>
           </View>
-          <TouchableOpacity style={styles.editBtn}>
+          <TouchableOpacity style={styles.editBtn} onPress={() => router.push("/profile/edit" as any)}>
             <Text style={styles.editBtnText}>تعديل</Text>
           </TouchableOpacity>
         </View>
@@ -223,6 +233,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#1A0533",
     alignItems: "center",
     justifyContent: "center",
+    overflow: "hidden",
   },
   avatarText: {
     color: "#FFD700",

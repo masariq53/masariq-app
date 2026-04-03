@@ -246,6 +246,48 @@ export async function getPassengerById(id: number) {
   return result.length > 0 ? result[0] : null;
 }
 
+/**
+ * Update passenger name and/or photo URL
+ */
+export async function updatePassengerProfile(
+  passengerId: number,
+  data: { name?: string; photoUrl?: string }
+) {
+  const db = await getDb();
+  if (!db) return;
+  const updateData: Record<string, unknown> = { updatedAt: new Date() };
+  if (data.name !== undefined) updateData.name = data.name;
+  if (data.photoUrl !== undefined) updateData.photoUrl = data.photoUrl;
+  await db.update(passengers).set(updateData as any).where(eq(passengers.id, passengerId));
+  const updated = await db.select().from(passengers).where(eq(passengers.id, passengerId)).limit(1);
+  return updated[0]!;
+}
+
+/**
+ * Set pending phone (step 1 of phone change: OTP sent to OLD phone)
+ */
+export async function setPendingPhone(passengerId: number, newPhone: string) {
+  const db = await getDb();
+  if (!db) return;
+  // Check new phone is not taken
+  const existing = await db.select({ id: passengers.id }).from(passengers).where(eq(passengers.phone, newPhone)).limit(1);
+  if (existing.length > 0) throw new Error("رقم الهاتف الجديد مسجل بالفعل لدى مستخدم آخر");
+  await db.update(passengers).set({ pendingPhone: newPhone }).where(eq(passengers.id, passengerId));
+}
+
+/**
+ * Confirm phone change after OTP verified on new phone
+ */
+export async function confirmPhoneChange(passengerId: number) {
+  const db = await getDb();
+  if (!db) return;
+  const passenger = await db.select().from(passengers).where(eq(passengers.id, passengerId)).limit(1);
+  if (!passenger[0]?.pendingPhone) throw new Error("لا يوجد رقم هاتف معلّق للتغيير");
+  const newPhone = passenger[0].pendingPhone;
+  await db.update(passengers).set({ phone: newPhone, pendingPhone: null }).where(eq(passengers.id, passengerId));
+  return newPhone;
+}
+
 // ─── Drivers ──────────────────────────────────────────────────────────────────
 
 export async function getOrCreateDriver(phone: string, name: string) {

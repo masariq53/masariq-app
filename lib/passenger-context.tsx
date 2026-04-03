@@ -14,6 +14,7 @@ export type PassengerProfile = {
   id: number;
   phone: string;
   name: string | null;
+  photoUrl?: string | null;
   walletBalance: string;
   totalRides: number;
   rating: string | null;
