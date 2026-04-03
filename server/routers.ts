@@ -116,6 +116,7 @@ export const appRouter = router({
             id: passenger.id,
             phone: passenger.phone,
             name: passenger.name,
+            photoUrl: passenger.photoUrl ?? null,
             walletBalance: passenger.walletBalance,
             totalRides: passenger.totalRides,
             rating: passenger.rating,
@@ -168,7 +169,7 @@ export const appRouter = router({
         if (!isValid) throw new Error("رمز التحقق غير صحيح أو منتهي الصلاحية");
 
         const passenger = await loginExistingPassenger(phone);
-        return { success: true, passenger: { id: passenger.id, phone: passenger.phone, name: passenger.name, walletBalance: passenger.walletBalance, totalRides: passenger.totalRides, rating: passenger.rating } };
+        return { success: true, passenger: { id: passenger.id, phone: passenger.phone, name: passenger.name, photoUrl: passenger.photoUrl ?? null, walletBalance: passenger.walletBalance, totalRides: passenger.totalRides, rating: passenger.rating } };
       }),
 
     /**
@@ -203,7 +204,7 @@ export const appRouter = router({
         if (!isValid) throw new Error("رمز التحقق غير صحيح أو منتهي الصلاحية");
 
         const passenger = await registerNewPassenger(phone, input.name);
-        return { success: true, passenger: { id: passenger.id, phone: passenger.phone, name: passenger.name, walletBalance: passenger.walletBalance, totalRides: passenger.totalRides, rating: passenger.rating } };
+        return { success: true, passenger: { id: passenger.id, phone: passenger.phone, name: passenger.name, photoUrl: passenger.photoUrl ?? null, walletBalance: passenger.walletBalance, totalRides: passenger.totalRides, rating: passenger.rating } };
       }),
 
     /**

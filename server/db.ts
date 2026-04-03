@@ -178,7 +178,7 @@ export async function checkPhoneExists(phone: string): Promise<boolean> {
 export async function registerNewPassenger(phone: string, name: string) {
   const db = await getDb();
   if (!db) {
-    return { id: 1, phone, name, isVerified: true, walletBalance: "10000.00", totalRides: 0, rating: "5.00", createdAt: new Date(), updatedAt: new Date(), lastActiveAt: new Date() };
+    return { id: 1, phone, name, photoUrl: null, isVerified: true, walletBalance: "10000.00", totalRides: 0, rating: "5.00", createdAt: new Date(), updatedAt: new Date(), lastActiveAt: new Date() };
   }
 
   const existing = await db.select({ id: passengers.id }).from(passengers).where(eq(passengers.phone, phone)).limit(1);
@@ -197,7 +197,7 @@ export async function registerNewPassenger(phone: string, name: string) {
 export async function loginExistingPassenger(phone: string) {
   const db = await getDb();
   if (!db) {
-    return { id: 1, phone, name: "مستخدم تجريبي", isVerified: true, walletBalance: "10000.00", totalRides: 0, rating: "5.00", createdAt: new Date(), updatedAt: new Date(), lastActiveAt: new Date() };
+    return { id: 1, phone, name: "مستخدم تجريبي", photoUrl: null, isVerified: true, walletBalance: "10000.00", totalRides: 0, rating: "5.00", createdAt: new Date(), updatedAt: new Date(), lastActiveAt: new Date() };
   }
 
   const existing = await db.select().from(passengers).where(eq(passengers.phone, phone)).limit(1);
@@ -213,7 +213,7 @@ export async function getOrCreatePassenger(phone: string, name?: string) {
   const db = await getDb();
   if (!db) {
     // Return mock passenger for dev mode
-    return { id: 1, phone, name: name || "مستخدم تجريبي", isVerified: true, walletBalance: "10000.00", totalRides: 0, rating: "5.00", createdAt: new Date(), updatedAt: new Date(), lastActiveAt: new Date() };
+    return { id: 1, phone, name: name || "مستخدم تجريبي", photoUrl: null, isVerified: true, walletBalance: "10000.00", totalRides: 0, rating: "5.00", createdAt: new Date(), updatedAt: new Date(), lastActiveAt: new Date() };
   }
 
   const existing = await db
