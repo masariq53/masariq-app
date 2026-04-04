@@ -49,7 +49,11 @@ type SearchResult = {
     neighbourhood?: string;
     suburb?: string;
     city?: string;
+    town?: string;
+    village?: string;
     state?: string;
+    country?: string;
+    country_code?: string;
   };
 };
 
@@ -66,8 +70,9 @@ type SavedAddress = {
 async function searchNominatim(query: string): Promise<SearchResult[]> {
   if (!query || query.trim().length < 2) return [];
   try {
-    const encoded = encodeURIComponent(query + " الموصل العراق");
-    const url = `https://nominatim.openstreetmap.org/search?q=${encoded}&format=json&limit=6&addressdetails=1&accept-language=ar`;
+    const encoded = encodeURIComponent(query);
+    // بحث حر عالمي بدون قيود جغرافية - مثل Waze / Google Maps
+    const url = `https://nominatim.openstreetmap.org/search?q=${encoded}&format=json&limit=8&addressdetails=1&accept-language=ar`;
     const res = await fetch(url, { headers: { "User-Agent": "MasarApp/1.0" } });
     if (!res.ok) return [];
     return await res.json();
@@ -396,7 +401,7 @@ export default function BookRideScreen() {
             )}
 
             {toInput.trim().length < 2 && (
-              <Text style={styles.searchSectionTitle}>ابحث عن موقع في الموصل</Text>
+              <Text style={styles.searchSectionTitle}>ابحث عن أي موقع في العالم</Text>
             )}
 
             {isSearching && (
@@ -416,7 +421,7 @@ export default function BookRideScreen() {
                     <Text style={styles.searchResultIcon}>📍</Text>
                     <View style={styles.searchResultInfo}>
                       <Text style={styles.searchResultName} numberOfLines={1}>{shortenAddress(item.display_name)}</Text>
-                      <Text style={styles.searchResultAddr} numberOfLines={1}>{item.address?.city || item.address?.state || "الموصل، العراق"}</Text>
+                      <Text style={styles.searchResultAddr} numberOfLines={1}>{item.address?.city || item.address?.town || item.address?.state || item.address?.country || ""}</Text>
                     </View>
                   </TouchableOpacity>
                 )}
