@@ -40,6 +40,24 @@ input{outline:none;font-family:inherit}
 .input-icon{font-size:18px;flex-shrink:0}
 .input-wrap input{flex:1;background:transparent;border:none;color:var(--text);font-size:15px;padding:14px 0;direction:ltr}
 .eye-btn{background:none;font-size:18px;padding:4px;flex-shrink:0}
+
+/* ── Docs Modal ── */
+#docs-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:9999;align-items:center;justify-content:center;padding:20px}
+#docs-modal.open{display:flex}
+.docs-card{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:28px;width:100%;max-width:700px;max-height:90vh;overflow-y:auto}
+.docs-title{font-size:20px;font-weight:900;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center}
+.docs-close{background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);color:#FCA5A5;border-radius:10px;padding:8px 14px;font-size:14px;font-weight:700;cursor:pointer}
+.docs-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
+.doc-item{background:var(--surface2);border:1px solid var(--border);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:10px}
+.doc-label{font-size:13px;font-weight:700;color:var(--text-muted)}
+.doc-img{width:100%;height:160px;object-fit:cover;border-radius:10px;cursor:pointer;border:1px solid var(--border)}
+.doc-img-placeholder{width:100%;height:160px;background:var(--bg);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:40px;border:2px dashed var(--border)}
+.driver-info-row{display:flex;gap:12px;align-items:center;margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--border)}
+.driver-avatar{width:60px;height:60px;border-radius:50%;object-fit:cover;border:2px solid var(--primary)}
+.driver-avatar-placeholder{width:60px;height:60px;border-radius:50%;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:28px;border:2px solid var(--border)}
+.block-btn{padding:6px 12px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;border:1px solid}
+.block-btn.block{background:rgba(239,68,68,.15);color:#FCA5A5;border-color:rgba(239,68,68,.3)}
+.block-btn.unblock{background:rgba(34,197,94,.15);color:#86EFAC;border-color:rgba(34,197,94,.3)}
 .error-box{display:flex;align-items:center;gap:8px;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.3);border-radius:10px;padding:12px 14px;color:#FCA5A5;font-size:14px;margin-bottom:16px}
 .submit-btn{width:100%;background:linear-gradient(135deg,#6C3FC5,#8B5CF6);color:#FFF;font-size:16px;font-weight:700;padding:15px;border-radius:12px;border:none;cursor:pointer;transition:opacity .2s}
 .submit-btn:hover{opacity:.9}
@@ -147,6 +165,17 @@ input{outline:none;font-family:inherit}
     </div>
     <button class="submit-btn" onclick="doLogin()">دخول إلى لوحة التحكم</button>
     <p class="login-footer">🔐 هذه اللوحة مخصصة لموظفي شركة مسار فقط</p>
+  </div>
+</div>
+
+<!-- DOCS MODAL -->
+<div id="docs-modal" onclick="if(event.target===this)closeDocs()">
+  <div class="docs-card">
+    <div class="docs-title">
+      <span>📄 وثائق السائق</span>
+      <button class="docs-close" onclick="closeDocs()">✕ إغلاق</button>
+    </div>
+    <div id="docs-content"></div>
   </div>
 </div>
 
@@ -435,34 +464,100 @@ function renderDrivers(){
     </div>
     ${filtered.length===0?'<div class="empty"><div class="empty-icon">👨‍✈️</div><p>لا يوجد سائقون</p></div>':
     `<div class="table-wrap">
-      <div class="table-head" style="min-width:900px">
+      <div class="table-head" style="min-width:1050px">
         <span style="width:50px">#</span><span style="flex:1">الاسم</span><span style="width:130px">الهاتف</span>
         <span style="flex:1">السيارة</span><span style="width:90px">اللوحة</span>
         <span style="width:80px">التقييم</span><span style="width:80px">الرحلات</span>
-        <span style="width:90px">الحالة</span><span style="width:110px">التوثيق</span>
+        <span style="width:90px">الحالة</span><span style="width:90px">التوثيق</span><span style="width:90px">إجراءات</span>
       </div>
       ${filtered.map(d=>`
-      <div class="table-row" style="min-width:900px">
+      <div class="table-row" style="min-width:1050px;background:${d.isBlocked?'rgba(239,68,68,.05)':'transparent'}">
         <span style="width:50px;color:var(--text-dim);font-size:13px">#${d.id}</span>
-        <span style="flex:1"><div style="font-weight:700;font-size:14px">${d.name||'—'}</div></span>
+        <span style="flex:1">
+          <div style="font-weight:700;font-size:14px">${d.name||'—'}</div>
+          ${d.isBlocked?'<div style="font-size:11px;color:#FCA5A5;margin-top:2px">🚫 معطّل</div>':''}
+        </span>
         <span style="width:130px;font-size:13px;color:var(--text-muted);direction:ltr">+964 ${d.phone}</span>
-        <span style="flex:1;font-size:13px;color:var(--text-muted)">${d.carModel||'—'} ${d.carColor?'('+d.carColor+')':''}</span>
-        <span style="width:90px;font-weight:700;color:var(--gold)">${d.carPlate||'—'}</span>
+        <span style="flex:1;font-size:13px;color:var(--text-muted)">${d.vehicleModel||'—'} ${d.vehicleColor?'('+d.vehicleColor+')':''}</span>
+        <span style="width:90px;font-weight:700;color:var(--gold)">${d.vehiclePlate||'—'}</span>
         <span style="width:80px">⭐ ${parseFloat(d.rating||5).toFixed(1)}</span>
         <span style="width:80px;font-weight:700">${d.totalRides||0}</span>
-        <span style="width:90px"><span class="badge" style="background:${d.isOnline?'#D4EDDA':'#F8D7DA'};color:${d.isOnline?'#155724':'#721C24'}">${d.isOnline?'متاح':'غير متاح'}</span></span>
-        <span style="width:110px"><button class="verify-btn" style="background:${d.isVerified?'rgba(239,68,68,.15)':'rgba(34,197,94,.15)'};color:${d.isVerified?'#FCA5A5':'#86EFAC'};border:1px solid ${d.isVerified?'rgba(239,68,68,.3)':'rgba(34,197,94,.3)'}" onclick="toggleVerify(${d.id},${d.isVerified},'${d.name||''}')">
-          ${d.isVerified?'⛔ تعليق':'✅ توثيق'}
-        </button></span>
+        <span style="width:90px"><span class="badge" style="background:${d.isOnline?'rgba(34,197,94,.15)':'rgba(239,68,68,.1)'};color:${d.isOnline?'#86EFAC':'#FCA5A5'};border:1px solid ${d.isOnline?'rgba(34,197,94,.3)':'rgba(239,68,68,.2)'}">${d.isOnline?'🟢 متاح':'⚫ غير متاح'}</span></span>
+        <span style="width:90px">
+          ${d.isVerified
+            ? '<span style="color:#86EFAC;font-weight:700;font-size:13px">✅ موثق</span>'
+            : `<button class="verify-btn" style="background:rgba(34,197,94,.15);color:#86EFAC;border:1px solid rgba(34,197,94,.3)" onclick="toggleVerify(${d.id},false,'${(d.name||'').replace(/'/g,'')}')">✅ توثيق</button>`
+          }
+        </span>
+        <span style="width:90px;display:flex;gap:6px;align-items:center">
+          <button class="block-btn ${d.isBlocked?'unblock':'block'}" onclick="toggleBlock(${d.id},${d.isBlocked},'${(d.name||'').replace(/'/g,'')}')"
+            title="${d.isBlocked?'تفعيل الحساب':'تعطيل الحساب'}">
+            ${d.isBlocked?'✅ تفعيل':'🚫 تعطيل'}
+          </button>
+          <button style="background:rgba(59,130,246,.15);color:#93C5FD;border:1px solid rgba(59,130,246,.3);border-radius:8px;padding:6px 8px;font-size:14px;cursor:pointer" onclick="openDocs(${d.id})" title="عرض الوثائق">👁</button>
+        </span>
       </div>`).join('')}
     </div>`}
   </div>`;
 }
 function setDriversFilter(f){ driversFilter=f; renderDrivers(); }
 async function toggleVerify(id, isVerified, name){
-  if(!confirm(`${isVerified?'تعليق':'توثيق'} السائق ${name}؟`)) return;
-  await m('admin.verifyDriver',{driverId:id,isVerified:!isVerified});
+  if(!confirm(`توثيق السائق ${name}؟`)) return;
+  await m('admin.verifyDriver',{driverId:id,isVerified:true});
   loadDrivers();
+}
+async function toggleBlock(id, isBlocked, name){
+  if(isBlocked){
+    if(!confirm(`تفعيل حساب ${name}؟`)) return;
+    await m('admin.blockDriver',{driverId:id,isBlocked:false});
+  } else {
+    const reason = prompt(`سبب تعطيل حساب ${name} (اتركه فارغًا للسبب الافتراضي):`);
+    if(reason === null) return;
+    await m('admin.blockDriver',{driverId:id,isBlocked:true,blockReason:reason||'تم تعطيل حسابك من قِبَل الإدارة'});
+  }
+  loadDrivers();
+}
+async function openDocs(driverId){
+  const modal = document.getElementById('docs-modal');
+  const content = document.getElementById('docs-content');
+  content.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted)">⏳ جاري تحميل البيانات...</div>';
+  modal.classList.add('open');
+  try{
+    const d = await q('driver.getProfile',{driverId});
+    content.innerHTML = `
+      <div class="driver-info-row">
+        ${d.photoUrl?`<img src="${d.photoUrl}" class="driver-avatar" onerror="this.style.display='none'"/>`:'<div class="driver-avatar-placeholder">👤</div>'}
+        <div>
+          <div style="font-size:18px;font-weight:900">${d.name||'—'}</div>
+          <div style="font-size:13px;color:var(--text-muted);margin-top:4px">${d.phone}</div>
+          <div style="font-size:12px;color:var(--text-dim);margin-top:2px">${d.vehicleModel||''} ${d.vehicleColor?'('+d.vehicleColor+')':''} • ${d.vehiclePlate||'—'}</div>
+        </div>
+      </div>
+      <div class="docs-grid">
+        <div class="doc-item">
+          <div class="doc-label">📸 صورة شخصية</div>
+          ${d.photoUrl?`<img src="${d.photoUrl}" class="doc-img" onclick="window.open('${d.photoUrl}','_blank')" />`:'<div class="doc-img-placeholder">👤</div>'}
+        </div>
+        <div class="doc-item">
+          <div class="doc-label">🏦 بطاقة الهوية ${d.nationalId?'('+d.nationalId+')':''}</div>
+          ${d.nationalIdPhotoUrl?`<img src="${d.nationalIdPhotoUrl}" class="doc-img" onclick="window.open('${d.nationalIdPhotoUrl}','_blank')" />`:'<div class="doc-img-placeholder">🏦</div>'}
+        </div>
+        <div class="doc-item">
+          <div class="doc-label">📌 رخصة القيادة</div>
+          ${d.licensePhotoUrl?`<img src="${d.licensePhotoUrl}" class="doc-img" onclick="window.open('${d.licensePhotoUrl}','_blank')" />`:'<div class="doc-img-placeholder">📌</div>'}
+        </div>
+        <div class="doc-item">
+          <div class="doc-label">🚗 صورة السيارة</div>
+          ${d.vehiclePhotoUrl?`<img src="${d.vehiclePhotoUrl}" class="doc-img" onclick="window.open('${d.vehiclePhotoUrl}','_blank')" />`:'<div class="doc-img-placeholder">🚗</div>'}
+        </div>
+      </div>
+    `;
+  }catch(e){
+    content.innerHTML = '<div style="text-align:center;padding:40px;color:#FCA5A5">⚠️ خطأ في تحميل البيانات</div>';
+  }
+}
+function closeDocs(){
+  document.getElementById('docs-modal').classList.remove('open');
 }
 
 // ── Passengers ────────────────────────────────────────────────────────────────

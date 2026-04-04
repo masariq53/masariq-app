@@ -980,6 +980,11 @@ export const appRouter = router({
         const driver = await getDriverByPhone(phone);
         if (!driver) throw new Error("السائق غير موجود");
 
+        // Check if driver is blocked
+        if (driver.isBlocked) {
+          throw new Error(driver.blockReason ?? "تم تعطيل حسابك من قِبَل الإدارة. للاستفسار تواصل مع الدعم.");
+        }
+
         return {
           success: true,
           driver: {
@@ -1072,6 +1077,10 @@ export const appRouter = router({
           vehicleColor: d.vehicleColor ?? null, vehiclePlate: d.vehiclePlate ?? null,
           vehicleType: d.vehicleType, rating: d.rating, totalRides: d.totalRides,
           walletBalance: d.walletBalance,
+          nationalIdPhotoUrl: d.nationalIdPhotoUrl ?? null,
+          licensePhotoUrl: d.licensePhotoUrl ?? null,
+          vehiclePhotoUrl: d.vehiclePhotoUrl ?? null,
+          nationalId: d.nationalId ?? null,
         };
       }),
     /**
