@@ -77,6 +77,7 @@ export const drivers = mysqlTable("drivers", {
   nationalId: varchar("nationalId", { length: 30 }),
   photoUrl: text("photoUrl"),
   nationalIdPhotoUrl: text("nationalIdPhotoUrl"),
+  nationalIdPhotoBackUrl: text("nationalIdPhotoBackUrl"),
   licensePhotoUrl: text("licensePhotoUrl"),
   // Vehicle info
   vehicleType: mysqlEnum("vehicleType", ["sedan", "suv", "minivan"]).default("sedan").notNull(),

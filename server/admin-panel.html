@@ -539,8 +539,12 @@ async function openDocs(driverId){
           ${d.photoUrl?`<img src="${d.photoUrl}" class="doc-img" onclick="window.open('${d.photoUrl}','_blank')" />`:'<div class="doc-img-placeholder">👤</div>'}
         </div>
         <div class="doc-item">
-          <div class="doc-label">🏦 بطاقة الهوية ${d.nationalId?'('+d.nationalId+')':''}</div>
-          ${d.nationalIdPhotoUrl?`<img src="${d.nationalIdPhotoUrl}" class="doc-img" onclick="window.open('${d.nationalIdPhotoUrl}','_blank')" />`:'<div class="doc-img-placeholder">🏦</div>'}
+          <div class="doc-label">🪪 هوية - أمامية ${d.nationalId?'('+d.nationalId+')':''}</div>
+          ${d.nationalIdPhotoUrl?`<img src="${d.nationalIdPhotoUrl}" class="doc-img" onclick="window.open('${d.nationalIdPhotoUrl}','_blank')" />`:'<div class="doc-img-placeholder">🪪</div>'}
+        </div>
+        <div class="doc-item">
+          <div class="doc-label">🪪 هوية - خلفية</div>
+          ${d.nationalIdPhotoBackUrl?`<img src="${d.nationalIdPhotoBackUrl}" class="doc-img" onclick="window.open('${d.nationalIdPhotoBackUrl}','_blank')" />`:'<div class="doc-img-placeholder">🪪</div>'}
         </div>
         <div class="doc-item">
           <div class="doc-label">📌 رخصة القيادة</div>

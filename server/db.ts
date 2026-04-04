@@ -313,6 +313,7 @@ export async function registerDriver(data: {
   nationalId?: string;
   photoUrl?: string;
   nationalIdPhotoUrl?: string;
+  nationalIdPhotoBackUrl?: string;
   licensePhotoUrl?: string;
   vehicleType: "sedan" | "suv" | "minivan";
   vehiclePlate?: string;
@@ -335,6 +336,7 @@ export async function registerDriver(data: {
       nationalId: data.nationalId || null,
       photoUrl: data.photoUrl || null,
       nationalIdPhotoUrl: data.nationalIdPhotoUrl || null,
+      nationalIdPhotoBackUrl: data.nationalIdPhotoBackUrl || null,
       licensePhotoUrl: data.licensePhotoUrl || null,
       vehicleType: data.vehicleType,
       vehiclePlate: data.vehiclePlate || null,
@@ -355,6 +357,7 @@ export async function registerDriver(data: {
     nationalId: data.nationalId || null,
     photoUrl: data.photoUrl || null,
     nationalIdPhotoUrl: data.nationalIdPhotoUrl || null,
+    nationalIdPhotoBackUrl: data.nationalIdPhotoBackUrl || null,
     licensePhotoUrl: data.licensePhotoUrl || null,
     vehicleType: data.vehicleType,
     vehiclePlate: data.vehiclePlate || null,

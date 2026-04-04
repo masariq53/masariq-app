@@ -43,6 +43,13 @@
       "when": 1775290377352,
       "tag": "0005_giant_titania",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1775295459951,
+      "tag": "0006_flippant_thunderbolt_ross",
+      "breakpoints": true
     }
   ]
 }

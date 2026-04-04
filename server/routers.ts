@@ -884,6 +884,7 @@ export const appRouter = router({
         nationalId: z.string().optional(),
         photoUrl: z.string().optional(),
         nationalIdPhotoUrl: z.string().optional(),
+        nationalIdPhotoBackUrl: z.string().optional(),
         licensePhotoUrl: z.string().optional(),
         vehicleType: z.enum(["sedan", "suv", "minivan"]),
         vehiclePlate: z.string().optional(),
@@ -908,7 +909,7 @@ export const appRouter = router({
     uploadDocument: publicProcedure
       .input(z.object({
         phone: z.string(),
-        documentType: z.enum(["photo", "nationalId", "license", "vehicle"]),
+        documentType: z.enum(["photo", "nationalId", "nationalIdBack", "license", "vehicle"]),
         base64: z.string(),
         mimeType: z.string().default("image/jpeg"),
       }))
@@ -1080,6 +1081,7 @@ export const appRouter = router({
           vehicleType: d.vehicleType, rating: d.rating, totalRides: d.totalRides,
           walletBalance: d.walletBalance,
           nationalIdPhotoUrl: d.nationalIdPhotoUrl ?? null,
+          nationalIdPhotoBackUrl: d.nationalIdPhotoBackUrl ?? null,
           licensePhotoUrl: d.licensePhotoUrl ?? null,
           vehiclePhotoUrl: d.vehiclePhotoUrl ?? null,
           nationalId: d.nationalId ?? null,
