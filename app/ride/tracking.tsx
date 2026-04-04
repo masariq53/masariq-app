@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   View,
   Text,
@@ -15,6 +15,14 @@ import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import MapView, { Marker, Polyline, PROVIDER_DEFAULT } from "react-native-maps";
 import { trpc } from "@/lib/trpc";
+import {
+  notifyRideAccepted,
+  notifyDriverArrived,
+  notifyRideCompleted,
+  notifyRideCancelled,
+  notifyNoDriversAvailable,
+  registerPassengerNotifications,
+} from "@/lib/passenger-notifications";
 
 // مراحل الرحلة من منظور الراكب
 // 0 = searching: جاري البحث عن سائق
@@ -68,12 +76,33 @@ export default function TrackingScreen() {
 
   const [currentStep, setCurrentStep] = useState(0);
   const [cancelled, setCancelled] = useState(false);
+  const [noDrivers, setNoDrivers] = useState(false);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const mapRef = useRef<MapView>(null);
   const prevStepRef = useRef(0);
-  const navigatedToRatingRef = useRef(false); // منع الانتقال مرتين
+  const navigatedToRatingRef = useRef(false);
+  const noDriversTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [completed, setCompleted] = useState(false);
+
+  // طلب صلاحيات الإشعارات عند فتح الشاشة
+  useEffect(() => {
+    registerPassengerNotifications();
+  }, []);
+
+  // مؤقت "لا يوجد سائقون" — 3 دقائق بدون قبول
+  useEffect(() => {
+    if (noDriversTimerRef.current) clearTimeout(noDriversTimerRef.current);
+    if (currentStep === 0 && !cancelled && !completed) {
+      noDriversTimerRef.current = setTimeout(() => {
+        setNoDrivers(true);
+        notifyNoDriversAvailable();
+      }, 3 * 60 * 1000); // 3 دقائق
+    }
+    return () => {
+      if (noDriversTimerRef.current) clearTimeout(noDriversTimerRef.current);
+    };
+  }, [currentStep, cancelled, completed]);
 
   // Polling حقيقي لحالة الرحلة كل 5 ثوانٍ - نمرر rideId لتتبع الرحلة الصحيحة فقط
   const rideQuery = trpc.rides.passengerActiveRide.useQuery(
@@ -93,6 +122,7 @@ export default function TrackingScreen() {
 
     if (ride.status === "cancelled") {
       setCancelled(true);
+      notifyRideCancelled();
       Alert.alert("تم إلغاء الرحلة", "تم إلغاء الرحلة.", [
         { text: "حسناً", onPress: () => router.replace("/(tabs)" as any) },
       ]);
@@ -103,6 +133,9 @@ export default function TrackingScreen() {
     if (step !== prevStepRef.current) {
       prevStepRef.current = step;
       setCurrentStep(step);
+      // إشعارات عند تغيير المرحلة
+      if (step === 1) notifyRideAccepted(ride.driver?.name ?? "السائق");
+      if (step === 2) notifyDriverArrived(ride.driver?.name ?? "السائق");
 
       // تحريك الخريطة عند تغيير المرحلة
       if (step === 1 && ride.driver?.currentLat && ride.driver?.currentLng) {
@@ -125,7 +158,8 @@ export default function TrackingScreen() {
     // انتقل لشاشة التقييم عند الاكتمال - مرة واحدة فقط
     if (ride.status === "completed" && !navigatedToRatingRef.current) {
       navigatedToRatingRef.current = true;
-      setCompleted(true); // إيقاف الـ polling
+      setCompleted(true);
+      notifyRideCompleted(ride.fare ?? fare);
       setCurrentStep(4); // عرض مرحلة "وصلت" فوراً
       const navParams = {
         driverName: ride.driver?.name ?? "السائق",
@@ -194,6 +228,33 @@ export default function TrackingScreen() {
   const driverLat = ride?.driver?.currentLat;
   const driverLng = ride?.driver?.currentLng;
   const actualFare = ride?.fare ?? fare;
+
+  // شاشة "لا يوجد سائقون متاحون"
+  if (noDrivers) {
+    return (
+      <View style={[styles.container, styles.noDriversContainer]}>
+        <StatusBar style="light" />
+        <Text style={styles.noDriversEmoji}>😔</Text>
+        <Text style={styles.noDriversTitle}>لا يوجد سائقون متاحون</Text>
+        <Text style={styles.noDriversText}>لم نتمكن من إيجاد سائق في منطقتك الآن. يرجى المحاولة مرة أخرى بعد قليل.</Text>
+        <TouchableOpacity
+          style={styles.retryBtn}
+          onPress={() => {
+            setNoDrivers(false);
+            setCurrentStep(0);
+          }}
+        >
+          <Text style={styles.retryBtnText}>🔄 إعادة المحاولة</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.goHomeBtn}
+          onPress={() => router.replace("/(tabs)" as any)}
+        >
+          <Text style={styles.goHomeBtnText}>العودة للرئيسية</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -528,4 +589,20 @@ const styles = StyleSheet.create({
     borderColor: "#9B8EC4",
   },
   cancelBtnText: { color: "#9B8EC4", fontSize: 14, fontWeight: "600" },
+
+  // No drivers screen
+  noDriversContainer: { alignItems: "center", justifyContent: "center", paddingHorizontal: 32 },
+  noDriversEmoji: { fontSize: 80, marginBottom: 20 },
+  noDriversTitle: { color: "#FFFFFF", fontSize: 24, fontWeight: "900", marginBottom: 12, textAlign: "center" },
+  noDriversText: { color: "#9B8EC4", fontSize: 15, textAlign: "center", lineHeight: 24, marginBottom: 32 },
+  retryBtn: {
+    backgroundColor: "#FFD700", borderRadius: 16, paddingVertical: 16, paddingHorizontal: 32,
+    alignItems: "center", marginBottom: 12, width: "100%",
+  },
+  retryBtnText: { color: "#1A0533", fontSize: 16, fontWeight: "800" },
+  goHomeBtn: {
+    backgroundColor: "transparent", borderRadius: 16, paddingVertical: 14, paddingHorizontal: 32,
+    alignItems: "center", borderWidth: 1, borderColor: "#3D2070", width: "100%",
+  },
+  goHomeBtnText: { color: "#9B8EC4", fontSize: 15, fontWeight: "600" },
 });

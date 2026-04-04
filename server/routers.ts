@@ -1046,6 +1046,42 @@ export const appRouter = router({
           walletBalance: d.walletBalance,
         };
       }),
+    /**
+     * Rate a passenger from the driver side - saves driverRating to rides table and updates passenger average
+     */
+    ratePassenger: publicProcedure
+      .input(z.object({
+        rideId: z.number(),
+        rating: z.number().min(1).max(5),
+        comment: z.string().optional(),
+        tags: z.array(z.string()).optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const db = await (await import("./db")).getDb();
+        if (!db) return { success: false };
+        const { rides: ridesTable, passengers: passengersTable } = await import("../drizzle/schema");
+        const { eq, avg } = await import("drizzle-orm");
+        // Update ride with driver rating for passenger
+        await db.update(ridesTable)
+          .set({ driverRating: input.rating } as any)
+          .where(eq(ridesTable.id, input.rideId));
+        // Recalculate passenger average rating
+        const [rideRow] = await db.select({ passengerId: ridesTable.passengerId })
+          .from(ridesTable).where(eq(ridesTable.id, input.rideId)).limit(1);
+        if (rideRow?.passengerId) {
+          const ratingResult = await db
+            .select({ avgRating: avg(ridesTable.driverRating) })
+            .from(ridesTable)
+            .where(eq(ridesTable.passengerId, rideRow.passengerId));
+          const newAvg = ratingResult[0]?.avgRating;
+          if (newAvg) {
+            await db.update(passengersTable)
+              .set({ rating: parseFloat(newAvg).toFixed(1) } as any)
+              .where(eq(passengersTable.id, rideRow.passengerId));
+          }
+        }
+        return { success: true };
+      }),
   }),
 
   // ─── Passenger Profile ──────────────────────────────────────────────────────

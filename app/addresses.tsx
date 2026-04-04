@@ -116,16 +116,34 @@ export default function AddressesScreen() {
       Alert.alert("تنبيه", "يرجى إدخال العنوان");
       return;
     }
-    if (!labelValue.trim()) {
+    if (!labelValue.trim() && editingAddress?.type === "other") {
       Alert.alert("تنبيه", "يرجى إدخال اسم العنوان");
       return;
     }
 
+    // Geocode the address via Nominatim to get lat/lng
+    let lat: number | undefined;
+    let lng: number | undefined;
+    try {
+      const encoded = encodeURIComponent(inputValue.trim() + " الموصل العراق");
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encoded}&format=json&limit=1&accept-language=ar`, {
+        headers: { "User-Agent": "MasarApp/1.0" },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.[0]) {
+          lat = parseFloat(data[0].lat);
+          lng = parseFloat(data[0].lon);
+        }
+      }
+    } catch {}
+
     const updated = editingAddress!;
-    const newAddr: SavedAddress = {
+    const newAddr: SavedAddress & { lat?: number; lng?: number } = {
       ...updated,
       address: inputValue.trim(),
       label: updated.type !== "other" ? updated.label : labelValue.trim(),
+      ...(lat !== undefined && lng !== undefined ? { lat, lng } : {}),
     };
 
     const exists = addresses.find((a) => a.id === newAddr.id);

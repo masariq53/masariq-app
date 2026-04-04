@@ -16,6 +16,7 @@ import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import MapView, { Marker, Circle, PROVIDER_DEFAULT } from "react-native-maps";
+import { useMemo } from "react";
 import { useDriver } from "@/lib/driver-context";
 import { useLocation } from "@/hooks/use-location";
 import { trpc } from "@/lib/trpc";
@@ -57,8 +58,35 @@ export default function CaptainHomeScreen() {
   const [seenRideIds, setSeenRideIds] = useState<Set<number>>(new Set());
   const [timer, setTimer] = useState(30);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const todayEarnings = 0;
-  const todayTrips = driver?.totalRides ?? 0;
+  // حساب دخل اليوم الحقيقي من السيرفر
+  const todayQuery = trpc.driver.getTrips.useQuery(
+    { driverId: driver?.id ?? 0, limit: 100 },
+    { enabled: !!driver?.id && isOnline }
+  );
+  const todayEarnings = useMemo(() => {
+    if (!todayQuery.data?.trips) return 0;
+    const now = new Date();
+    return todayQuery.data.trips
+      .filter((t) => {
+        if (t.status !== "completed") return false;
+        const d = new Date(t.createdAt);
+        return d.getFullYear() === now.getFullYear() &&
+          d.getMonth() === now.getMonth() &&
+          d.getDate() === now.getDate();
+      })
+      .reduce((sum, t) => sum + parseFloat(t.fare), 0);
+  }, [todayQuery.data]);
+  const todayTrips = useMemo(() => {
+    if (!todayQuery.data?.trips) return 0;
+    const now = new Date();
+    return todayQuery.data.trips.filter((t) => {
+      if (t.status !== "completed") return false;
+      const d = new Date(t.createdAt);
+      return d.getFullYear() === now.getFullYear() &&
+        d.getMonth() === now.getMonth() &&
+        d.getDate() === now.getDate();
+    }).length;
+  }, [todayQuery.data]);
   const rating = parseFloat(driver?.rating ?? "4.9");
   const mapRef = useRef<MapView>(null);
 
@@ -294,13 +322,7 @@ export default function CaptainHomeScreen() {
             </View>
           </View>
         </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.earningsBtn}
-          onPress={() => router.push("/captain/earnings" as any)}
-        >
-          <Text style={styles.earningsLabel}>اليوم</Text>
-          <Text style={styles.earningsValue}>{todayEarnings.toLocaleString()} د</Text>
-        </TouchableOpacity>
+        <View style={{ width: 8 }} />
       </View>
 
       {/* زر الحالة */}
@@ -327,7 +349,7 @@ export default function CaptainHomeScreen() {
         <View style={styles.statDivider} />
         <View style={styles.statItem}>
           <Text style={styles.statValue}>{todayEarnings.toLocaleString()}</Text>
-          <Text style={styles.statLabel}>دينار</Text>
+          <Text style={styles.statLabel}>دخل اليوم</Text>
         </View>
         <View style={styles.statDivider} />
         <View style={styles.statItem}>
@@ -340,7 +362,7 @@ export default function CaptainHomeScreen() {
           onPress={() => router.push("/captain/earnings" as any)}
         >
           <Text style={styles.statValue}>📊</Text>
-          <Text style={styles.statLabel}>الأرباح</Text>
+          <Text style={styles.statLabel}>الرحلات</Text>
         </TouchableOpacity>
       </View>
 

@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import {
   View,
   Text,
@@ -8,6 +8,8 @@ import {
   FlatList,
   ActivityIndicator,
   Dimensions,
+  TextInput,
+  Modal,
 } from "react-native";
 import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -44,10 +46,13 @@ function getStatusLabel(status: string) {
 export default function CaptainEarningsScreen() {
   const insets = useSafeAreaInsets();
   const { driver } = useDriver();
-  const [activeTab, setActiveTab] = useState<"day" | "week" | "month">("week");
+  const [activeTab, setActiveTab] = useState<"day" | "week" | "month" | "custom">("week");
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
 
   const { data, isLoading, refetch } = trpc.driver.getTrips.useQuery(
-    { driverId: driver?.id ?? 0, limit: 50 },
+    { driverId: driver?.id ?? 0, limit: 200 },
     { enabled: !!driver?.id }
   );
 
@@ -63,9 +68,15 @@ export default function CaptainEarningsScreen() {
       const diffMs = now.getTime() - d.getTime();
       if (activeTab === "day") return diffMs < 86400000;
       if (activeTab === "week") return diffMs < 7 * 86400000;
+      if (activeTab === "month") return diffMs < 30 * 86400000;
+      if (activeTab === "custom" && customFrom && customTo) {
+        const from = new Date(customFrom + "T00:00:00");
+        const to = new Date(customTo + "T23:59:59");
+        return d >= from && d <= to;
+      }
       return diffMs < 30 * 86400000;
     });
-  }, [trips, activeTab]);
+  }, [trips, activeTab, customFrom, customTo]);
 
   const periodEarnings = filteredTrips
     .filter((t) => t.status === "completed")
@@ -78,6 +89,7 @@ export default function CaptainEarningsScreen() {
     { key: "day", label: "اليوم" },
     { key: "week", label: "الأسبوع" },
     { key: "month", label: "الشهر" },
+    { key: "custom", label: "مخصص" },
   ] as const;
 
   return (
@@ -89,7 +101,7 @@ export default function CaptainEarningsScreen() {
         <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
           <Text style={styles.backIcon}>→</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>أرباحي</Text>
+        <Text style={styles.headerTitle}>الرحلات</Text>
         <View style={{ width: 44 }} />
       </View>
 
@@ -154,11 +166,45 @@ export default function CaptainEarningsScreen() {
             </View>
             <View style={styles.totalStatDivider} />
             <View style={styles.totalStat}>
-              <Text style={styles.totalStatValue}>{driver?.totalRides ?? 0}</Text>
+              <Text style={styles.totalStatValue}>{totalTrips}</Text>
               <Text style={styles.totalStatLabel}>إجمالي الرحلات</Text>
             </View>
           </View>
         </View>
+
+        {/* فلتر التاريخ المخصص */}
+        {activeTab === "custom" && (
+          <View style={styles.dateFilterBox}>
+            <Text style={styles.dateFilterTitle}>اختر نطاق التاريخ</Text>
+            <View style={styles.dateFilterRow}>
+              <View style={styles.dateInputWrap}>
+                <Text style={styles.dateInputLabel}>من</Text>
+                <TextInput
+                  style={styles.dateInput}
+                  value={customFrom}
+                  onChangeText={setCustomFrom}
+                  placeholder="2025-01-01"
+                  placeholderTextColor="#6B5A8E"
+                  keyboardType="numbers-and-punctuation"
+                  textAlign="center"
+                />
+              </View>
+              <Text style={styles.dateSeparator}>—</Text>
+              <View style={styles.dateInputWrap}>
+                <Text style={styles.dateInputLabel}>إلى</Text>
+                <TextInput
+                  style={styles.dateInput}
+                  value={customTo}
+                  onChangeText={setCustomTo}
+                  placeholder="2025-12-31"
+                  placeholderTextColor="#6B5A8E"
+                  keyboardType="numbers-and-punctuation"
+                  textAlign="center"
+                />
+              </View>
+            </View>
+          </View>
+        )}
 
         {/* Trips List */}
         <View style={styles.section}>
@@ -291,4 +337,21 @@ const styles = StyleSheet.create({
   tripAmount: { color: "#22C55E", fontSize: 16, fontWeight: "800" },
   tripCurrency: { color: "#6B7280", fontSize: 11 },
   passengerName: { color: "#FFD700", fontSize: 12, fontWeight: "600", marginBottom: 2 },
+
+  // Date filter styles
+  dateFilterBox: {
+    marginHorizontal: 20, marginBottom: 16,
+    backgroundColor: "#1E1035", borderRadius: 16, padding: 16,
+    borderWidth: 1, borderColor: "#2D1B4E",
+  },
+  dateFilterTitle: { color: "#9B8EC4", fontSize: 13, fontWeight: "600", marginBottom: 12, textAlign: "center" },
+  dateFilterRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  dateSeparator: { color: "#9B8EC4", fontSize: 16, fontWeight: "bold" },
+  dateInputWrap: { flex: 1, alignItems: "center" },
+  dateInputLabel: { color: "#9B8EC4", fontSize: 11, marginBottom: 4 },
+  dateInput: {
+    backgroundColor: "#2D1B4E", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10,
+    color: "#FFFFFF", fontSize: 13, fontWeight: "600", width: "100%",
+    borderWidth: 1, borderColor: "#3D2070",
+  },
 });

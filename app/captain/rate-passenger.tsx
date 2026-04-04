@@ -7,12 +7,14 @@ import {
   TextInput,
   ScrollView,
   Alert,
+  ActivityIndicator,
+  Platform,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
-import { Platform } from "react-native";
+import { trpc } from "@/lib/trpc";
 
 const QUICK_TAGS = [
   { id: "polite", label: "راكب مؤدب 😊" },
@@ -29,12 +31,24 @@ export default function RatePassengerScreen() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ passengerName?: string; rideId?: string }>();
   const passengerName = params.passengerName ?? "الراكب";
+  const rideId = params.rideId ? parseInt(params.rideId) : 0;
 
   const [rating, setRating] = useState(0);
   const [hoveredStar, setHoveredStar] = useState(0);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [comment, setComment] = useState("");
   const [submitted, setSubmitted] = useState(false);
+
+  const ratePassengerMutation = trpc.driver.ratePassenger.useMutation({
+    onSuccess: () => {
+      if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setSubmitted(true);
+      setTimeout(() => { router.replace("/captain/home" as any); }, 2000);
+    },
+    onError: (err) => {
+      Alert.alert("خطأ", err.message || "فشل حفظ التقييم");
+    },
+  });
 
   const handleStarPress = (star: number) => {
     if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -53,11 +67,14 @@ export default function RatePassengerScreen() {
       Alert.alert("تنبيه", "يرجى اختيار تقييم بالنجوم أولاً");
       return;
     }
-    if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    setSubmitted(true);
-    setTimeout(() => {
-      router.replace("/captain/home" as any);
-    }, 2000);
+    if (rideId > 0) {
+      ratePassengerMutation.mutate({ rideId, rating, comment: comment || undefined, tags: selectedTags });
+    } else {
+      // fallback: no rideId, just show success
+      if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setSubmitted(true);
+      setTimeout(() => { router.replace("/captain/home" as any); }, 2000);
+    }
   };
 
   const ratingLabels = ["", "سيء 😞", "مقبول 😐", "جيد 🙂", "ممتاز 😄", "رائع جداً 🌟"];
@@ -158,10 +175,15 @@ export default function RatePassengerScreen() {
 
         {/* Submit */}
         <TouchableOpacity
-          style={[styles.submitBtn, rating === 0 && styles.submitBtnDisabled]}
+          style={[styles.submitBtn, (rating === 0 || ratePassengerMutation.isPending) && styles.submitBtnDisabled]}
           onPress={handleSubmit}
+          disabled={rating === 0 || ratePassengerMutation.isPending}
         >
-          <Text style={styles.submitText}>إرسال التقييم</Text>
+          {ratePassengerMutation.isPending ? (
+            <ActivityIndicator color="#1A0533" />
+          ) : (
+            <Text style={styles.submitText}>إرسال التقييم</Text>
+          )}
         </TouchableOpacity>
       </ScrollView>
     </View>
