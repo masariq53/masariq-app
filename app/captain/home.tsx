@@ -136,6 +136,37 @@ export default function CaptainHomeScreen() {
     }
   };
 
+  // Polling للكشف عن تعطيل الحساب كل 30 ثانية
+  const blockCheckQuery = trpc.driver.checkStatus.useQuery(
+    { phone: driver?.phone ?? "" },
+    {
+      enabled: !!driver?.phone,
+      refetchInterval: 30000,
+      staleTime: 0,
+    }
+  );
+  useEffect(() => {
+    if (!blockCheckQuery.data) return;
+    const data = blockCheckQuery.data as any;
+    if (data.isBlocked) {
+      const reason = data.blockReason || "تم تعطيل حسابك من قِبل الإدارة";
+      Alert.alert(
+        "تم تعطيل حسابك 🚫",
+        `سيتم تسجيل خروجك من وضع الكابتن.\n\nالسبب: ${reason}\n\nللاستفسار تواصل مع الدعم.`,
+        [
+          {
+            text: "حسناً",
+            onPress: async () => {
+              await logout();
+              router.replace("/(tabs)/profile" as any);
+            },
+          },
+        ],
+        { cancelable: false }
+      );
+    }
+  }, [blockCheckQuery.data]);
+
   // Polling للطلبات الجديدة كل 5 ثوانٍ عندما يكون متاحاً
   const pendingRidesQuery = trpc.rides.pendingRides.useQuery(undefined, {
     enabled: isOnline,

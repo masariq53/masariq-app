@@ -938,6 +938,8 @@ export const appRouter = router({
           registrationStatus: driver.registrationStatus,
           rejectionReason: driver.rejectionReason,
           name: driver.name,
+          isBlocked: (driver as any).isBlocked ?? false,
+          blockReason: (driver as any).blockReason ?? null,
         };
       }),
 

@@ -115,6 +115,17 @@ export default function ProfileScreen() {
       if (freshStatus?.found) {
         const liveStatus = freshStatus.registrationStatus;
 
+        // Check if account is blocked FIRST before anything else
+        if (freshStatus.isBlocked) {
+          const reason = freshStatus.blockReason || "تم تعطيل حسابك من قِبل الإدارة";
+          Alert.alert(
+            "حسابك معطّل 🚫",
+            `لا يمكنك الدخول لوضع الكابتن.\n\nالسبب: ${reason}\n\nللاستفسار تواصل مع الدعم.`,
+            [{ text: "حسناً" }]
+          );
+          return;
+        }
+
         if (liveStatus === "approved") {
           // Normalize phone numbers for comparison
           const normalizePhone = (p: string) => p.replace(/\s/g, "").replace(/^0/, "+964").replace(/^(?!\+)/, "+964");
