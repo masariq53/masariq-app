@@ -1,11 +1,10 @@
-import React, { useState } from "react";
+import React from "react";
 import {
   View,
   Text,
   ScrollView,
   TouchableOpacity,
   StyleSheet,
-  TextInput,
   Image,
   Dimensions,
 } from "react-native";
@@ -43,7 +42,7 @@ const quickDestinations = [
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
-  const [searchText, setSearchText] = useState("");
+
   const { passenger } = usePassenger();
   const { coords, isRealLocation } = useLocation();
   const { colorScheme } = useThemeContext();
@@ -103,17 +102,14 @@ export default function HomeScreen() {
         style={[styles.scroll, { backgroundColor: colors.scrollBg }]}
       >
         {/* Search Bar */}
-        <View style={[styles.searchContainer, { backgroundColor: colors.searchBg }]}>
+        <TouchableOpacity
+          activeOpacity={0.8}
+          style={[styles.searchContainer, { backgroundColor: colors.searchBg }]}
+          onPress={() => router.push("/ride/book" as any)}
+        >
           <Text style={styles.searchIcon}>🔍</Text>
-          <TextInput
-            style={[styles.searchInput, { color: colors.searchText }]}
-            placeholder="إلى أين تريد الذهاب؟"
-            placeholderTextColor={colors.searchPlaceholder}
-            value={searchText}
-            onChangeText={setSearchText}
-            onFocus={() => router.push("/ride/book" as any)}
-          />
-        </View>
+          <Text style={[styles.searchInput, { color: colors.searchPlaceholder }]}>إلى أين تريد الذهاب؟</Text>
+        </TouchableOpacity>
 
         {/* Services Grid */}
         <View style={styles.section}>
