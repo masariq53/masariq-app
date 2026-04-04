@@ -990,6 +990,8 @@ export const appRouter = router({
             registrationStatus: driver.registrationStatus,
             rejectionReason: driver.rejectionReason ?? null,
             isVerified: driver.isVerified,
+            isBlocked: driver.isBlocked ?? false,
+            blockReason: driver.blockReason ?? null,
             vehicleModel: driver.vehicleModel ?? null,
             vehicleColor: driver.vehicleColor ?? null,
             vehiclePlate: driver.vehiclePlate ?? null,
@@ -1347,6 +1349,29 @@ export const appRouter = router({
             ? "تم قبول السائق بنجاح"
             : "تم رفض طلب السائق",
         };
+      }),
+    /**
+     * Block or unblock a driver account
+     */
+    blockDriver: publicProcedure
+      .input(z.object({
+        driverId: z.number(),
+        isBlocked: z.boolean(),
+        blockReason: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const db = await (await import("./db")).getDb();
+        if (!db) throw new Error("DB not available");
+        const { drivers: driversTable } = await import("../drizzle/schema");
+        const { eq } = await import("drizzle-orm");
+        await db.update(driversTable)
+          .set({
+            isBlocked: input.isBlocked,
+            blockReason: input.isBlocked ? (input.blockReason ?? "تم تعطيل حسابك من قِبل الإدارة") : null,
+            ...(input.isBlocked ? { isOnline: false, isAvailable: false } : {}),
+          })
+          .where(eq(driversTable.id, input.driverId));
+        return { success: true, message: input.isBlocked ? "تم تعطيل الحساب" : "تم تفعيل الحساب" };
       }),
   }),
 });

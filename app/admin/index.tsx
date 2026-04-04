@@ -74,6 +74,10 @@ export default function AdminDashboard() {
   const verifyDriver = trpc.admin.verifyDriver.useMutation({
     onSuccess: () => refetchDrivers(),
   });
+  const blockDriver = trpc.admin.blockDriver.useMutation({
+    onSuccess: () => refetchDrivers(),
+  });
+  const [docsDriver, setDocsDriver] = useState<NonNullable<typeof allDrivers>[number] | null>(null);
   const cancelRide = trpc.admin.cancelRide.useMutation({
     onSuccess: () => { refetchRides(); refetchAllRides(); refetchStats(); },
   });
@@ -84,6 +88,7 @@ export default function AdminDashboard() {
     onSuccess: () => { refetchPending(); refetchDrivers(); refetchStats(); },
   });
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [blockReasonInput, setBlockReasonInput] = useState("");
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -290,7 +295,7 @@ export default function AdminDashboard() {
                   <ActivityIndicator color="#FFD700" style={{ marginVertical: 20 }} />
                 ) : allDrivers && allDrivers.length > 0 ? (
                   allDrivers.map((driver) => (
-                    <View key={driver.id} style={styles.driverCard}>
+                    <View key={driver.id} style={[styles.driverCard, driver.isBlocked && { borderLeftWidth: 3, borderLeftColor: '#EF4444' }]}>
                       <View style={styles.driverAvatar}>
                         <Text style={styles.driverAvatarText}>
                           {(driver.name || "؟").charAt(0)}
@@ -303,18 +308,67 @@ export default function AdminDashboard() {
                           <Text style={styles.driverRating}>⭐ {driver.rating}</Text>
                           <Text style={styles.driverRides}>• {driver.totalRides} رحلة</Text>
                           <View style={[styles.onlineDot, { backgroundColor: driver.isOnline ? "#22C55E" : "#94A3B8" }]} />
+                          <Text style={{ fontSize: 10, color: driver.isOnline ? "#22C55E" : "#94A3B8", marginLeft: 2 }}>
+                            {driver.isOnline ? "متاح" : "غير متاح"}
+                          </Text>
                         </View>
-                        {driver.vehicleModel && (
-                          <Text style={styles.driverVehicle}>🚗 {driver.vehicleModel} — {driver.vehicleColor}</Text>
+                        {/* Vehicle & Plate */}
+                        {driver.vehicleModel ? (
+                          <Text style={styles.driverVehicle}>🚗 {driver.vehicleModel}{driver.vehicleColor ? ` • ${driver.vehicleColor}` : ""}</Text>
+                        ) : (
+                          <Text style={[styles.driverVehicle, { color: '#64748B' }]}>🚗 لا توجد بيانات سيارة</Text>
+                        )}
+                        {driver.vehiclePlate ? (
+                          <Text style={styles.driverVehicle}>🔢 {driver.vehiclePlate}</Text>
+                        ) : (
+                          <Text style={[styles.driverVehicle, { color: '#64748B' }]}>🔢 لا توجد لوحة</Text>
+                        )}
+                        {driver.isBlocked && (
+                          <Text style={{ fontSize: 10, color: '#EF4444', marginTop: 2 }}>🚫 محظور: {driver.blockReason || "بدون سبب"}</Text>
                         )}
                       </View>
                       <View style={styles.driverActions}>
+                        {/* Verification - locked once verified */}
+                        {driver.isVerified ? (
+                          <View style={[styles.verifyBtn, styles.verifyBtnActive]}>
+                            <Text style={[styles.verifyBtnText, styles.verifyBtnTextActive]}>✓ موثّق</Text>
+                          </View>
+                        ) : (
+                          <TouchableOpacity
+                            style={styles.verifyBtn}
+                            onPress={() => verifyDriver.mutate({ driverId: driver.id, isVerified: true })}
+                          >
+                            <Text style={styles.verifyBtnText}>توثيق</Text>
+                          </TouchableOpacity>
+                        )}
+                        {/* Documents icon */}
                         <TouchableOpacity
-                          style={[styles.verifyBtn, driver.isVerified && styles.verifyBtnActive]}
-                          onPress={() => verifyDriver.mutate({ driverId: driver.id, isVerified: !driver.isVerified })}
+                          style={styles.docsBtn}
+                          onPress={() => setDocsDriver(driver as any)}
                         >
-                          <Text style={[styles.verifyBtnText, driver.isVerified && styles.verifyBtnTextActive]}>
-                            {driver.isVerified ? "✓ موثّق" : "توثيق"}
+                          <Text style={{ fontSize: 18 }}>👁️</Text>
+                        </TouchableOpacity>
+                        {/* Block/Unblock */}
+                        <TouchableOpacity
+                          style={[styles.blockBtn, driver.isBlocked && styles.unblockBtn]}
+                          onPress={() => {
+                            if (driver.isBlocked) {
+                              Alert.alert("تفعيل الحساب", `هل تريد تفعيل حساب ${driver.name}؟`, [
+                                { text: "إلغاء", style: "cancel" },
+                                { text: "تفعيل", onPress: () => blockDriver.mutate({ driverId: driver.id, isBlocked: false }) },
+                              ]);
+                            } else {
+                              Alert.prompt(
+                                "تعطيل الحساب",
+                                `سبب تعطيل حساب ${driver.name} (اختياري):`,
+                                (reason) => blockDriver.mutate({ driverId: driver.id, isBlocked: true, blockReason: reason || undefined }),
+                                "plain-text"
+                              );
+                            }
+                          }}
+                        >
+                          <Text style={{ fontSize: 11, color: driver.isBlocked ? '#22C55E' : '#EF4444', fontWeight: '700' }}>
+                            {driver.isBlocked ? "✓ تفعيل" : "🚫 تعطيل"}
                           </Text>
                         </TouchableOpacity>
                       </View>
@@ -563,6 +617,52 @@ export default function AdminDashboard() {
         <View style={{ height: 40 }} />
       </ScrollView>
 
+      {/* Driver Documents Modal */}
+      <Modal visible={!!docsDriver} transparent animationType="slide" onRequestClose={() => setDocsDriver(null)}>
+        <View style={styles.modalOverlay}>
+          <View style={{ backgroundColor: '#1A0533', borderRadius: 20, padding: 20, width: '92%', maxHeight: '80%' }}>
+            <Text style={{ color: '#FFD700', fontSize: 16, fontWeight: '800', marginBottom: 4, textAlign: 'center' }}>
+              وثائق {docsDriver?.name || 'السائق'}
+            </Text>
+            <Text style={{ color: '#9B8EC4', fontSize: 12, marginBottom: 12, textAlign: 'center' }}>
+              {docsDriver?.phone} {docsDriver?.vehicleModel ? `• ${docsDriver.vehicleModel}` : ''} {docsDriver?.vehiclePlate ? `• ${docsDriver.vehiclePlate}` : ''}
+            </Text>
+            <ScrollView>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, justifyContent: 'center' }}>
+                {[
+                  { url: docsDriver?.photoUrl, label: 'صورة شخصية' },
+                  { url: docsDriver?.nationalIdPhotoUrl, label: 'الهوية الوطنية' },
+                  { url: docsDriver?.licensePhotoUrl, label: 'رخصة القيادة' },
+                  { url: docsDriver?.vehiclePhotoUrl, label: 'صورة السيارة' },
+                ].map((doc, idx) => (
+                  <TouchableOpacity key={idx} onPress={() => doc.url && setPreviewImage(doc.url)} disabled={!doc.url}
+                    style={{ alignItems: 'center', width: 130 }}>
+                    {doc.url ? (
+                      <Image source={{ uri: doc.url }} style={{ width: 130, height: 100, borderRadius: 10, borderWidth: 1, borderColor: '#4ADE80' }} />
+                    ) : (
+                      <View style={{ width: 130, height: 100, borderRadius: 10, backgroundColor: '#450A0A', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#7F1D1D' }}>
+                        <Text style={{ fontSize: 28 }}>❌</Text>
+                        <Text style={{ color: '#F87171', fontSize: 10, marginTop: 4 }}>غير مرفوع</Text>
+                      </View>
+                    )}
+                    <Text style={{ color: '#9B8EC4', fontSize: 11, marginTop: 6, textAlign: 'center' }}>{doc.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              {/* National ID text */}
+              {docsDriver?.nationalId && (
+                <View style={{ backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 10, padding: 10, marginTop: 12 }}>
+                  <Text style={{ color: '#9B8EC4', fontSize: 12 }}>🪪 رقم الهوية: <Text style={{ color: '#FFFFFF' }}>{docsDriver.nationalId}</Text></Text>
+                </View>
+              )}
+            </ScrollView>
+            <TouchableOpacity style={[styles.modalClose, { marginTop: 16 }]} onPress={() => setDocsDriver(null)}>
+              <Text style={styles.modalCloseText}>إغلاق</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       {/* Image Preview Modal */}
       <Modal visible={!!previewImage} transparent animationType="fade" onRequestClose={() => setPreviewImage(null)}>
         <View style={styles.modalOverlay}>
@@ -795,6 +895,23 @@ const styles = StyleSheet.create({
   },
   docImageMissingIcon: { fontSize: 24 },
   docImageLabel: { color: "#9B8EC4", fontSize: 10, marginTop: 4, textAlign: "center" },
+
+  // Docs & Block Buttons
+  docsBtn: {
+    backgroundColor: "#1E3A5F", borderRadius: 10,
+    paddingHorizontal: 8, paddingVertical: 6,
+    alignItems: "center", justifyContent: "center",
+    marginTop: 4,
+  },
+  blockBtn: {
+    backgroundColor: "#450A0A", borderRadius: 10,
+    paddingHorizontal: 8, paddingVertical: 6,
+    alignItems: "center", justifyContent: "center",
+    marginTop: 4, borderWidth: 1, borderColor: "#EF4444",
+  },
+  unblockBtn: {
+    backgroundColor: "#14532D", borderColor: "#22C55E",
+  },
 
   // Image Preview Modal
   modalOverlay: {

@@ -95,6 +95,8 @@ export const drivers = mysqlTable("drivers", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastActiveAt: timestamp("lastActiveAt").defaultNow(),
   pushToken: text("pushToken"),
+  isBlocked: boolean("isBlocked").default(false).notNull(),
+  blockReason: text("blockReason"),
 });
 
 export type Driver = typeof drivers.$inferSelect;

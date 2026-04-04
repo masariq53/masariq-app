@@ -42,6 +42,12 @@ export default function DriverOtpScreen() {
 
   const verifyOtp = trpc.driver.verifyLoginOtp.useMutation({
     onSuccess: async (data) => {
+      // Check if account is blocked
+      if ((data.driver as any).isBlocked) {
+        const reason = (data.driver as any).blockReason || "تم تعطيل حسابك من قِبل الإدارة";
+        setError(`تم تعطيل حسابك: ${reason}`);
+        return;
+      }
       await setDriver({
         ...data.driver,
         rating: data.driver.rating ?? "5.00",
