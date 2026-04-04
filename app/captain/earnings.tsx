@@ -63,18 +63,26 @@ export default function CaptainEarningsScreen() {
   // Filter by period
   const filteredTrips = useMemo(() => {
     const now = new Date();
+    // بداية ونهاية اليوم الحالي
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+    const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+    // بداية الأسبوع الحالي (من السبت الماضي)
+    const weekStart = new Date(todayStart);
+    weekStart.setDate(todayStart.getDate() - 6);
+    // بداية الشهر الحالي
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
+
     return trips.filter((t) => {
       const d = new Date(t.createdAt);
-      const diffMs = now.getTime() - d.getTime();
-      if (activeTab === "day") return diffMs < 86400000;
-      if (activeTab === "week") return diffMs < 7 * 86400000;
-      if (activeTab === "month") return diffMs < 30 * 86400000;
+      if (activeTab === "day") return d >= todayStart && d <= todayEnd;
+      if (activeTab === "week") return d >= weekStart && d <= todayEnd;
+      if (activeTab === "month") return d >= monthStart && d <= todayEnd;
       if (activeTab === "custom" && customFrom && customTo) {
         const from = new Date(customFrom + "T00:00:00");
         const to = new Date(customTo + "T23:59:59");
         return d >= from && d <= to;
       }
-      return diffMs < 30 * 86400000;
+      return d >= monthStart && d <= todayEnd;
     });
   }, [trips, activeTab, customFrom, customTo]);
 
@@ -146,7 +154,7 @@ export default function CaptainEarningsScreen() {
         {/* Earnings Summary */}
         <View style={styles.totalCard}>
           <Text style={styles.totalLabel}>
-            إجمالي {activeTab === "day" ? "اليوم" : activeTab === "week" ? "الأسبوع" : "الشهر"}
+            إجمالي {activeTab === "day" ? "اليوم" : activeTab === "week" ? "الأسبوع" : activeTab === "month" ? "الشهر" : "الفترة المختارة"}
           </Text>
           <View style={styles.totalRow}>
             <Text style={styles.totalAmount}>{periodEarnings.toLocaleString("ar-IQ")}</Text>
@@ -166,7 +174,7 @@ export default function CaptainEarningsScreen() {
             </View>
             <View style={styles.totalStatDivider} />
             <View style={styles.totalStat}>
-              <Text style={styles.totalStatValue}>{totalTrips}</Text>
+              <Text style={styles.totalStatValue}>{periodTrips}</Text>
               <Text style={styles.totalStatLabel}>إجمالي الرحلات</Text>
             </View>
           </View>

@@ -58,10 +58,10 @@ export default function CaptainHomeScreen() {
   const [seenRideIds, setSeenRideIds] = useState<Set<number>>(new Set());
   const [timer, setTimer] = useState(30);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  // حساب دخل اليوم الحقيقي من السيرفر
+  // حساب دخل اليوم الحقيقي من السيرفر - يعمل دائماً بغض النظر عن حالة الاتصال
   const todayQuery = trpc.driver.getTrips.useQuery(
-    { driverId: driver?.id ?? 0, limit: 100 },
-    { enabled: !!driver?.id && isOnline }
+    { driverId: driver?.id ?? 0, limit: 200 },
+    { enabled: !!driver?.id, refetchInterval: 30000 }
   );
   const todayEarnings = useMemo(() => {
     if (!todayQuery.data?.trips) return 0;
