@@ -27,7 +27,7 @@ export default function ProfileScreen() {
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [captainCheckLoading, setCaptainCheckLoading] = useState(false);
   const { passenger, logout } = usePassenger();
-  const { driver } = useDriver();
+  const { driver, logout: logoutDriver } = useDriver();
   const { colorScheme, setColorScheme } = useThemeContext();
   const isDark = colorScheme === "dark";
 
@@ -86,7 +86,8 @@ export default function ProfileScreen() {
           text: "خروج",
           style: "destructive",
           onPress: async () => {
-            await logout();
+            // Logout from both passenger AND driver sessions
+            await Promise.all([logout(), logoutDriver()]);
             router.replace("/auth/login" as any);
           },
         },

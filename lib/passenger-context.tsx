@@ -8,6 +8,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const PASSENGER_KEY = "@masar_passenger";
 const DRIVER_KEY = "@masar_driver";
+const DRIVER_SESSION_KEY = "@masar_driver_session"; // used by driver-context
 const MODE_KEY = "@masar_mode"; // "passenger" | "captain"
 
 export type PassengerProfile = {
@@ -98,9 +99,11 @@ export function PassengerProvider({ children }: { children: React.ReactNode }) {
     setPassengerState(null);
     setDriverState(null);
     setModeState("passenger");
+    // Clear ALL session keys - including driver-context's separate key
     await Promise.all([
       AsyncStorage.removeItem(PASSENGER_KEY),
       AsyncStorage.removeItem(DRIVER_KEY),
+      AsyncStorage.removeItem(DRIVER_SESSION_KEY), // clears driver-context session
       AsyncStorage.removeItem(MODE_KEY),
     ]);
   }, []);

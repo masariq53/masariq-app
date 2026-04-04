@@ -85,8 +85,9 @@ export default function CaptainProfileScreen() {
           text: "خروج",
           style: "destructive",
           onPress: async () => {
+            // Only logout from driver session - passenger session stays
             await logout();
-            router.replace("/login" as any);
+            router.replace("/(tabs)/profile" as any);
           },
         },
       ]
