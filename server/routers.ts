@@ -1382,6 +1382,39 @@ export const appRouter = router({
             ...(input.isBlocked ? { isOnline: false, isAvailable: false } : {}),
           })
           .where(eq(driversTable.id, input.driverId));
+
+        // Send Push notification to driver
+        try {
+          const pushToken = await getDriverPushToken(input.driverId);
+          if (pushToken && pushToken.startsWith("ExponentPushToken[")) {
+            const reason = input.blockReason ?? "تم تعطيل حسابك من قِبل الإدارة";
+            const notification = input.isBlocked
+              ? {
+                  to: pushToken,
+                  sound: "default" as const,
+                  title: "🚫 تم تعطيل حسابك",
+                  body: `السبب: ${reason}. للاستفسار تواصل مع الدعم.`,
+                  data: { type: "account_blocked", blockReason: reason },
+                  priority: "high" as const,
+                }
+              : {
+                  to: pushToken,
+                  sound: "default" as const,
+                  title: "✅ تم تفعيل حسابك",
+                  body: "تم إعادة تفعيل حسابك كسائق. يمكنك الآن استقبال الرحلات!",
+                  data: { type: "account_unblocked" },
+                  priority: "high" as const,
+                };
+            fetch("https://exp.host/--/api/v2/push/send", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "Accept": "application/json" },
+              body: JSON.stringify(notification),
+            }).catch((err) => console.warn("[Push] Failed to send block/unblock notification:", err));
+          }
+        } catch (e) {
+          console.warn("[Push] Error sending block/unblock notification:", e);
+        }
+
         return { success: true, message: input.isBlocked ? "تم تعطيل الحساب" : "تم تفعيل الحساب" };
       }),
   }),

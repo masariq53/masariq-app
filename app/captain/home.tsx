@@ -136,12 +136,12 @@ export default function CaptainHomeScreen() {
     }
   };
 
-  // Polling للكشف عن تعطيل الحساب كل 30 ثانية
+  // Polling للكشف عن تعطيل/تفعيل الحساب كل 5 ثوانٍ
   const blockCheckQuery = trpc.driver.checkStatus.useQuery(
     { phone: driver?.phone ?? "" },
     {
       enabled: !!driver?.phone,
-      refetchInterval: 30000,
+      refetchInterval: 5000,
       staleTime: 0,
     }
   );

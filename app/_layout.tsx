@@ -1,11 +1,11 @@
 import "@/global.css";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Stack } from "expo-router";
+import { Stack, router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import "react-native-reanimated";
-import { Platform } from "react-native";
+import { Alert, Platform } from "react-native";
 import "@/lib/_core/nativewind-pressable";
 import { ThemeProvider } from "@/lib/theme-provider";
 import {
@@ -15,10 +15,11 @@ import {
   initialWindowMetrics,
 } from "react-native-safe-area-context";
 import type { EdgeInsets, Metrics, Rect } from "react-native-safe-area-context";
+import * as Notifications from "expo-notifications";
 
 import { trpc, createTRPCClient } from "@/lib/trpc";
 import { PassengerProvider } from "@/lib/passenger-context";
-import { DriverProvider } from "@/lib/driver-context";
+import { DriverProvider, useDriver } from "@/lib/driver-context";
 import { initManusRuntime, subscribeSafeAreaInsets } from "@/lib/_core/manus-runtime";
 
 const DEFAULT_WEB_INSETS: EdgeInsets = { top: 0, right: 0, bottom: 0, left: 0 };
@@ -27,6 +28,54 @@ const DEFAULT_WEB_FRAME: Rect = { x: 0, y: 0, width: 0, height: 0 };
 export const unstable_settings = {
   anchor: "(tabs)",
 };
+
+/**
+ * Handles incoming Push notifications for account block/unblock events.
+ * Must be inside DriverProvider to access driver context.
+ */
+function NotificationHandler() {
+  const { logout } = useDriver();
+  const notificationListener = useRef<Notifications.EventSubscription | null>(null);
+
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+
+    // Listen for notifications received while app is in foreground
+    notificationListener.current = Notifications.addNotificationReceivedListener((notification) => {
+      const data = notification.request.content.data as any;
+
+      if (data?.type === "account_blocked") {
+        const reason = data.blockReason || "تم تعطيل حسابك من قِبل الإدارة";
+        Alert.alert(
+          "🚫 تم تعطيل حسابك",
+          `سيتم تسجيل خروجك من وضع الكابتن.\n\nالسبب: ${reason}\n\nللاستفسار تواصل مع الدعم.`,
+          [
+            {
+              text: "حسناً",
+              onPress: async () => {
+                await logout();
+                router.replace("/(tabs)/profile" as any);
+              },
+            },
+          ],
+          { cancelable: false }
+        );
+      } else if (data?.type === "account_unblocked") {
+        Alert.alert(
+          "✅ تم تفعيل حسابك",
+          "تم إعادة تفعيل حسابك كسائق. يمكنك الآن الدخول لوضع الكابتن!",
+          [{ text: "دخول وضع الكابتن 🚗", onPress: () => router.push("/(tabs)/profile" as any) }]
+        );
+      }
+    });
+
+    return () => {
+      notificationListener.current?.remove();
+    };
+  }, [logout]);
+
+  return null;
+}
 
 export default function RootLayout() {
   const initialInsets = initialWindowMetrics?.insets ?? DEFAULT_WEB_INSETS;
@@ -83,6 +132,7 @@ export default function RootLayout() {
   const content = (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <DriverProvider>
+      <NotificationHandler />
       <PassengerProvider>
       <trpc.Provider client={trpcClient} queryClient={queryClient}>
         <QueryClientProvider client={queryClient}>
