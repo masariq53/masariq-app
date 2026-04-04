@@ -12,6 +12,7 @@ import {
   Alert,
   FlatList,
   Keyboard,
+  KeyboardAvoidingView,
 } from "react-native";
 import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -114,6 +115,7 @@ export default function BookRideScreen() {
   const [isSearching, setIsSearching] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
+  const [routeCoords, setRouteCoords] = useState<Array<{ latitude: number; longitude: number }>>([]);
   const mapRef = useRef<MapView>(null);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -155,6 +157,30 @@ export default function BookRideScreen() {
       }
     });
   }, [isRealLocation]);
+
+  // جلب مسار الطريق الحقيقي من OSRM عند تحديد الوجهة
+  useEffect(() => {
+    if (!dropPin) {
+      setRouteCoords([]);
+      return;
+    }
+    const fetchRoute = async () => {
+      try {
+        const url = `https://router.project-osrm.org/route/v1/driving/${pickupPin.longitude},${pickupPin.latitude};${dropPin.longitude},${dropPin.latitude}?overview=full&geometries=geojson`;
+        const res = await fetch(url, { signal: AbortSignal.timeout(5000), headers: { "User-Agent": "MasarApp/1.0" } });
+        if (!res.ok) return;
+        const data = await res.json() as { code: string; routes: Array<{ geometry: { coordinates: Array<[number, number]> } }> };
+        if (data.code === "Ok" && data.routes?.[0]) {
+          const coords = data.routes[0].geometry.coordinates.map(([lng, lat]) => ({ latitude: lat, longitude: lng }));
+          setRouteCoords(coords);
+        }
+      } catch {
+        // fallback: خط مستقيم
+        setRouteCoords([pickupPin, dropPin]);
+      }
+    };
+    fetchRoute();
+  }, [dropPin, pickupPin]);
 
   const fareQuery = trpc.rides.estimateFare.useQuery(
     {
@@ -314,7 +340,10 @@ export default function BookRideScreen() {
               <View style={styles.dropMarker}><Text style={{ fontSize: 20 }}>🏁</Text></View>
             </Marker>
           )}
-          {dropPin && (
+          {routeCoords.length >= 2 && (
+            <Polyline coordinates={routeCoords} strokeColor="#FFD700" strokeWidth={4} />
+          )}
+          {routeCoords.length < 2 && dropPin && (
             <Polyline coordinates={[pickupPin, dropPin]} strokeColor="#FFD700" strokeWidth={3} lineDashPattern={[8, 4]} />
           )}
         </MapView>
@@ -344,6 +373,10 @@ export default function BookRideScreen() {
         </View>
       )}
 
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={0}
+      >
       <View style={styles.bottomSheet}>
         <View style={styles.handle} />
 
@@ -482,6 +515,7 @@ export default function BookRideScreen() {
 
         <View style={{ height: insets.bottom + 8 }} />
       </View>
+      </KeyboardAvoidingView>
     </View>
   );
 }
