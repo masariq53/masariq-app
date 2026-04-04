@@ -115,19 +115,26 @@ export default function ProfileScreen() {
         const liveStatus = freshStatus.registrationStatus;
 
         if (liveStatus === "approved") {
-          // Has approved account - check if already logged in as driver
-          if (driver?.id) {
-            // Already logged in as driver - go directly to captain home
+          // Normalize phone numbers for comparison
+          const normalizePhone = (p: string) => p.replace(/\s/g, "").replace(/^0/, "+964").replace(/^(?!\+)/, "+964");
+          const passengerPhone = normalizePhone(passenger?.phone ?? "");
+          const driverPhone = driver?.phone ? normalizePhone(driver.phone) : null;
+
+          // Check if already logged in as the SAME driver (matching phone)
+          if (driver?.id && driverPhone === passengerPhone) {
+            // Already logged in as the correct driver - go directly to captain home
             router.push("/captain/home" as any);
             return;
           }
-          // Approved but not logged in yet - prompt driver login
+
+          // Either not logged in, or logged in as a DIFFERENT driver account
+          // Must re-authenticate with the passenger's phone number
           Alert.alert(
             "حسابك معتمد ✔️",
             "تم قبول حسابك كسائق. سجّل دخولك للبدء باستقبال الرحلات!",
             [
               { text: "إلغاء", style: "cancel" },
-              { text: "دخول كابتن 🚗", onPress: () => router.push("/driver/login" as any) },
+              { text: "دخول كابتن 🚗", onPress: () => router.push({ pathname: "/driver/login" as any, params: { prefillPhone: passenger?.phone ?? "" } }) },
             ]
           );
           return;

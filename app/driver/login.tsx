@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -11,15 +11,31 @@ import {
   ActivityIndicator,
   Alert,
 } from "react-native";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { trpc } from "@/lib/trpc";
+import { useDriver } from "@/lib/driver-context";
 
 export default function DriverLoginScreen() {
   const insets = useSafeAreaInsets();
-  const [phone, setPhone] = useState("");
+  const { prefillPhone } = useLocalSearchParams<{ prefillPhone?: string }>();
+  const { logout: logoutDriver } = useDriver();
+
+  // Normalize prefill phone: strip +964 prefix for display
+  const normalizedPrefill = prefillPhone
+    ? prefillPhone.replace(/\s/g, "").replace(/^\+964/, "").replace(/^964/, "")
+    : "";
+
+  const [phone, setPhone] = useState(normalizedPrefill);
   const [error, setError] = useState("");
+
+  // If a prefill phone is provided, clear any stale driver session first
+  useEffect(() => {
+    if (prefillPhone) {
+      logoutDriver().catch(() => {});
+    }
+  }, []);
 
   const sendOtp = trpc.driver.sendLoginOtp.useMutation({
     onSuccess: (data) => {
