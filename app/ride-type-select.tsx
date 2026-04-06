@@ -113,7 +113,7 @@ export default function RideTypeSelectScreen() {
             <View style={styles.cardContent}>
               <Text style={styles.cardTitle}>داخل المدينة</Text>
               <Text style={styles.cardDesc}>
-                توصيلة سريعة داخل الموصل{"\n"}إلى أي حي أو منطقة
+                توصيلة سريعة داخل مدينتك{"\n"}إلى أي حي أو منطقة
               </Text>
             </View>
 
@@ -243,6 +243,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 20,
     paddingTop: 16,
+    paddingBottom: 24,
     gap: 16,
     justifyContent: "center",
   },
