@@ -62,7 +62,7 @@ export default function HomeScreen() {
   };
 
   const handleService = (id: string) => {
-    if (id === "ride") router.push("/ride/book" as any);
+    if (id === "ride") router.push("/ride-type-select" as any);
     else if (id === "delivery") router.push("/delivery/new" as any);
     else if (id === "subscription") router.push("/subscription" as any);
     else if (id === "women") router.push("/ride/book" as any);
@@ -105,7 +105,7 @@ export default function HomeScreen() {
         <TouchableOpacity
           activeOpacity={0.8}
           style={[styles.searchContainer, { backgroundColor: colors.searchBg }]}
-          onPress={() => router.push("/ride/book" as any)}
+          onPress={() => router.push("/ride-type-select" as any)}
         >
           <Text style={styles.searchIcon}>🔍</Text>
           <Text style={[styles.searchInput, { color: colors.searchPlaceholder }]}>إلى أين تريد الذهاب؟</Text>
@@ -149,7 +149,7 @@ export default function HomeScreen() {
             <TouchableOpacity
               key={d.id}
               style={[styles.destCard, { backgroundColor: colors.destCard }]}
-              onPress={() => router.push("/ride/book" as any)}
+              onPress={() => router.push("/ride-type-select" as any)}
             >
               <View style={[styles.destIcon, { backgroundColor: colors.destIconBg }]}>
                 <Text style={styles.destEmoji}>{d.icon}</Text>
