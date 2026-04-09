@@ -238,6 +238,19 @@ export default function CaptainHomeScreen() {
     }
   }, [pendingRidesQuery.data, isOnline, currentRequest]);
 
+  // مراقبة حالة الطلب الحالي: إغلاق النافذة فوراً عند إلغاء الراكب للطلب
+  useEffect(() => {
+    if (!currentRequest || !pendingRidesQuery.data) return;
+    // إذا اختفى الطلب الحالي من قائمة الطلبات المعلقة = تم إلغاؤه من الراكب
+    const stillPending = pendingRidesQuery.data.some((r) => r.id === currentRequest.id);
+    if (!stillPending) {
+      // أغلق النافذة فوراً وامنع أي قبول أو رفض
+      if (timerRef.current) clearInterval(timerRef.current);
+      setCurrentRequest(null);
+      setTimer(30);
+    }
+  }, [pendingRidesQuery.data, currentRequest]);
+
   // مؤقت الطلب (30 ثانية)
   useEffect(() => {
     if (!currentRequest) return;
@@ -259,8 +272,14 @@ export default function CaptainHomeScreen() {
 
   // قبول الطلب
   const acceptRideMutation = trpc.rides.accept.useMutation({
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       if (timerRef.current) clearInterval(timerRef.current);
+      // إذا كانت الرحلة ملغاة أو مقبولة مسبقاً - أغلق النافذة فقط
+      if (data?.success === false) {
+        setCurrentRequest(null);
+        setTimer(30);
+        return;
+      }
       const rideId = currentRequest!.id;
       setCurrentRequest(null);
       router.push({
@@ -283,6 +302,15 @@ export default function CaptainHomeScreen() {
 
   const handleAccept = () => {
     if (!currentRequest || !driver?.id) return;
+    // تحقق من أن الطلب لا يزال معلقاً قبل القبول
+    const stillPending = pendingRidesQuery.data?.some((r) => r.id === currentRequest.id);
+    if (!stillPending) {
+      // الطلب ألغي - أغلق النافذة فوراً
+      if (timerRef.current) clearInterval(timerRef.current);
+      setCurrentRequest(null);
+      setTimer(30);
+      return;
+    }
     acceptRideMutation.mutate({
       rideId: currentRequest.id,
       driverId: driver.id,

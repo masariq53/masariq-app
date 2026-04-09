@@ -420,6 +420,12 @@ export const appRouter = router({
         })
       )
       .mutation(async ({ input }) => {
+        // فحص حالة الرحلة قبل القبول - منع قبول الرحلات الملغاة أو المقبولة مسبقاً
+        const existingRide = await getRideById(input.rideId);
+        if (!existingRide || existingRide.status !== "searching") {
+          // الرحلة ملغاة أو مقبولة من سائق آخر - رفض القبول
+          return { success: false, reason: "ride_not_available" };
+        }
         await updateRideStatus(input.rideId, "accepted", { driverId: input.driverId });
         // Get ride and driver info to notify passenger
         const ride = await getRideById(input.rideId);
