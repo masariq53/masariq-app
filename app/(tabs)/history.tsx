@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import {
   View,
   Text,
@@ -7,6 +7,8 @@ import {
   StyleSheet,
   ActivityIndicator,
   RefreshControl,
+  Linking,
+  Alert,
 } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -54,6 +56,7 @@ type RideItem = {
   passengerRating: number | null;
   driver: {
     name: string;
+    phone: string;
     vehicleModel: string;
     vehicleColor: string;
     vehiclePlate: string;
@@ -67,28 +70,85 @@ const FILTERS: { key: FilterType; label: string }[] = [
   { key: "cancelled", label: "ملغاة" },
 ];
 
+const PAGE_SIZE = 15;
+
 export default function HistoryScreen() {
   const insets = useSafeAreaInsets();
   const { passenger } = usePassenger();
   const [filter, setFilter] = useState<FilterType>("all");
+  const [cursor, setCursor] = useState<number | undefined>(undefined);
+  const [allRides, setAllRides] = useState<RideItem[]>([]);
+  const [nextCursor, setNextCursor] = useState<number | null>(null);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [totalCompleted, setTotalCompleted] = useState(0);
+  const [totalSpent, setTotalSpent] = useState(0);
+  const [isFirstPage, setIsFirstPage] = useState(true);
 
-  const { data: rides, isLoading, refetch, isRefetching } = trpc.rides.passengerHistory.useQuery(
-    { passengerId: passenger?.id ?? 0, limit: 50 },
-    { enabled: !!passenger?.id }
+  // First page query (no cursor)
+  const firstPageQuery = trpc.rides.passengerHistory.useQuery(
+    { passengerId: passenger?.id ?? 0, limit: PAGE_SIZE, status: filter },
+    { enabled: !!passenger?.id && isFirstPage }
   );
 
-  const filteredRides = (rides ?? []).filter((r) => {
-    if (filter === "all") return true;
-    if (filter === "completed") return r.status === "completed";
-    if (filter === "cancelled") return r.status === "cancelled";
-    return true;
-  });
+  // Next page query (with cursor)
+  const nextPageQuery = trpc.rides.passengerHistory.useQuery(
+    { passengerId: passenger?.id ?? 0, limit: PAGE_SIZE, status: filter, cursor },
+    { enabled: !!passenger?.id && !isFirstPage && !!cursor }
+  );
 
-  const totalSpent = (rides ?? [])
-    .filter((r) => r.status === "completed")
-    .reduce((sum, r) => sum + (r.fare ?? 0), 0);
+  // Handle first page data
+  useEffect(() => {
+    if (firstPageQuery.data && "rides" in firstPageQuery.data) {
+      setAllRides(firstPageQuery.data.rides as RideItem[]);
+      setNextCursor(firstPageQuery.data.nextCursor);
+      setTotalCompleted(firstPageQuery.data.totalCompleted);
+      setTotalSpent(firstPageQuery.data.totalSpent);
+    }
+  }, [firstPageQuery.data]);
 
-  const completedCount = (rides ?? []).filter((r) => r.status === "completed").length;
+  // Handle next page data
+  useEffect(() => {
+    if (!isFirstPage && nextPageQuery.data && "rides" in nextPageQuery.data) {
+      setAllRides((prev) => [...prev, ...(nextPageQuery.data!.rides as RideItem[])]);
+      setNextCursor(nextPageQuery.data.nextCursor);
+      setIsLoadingMore(false);
+    }
+  }, [nextPageQuery.data, isFirstPage]);
+
+  const handleFilterChange = (newFilter: FilterType) => {
+    setFilter(newFilter);
+    setCursor(undefined);
+    setAllRides([]);
+    setNextCursor(null);
+    setIsFirstPage(true);
+  };
+
+  const handleLoadMore = useCallback(() => {
+    if (!nextCursor || isLoadingMore) return;
+    setIsLoadingMore(true);
+    setIsFirstPage(false);
+    setCursor(nextCursor);
+  }, [nextCursor, isLoadingMore]);
+
+  const handleRefresh = () => {
+    setCursor(undefined);
+    setAllRides([]);
+    setNextCursor(null);
+    setIsFirstPage(true);
+    firstPageQuery.refetch();
+  };
+
+  const callDriver = (phone: string) => {
+    const cleanPhone = phone.replace(/[^+\d]/g, "");
+    const telUrl = `tel:${cleanPhone}`;
+    Linking.canOpenURL(telUrl).then((supported) => {
+      if (supported) {
+        Linking.openURL(telUrl);
+      } else {
+        Alert.alert("رقم السائق", cleanPhone);
+      }
+    });
+  };
 
   const renderItem = ({ item }: { item: RideItem }) => {
     const statusInfo = getStatusInfo(item.status);
@@ -122,9 +182,14 @@ export default function HistoryScreen() {
         {/* معلومات السائق */}
         {item.driver && (
           <View style={styles.driverRow}>
-            <Text style={styles.driverIcon}>👨</Text>
+            <Text style={styles.driverIcon}>👨‍✈️</Text>
             <View style={styles.driverInfo}>
               <Text style={styles.driverName}>{item.driver.name}</Text>
+              {item.driver.phone ? (
+                <TouchableOpacity onPress={() => callDriver(item.driver!.phone)}>
+                  <Text style={styles.driverPhone}>📞 {item.driver.phone}</Text>
+                </TouchableOpacity>
+              ) : null}
               {item.driver.vehicleModel ? (
                 <Text style={styles.driverCar}>
                   {item.driver.vehicleModel} {item.driver.vehicleColor}
@@ -157,6 +222,19 @@ export default function HistoryScreen() {
     );
   };
 
+  const renderFooter = () => {
+    if (!isLoadingMore) return null;
+    return (
+      <View style={styles.footerLoader}>
+        <ActivityIndicator size="small" color="#FFD700" />
+        <Text style={styles.footerLoaderText}>جاري تحميل المزيد...</Text>
+      </View>
+    );
+  };
+
+  const isLoading = firstPageQuery.isLoading;
+  const isRefetching = firstPageQuery.isRefetching;
+
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <StatusBar style="light" />
@@ -165,20 +243,20 @@ export default function HistoryScreen() {
       <View style={styles.header}>
         <Text style={styles.headerTitle}>سجل الرحلات</Text>
         {!isLoading && (
-          <Text style={styles.headerSub}>{completedCount} رحلة مكتملة</Text>
+          <Text style={styles.headerSub}>{totalCompleted} رحلة مكتملة</Text>
         )}
       </View>
 
       {/* إحصائيات سريعة */}
-      {!isLoading && (rides ?? []).length > 0 && (
+      {!isLoading && totalCompleted > 0 && (
         <View style={styles.statsRow}>
           <View style={styles.statCard}>
-            <Text style={styles.statValue}>{(rides ?? []).length}</Text>
+            <Text style={styles.statValue}>{allRides.length}</Text>
             <Text style={styles.statLabel}>إجمالي الرحلات</Text>
           </View>
           <View style={styles.statDivider} />
           <View style={styles.statCard}>
-            <Text style={styles.statValue}>{completedCount}</Text>
+            <Text style={styles.statValue}>{totalCompleted}</Text>
             <Text style={styles.statLabel}>مكتملة</Text>
           </View>
           <View style={styles.statDivider} />
@@ -189,17 +267,24 @@ export default function HistoryScreen() {
         </View>
       )}
 
-      {/* فلاتر */}
+      {/* فلاتر احترافية */}
       <View style={styles.filterRow}>
         {FILTERS.map((f) => (
           <TouchableOpacity
             key={f.key}
             style={[styles.filterBtn, filter === f.key && styles.filterBtnActive]}
-            onPress={() => setFilter(f.key)}
+            onPress={() => handleFilterChange(f.key)}
           >
             <Text style={[styles.filterText, filter === f.key && styles.filterTextActive]}>
               {f.label}
             </Text>
+            {f.key === "completed" && totalCompleted > 0 && (
+              <View style={[styles.badge, filter === f.key && styles.badgeActive]}>
+                <Text style={[styles.badgeText, filter === f.key && styles.badgeTextActive]}>
+                  {totalCompleted}
+                </Text>
+              </View>
+            )}
           </TouchableOpacity>
         ))}
       </View>
@@ -216,7 +301,7 @@ export default function HistoryScreen() {
           <Text style={styles.emptyTitle}>يرجى تسجيل الدخول</Text>
           <Text style={styles.emptyText}>سجّل دخولك لعرض سجل رحلاتك</Text>
         </View>
-      ) : filteredRides.length === 0 ? (
+      ) : allRides.length === 0 ? (
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyIcon}>🚗</Text>
           <Text style={styles.emptyTitle}>لا توجد رحلات</Text>
@@ -228,18 +313,21 @@ export default function HistoryScreen() {
         </View>
       ) : (
         <FlatList
-          data={filteredRides as RideItem[]}
+          data={allRides}
           keyExtractor={(item) => item.id.toString()}
           renderItem={renderItem}
           contentContainerStyle={styles.listContent}
           refreshControl={
             <RefreshControl
               refreshing={isRefetching}
-              onRefresh={refetch}
+              onRefresh={handleRefresh}
               tintColor="#FFD700"
               colors={["#FFD700"]}
             />
           }
+          onEndReached={handleLoadMore}
+          onEndReachedThreshold={0.3}
+          ListFooterComponent={renderFooter}
           showsVerticalScrollIndicator={false}
         />
       )}
@@ -278,12 +366,15 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   filterBtn: {
-    paddingHorizontal: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 20,
     backgroundColor: "#2D1B4E",
     borderWidth: 1,
     borderColor: "#3D2070",
+    gap: 6,
   },
   filterBtnActive: {
     backgroundColor: "#FFD700",
@@ -291,6 +382,17 @@ const styles = StyleSheet.create({
   },
   filterText: { color: "#9B8EC4", fontSize: 13, fontWeight: "500" },
   filterTextActive: { color: "#1A0533", fontWeight: "bold" },
+  badge: {
+    backgroundColor: "#3D2070",
+    borderRadius: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    minWidth: 20,
+    alignItems: "center",
+  },
+  badgeActive: { backgroundColor: "#1A0533" },
+  badgeText: { color: "#9B8EC4", fontSize: 11, fontWeight: "bold" },
+  badgeTextActive: { color: "#FFD700" },
   listContent: { paddingHorizontal: 16, paddingBottom: 100 },
   card: {
     backgroundColor: "#2D1B4E",
@@ -321,17 +423,18 @@ const styles = StyleSheet.create({
   routeText: { color: "#ECEDEE", fontSize: 13, flex: 1 },
   driverRow: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     backgroundColor: "rgba(255,215,0,0.06)",
     borderRadius: 10,
     padding: 8,
     marginBottom: 10,
     gap: 8,
   },
-  driverIcon: { fontSize: 20 },
+  driverIcon: { fontSize: 20, marginTop: 2 },
   driverInfo: { flex: 1 },
   driverName: { color: "#FFFFFF", fontSize: 14, fontWeight: "600" },
-  driverCar: { color: "#9B8EC4", fontSize: 12, marginTop: 1 },
+  driverPhone: { color: "#60A5FA", fontSize: 12, marginTop: 2 },
+  driverCar: { color: "#9B8EC4", fontSize: 12, marginTop: 2 },
   driverRating: { color: "#FFD700", fontSize: 13 },
   cardFooter: {
     flexDirection: "row",
@@ -350,4 +453,6 @@ const styles = StyleSheet.create({
   emptyIcon: { fontSize: 56 },
   emptyTitle: { color: "#FFFFFF", fontSize: 18, fontWeight: "bold" },
   emptyText: { color: "#9B8EC4", fontSize: 14, textAlign: "center", lineHeight: 22 },
+  footerLoader: { flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 16, gap: 8 },
+  footerLoaderText: { color: "#9B8EC4", fontSize: 13 },
 });

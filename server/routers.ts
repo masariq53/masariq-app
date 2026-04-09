@@ -584,27 +584,46 @@ export const appRouter = router({
      * Get passenger ride history with real data
      */
     passengerHistory: publicProcedure
-      .input(z.object({ passengerId: z.number(), limit: z.number().default(50) }))
+      .input(z.object({
+        passengerId: z.number(),
+        limit: z.number().default(15),
+        cursor: z.number().optional(), // last ride id for pagination
+        status: z.enum(["all", "completed", "cancelled"]).default("all"),
+      }))
       .query(async ({ input }) => {
         const db = await (await import("./db")).getDb();
-        if (!db) return [];
+        if (!db) return { rides: [], nextCursor: null, totalCompleted: 0, totalSpent: 0 };
         const { rides: ridesTable, drivers: driversTable } = await import("../drizzle/schema");
-        const { eq, desc } = await import("drizzle-orm");
+        const { eq, desc, lt, and, inArray } = await import("drizzle-orm");
+
+        // Build where conditions
+        const conditions: any[] = [eq(ridesTable.passengerId, input.passengerId)];
+        if (input.cursor) conditions.push(lt(ridesTable.id, input.cursor));
+        if (input.status === "completed") conditions.push(eq(ridesTable.status, "completed"));
+        if (input.status === "cancelled") conditions.push(eq(ridesTable.status, "cancelled"));
+
+        const pageSize = input.limit + 1; // fetch one extra to detect next page
         const passengerRides = await db
           .select()
           .from(ridesTable)
-          .where(eq(ridesTable.passengerId, input.passengerId))
-          .orderBy(desc(ridesTable.createdAt))
-          .limit(input.limit);
-        // Fetch driver info for each completed ride
+          .where(and(...conditions))
+          .orderBy(desc(ridesTable.id))
+          .limit(pageSize);
+
+        const hasMore = passengerRides.length > input.limit;
+        const paginated = hasMore ? passengerRides.slice(0, input.limit) : passengerRides;
+        const nextCursor = hasMore ? paginated[paginated.length - 1]!.id : null;
+
+        // Fetch driver info for each ride
         const ridesWithDriver = await Promise.all(
-          passengerRides.map(async (r) => {
+          paginated.map(async (r) => {
             let driverInfo = null;
             if (r.driverId) {
               const [d] = await db.select().from(driversTable).where(eq(driversTable.id, r.driverId)).limit(1);
               if (d) {
                 driverInfo = {
                   name: d.name,
+                  phone: d.phone,
                   vehicleModel: d.vehicleModel ?? "",
                   vehicleColor: d.vehicleColor ?? "",
                   vehiclePlate: d.vehiclePlate ?? "",
@@ -628,7 +647,16 @@ export const appRouter = router({
             };
           })
         );
-        return ridesWithDriver;
+
+        // Compute totals (all completed rides, not paginated)
+        const allCompleted = await db
+          .select()
+          .from(ridesTable)
+          .where(and(eq(ridesTable.passengerId, input.passengerId), eq(ridesTable.status, "completed")));
+        const totalCompleted = allCompleted.length;
+        const totalSpent = allCompleted.reduce((sum, r) => sum + (r.fare ? Math.round(parseFloat(r.fare.toString())) : 0), 0);
+
+        return { rides: ridesWithDriver, nextCursor, totalCompleted, totalSpent };
       }),
 
     /**
@@ -775,6 +803,7 @@ export const appRouter = router({
             driverInfo = {
               name: d.name,
               phone: d.phone,
+              photoUrl: d.photoUrl ?? null,
               rating: d.rating ?? "5.0",
               vehicleModel: d.vehicleModel ?? "",
               vehicleColor: d.vehicleColor ?? "",

@@ -9,6 +9,7 @@ import {
   Alert,
   Linking,
   ActivityIndicator,
+  Image,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -542,6 +543,12 @@ export default function TrackingScreen() {
           <View style={styles.avatarCircle}>
             {currentStep === 0 ? (
               <ActivityIndicator color="#FFD700" size="small" />
+            ) : ride?.driver?.photoUrl ? (
+              <Image
+                source={{ uri: ride.driver.photoUrl }}
+                style={{ width: 50, height: 50, borderRadius: 25 }}
+                resizeMode="cover"
+              />
             ) : (
               <Text style={styles.avatarText}>👨</Text>
             )}

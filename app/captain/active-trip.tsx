@@ -79,15 +79,8 @@ export default function CaptainActiveTripScreen() {
       if (driverId > 0) {
         setDriverAvailable.mutate({ driverId, isOnline: true, isAvailable: true });
       }
-      // رجوع تلقائي بعد 3 ثواني - استخدام replace بدل back() لتجنب GO_BACK error
-      const autoRedirectTimer = setTimeout(() => {
-        router.replace("/captain/home" as any);
-      }, 3500);
-      Alert.alert(
-        "❌ ألغى الراكب الرحلة",
-        "قام الراكب بإلغاء الرحلة بينما كنت في الطريق إليه.\nستعود إلى الصفحة الرئيسية تلقائياً.",
-        [{ text: "حسناً", onPress: () => { clearTimeout(autoRedirectTimer); router.replace("/captain/home" as any); } }]
-      );
+      // رجوع تلقائي فوري بدون Alert - استخدام replace لتجنب GO_BACK error
+      router.replace("/captain/home" as any);
       return;
     }
 
@@ -418,7 +411,18 @@ export default function CaptainActiveTripScreen() {
             {ride?.passengerPhone && (
               <TouchableOpacity
                 style={styles.actionBtn}
-                onPress={() => Linking.openURL(`tel:${ride.passengerPhone}`)}
+                onPress={() => {
+                  // تنظيف رقم الهاتف من أي مسافات أو أحرف غير ضرورية
+                  const cleanPhone = (ride.passengerPhone ?? "").replace(/[^+\d]/g, "");
+                  const telUrl = `tel:${cleanPhone}`;
+                  Linking.canOpenURL(telUrl).then((supported) => {
+                    if (supported) {
+                      Linking.openURL(telUrl);
+                    } else {
+                      Alert.alert("الاتصال", `رقم الراكب: ${cleanPhone}`);
+                    }
+                  });
+                }}
               >
                 <Text style={styles.actionIcon}>📞</Text>
               </TouchableOpacity>
