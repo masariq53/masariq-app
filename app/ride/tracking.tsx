@@ -82,15 +82,40 @@ export default function TrackingScreen() {
   const prevStepRef = useRef(0);
   const navigatedToRatingRef = useRef(false);
   const noDriversTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [completed, setCompleted] = useState(false);
+  // عداد البحث عن سائق (بالثواني)
+  const [searchElapsed, setSearchElapsed] = useState(0);
+  const SEARCH_TIMEOUT = 180; // 3 دقائق = 180 ثانية
 
   // طلب صلاحيات الإشعارات عند فتح الشاشة
   useEffect(() => {
     registerPassengerNotifications();
   }, []);
 
-  // مؤقت "لا يوجد سائقون" — 3 دقائق بدون قبول
+  // عداد البحث المرئي - يعمل فقط عند currentStep === 0
+  useEffect(() => {
+    if (currentStep === 0 && !cancelled && !completed) {
+      setSearchElapsed(0);
+      searchTimerRef.current = setInterval(() => {
+        setSearchElapsed((prev) => prev + 1);
+      }, 1000);
+    } else {
+      if (searchTimerRef.current) {
+        clearInterval(searchTimerRef.current);
+        searchTimerRef.current = null;
+      }
+    }
+    return () => {
+      if (searchTimerRef.current) {
+        clearInterval(searchTimerRef.current);
+        searchTimerRef.current = null;
+      }
+    };
+  }, [currentStep, cancelled, completed]);
+
+  // مؤقت "\u0644ا يوجد سائقون" — 3 دقائق بدون قبول
   useEffect(() => {
     if (noDriversTimerRef.current) clearTimeout(noDriversTimerRef.current);
     if (currentStep === 0 && !cancelled && !completed) {
@@ -360,7 +385,31 @@ export default function TrackingScreen() {
               </>
             )}
             {currentStep === 0 && (
-              <Text style={styles.searchingText}>نبحث عن أقرب سائق لك...</Text>
+              <View style={{ marginTop: 4 }}>
+                {/* رسالة تشجيعية ديناميكية */}
+                <Text style={styles.searchingText}>
+                  {searchElapsed < 15
+                    ? "نبحث عن أقرب سائق لك..."
+                    : searchElapsed < 45
+                    ? "جاري التواصل مع السائقين القريبين..."
+                    : searchElapsed < 90
+                    ? "سيصلك سائق قريباً، انتظر قليلاً..."
+                    : "نوسع نطاق البحث، شكراً لصبرك..."}
+                </Text>
+                {/* عداد الوقت */}
+                <Text style={[styles.searchingText, { fontSize: 11, marginTop: 2, opacity: 0.7 }]}>
+                  {"منذ "}{Math.floor(searchElapsed / 60) > 0 ? `${Math.floor(searchElapsed / 60)}د ${searchElapsed % 60}ث` : `${searchElapsed} ثانية`}
+                </Text>
+                {/* شريط تقدم البحث */}
+                <View style={{ height: 3, backgroundColor: "#2D2060", borderRadius: 2, marginTop: 6, width: 140 }}>
+                  <View style={{
+                    height: 3,
+                    backgroundColor: "#FFD700",
+                    borderRadius: 2,
+                    width: `${Math.min((searchElapsed / SEARCH_TIMEOUT) * 100, 100)}%`,
+                  }} />
+                </View>
+              </View>
             )}
           </View>
           {currentStep > 0 && driverPhone && (
