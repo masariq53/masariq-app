@@ -62,7 +62,7 @@ function StatCard({
 export default function AdminDashboard() {
   const insets = useSafeAreaInsets();
   const [refreshing, setRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState<"overview" | "rides" | "drivers" | "passengers" | "pending">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "rides" | "drivers" | "passengers" | "pending" | "pricing">("overview");
 
   const [driversPage, setDriversPage] = useState(0);
   const [passengersPage, setPassengersPage] = useState(0);
@@ -110,6 +110,7 @@ export default function AdminDashboard() {
     { id: "pending", label: `طلبات${pendingCount > 0 ? ` (${pendingCount})` : ""}`, icon: "⏳" },
     { id: "drivers", label: "السائقون", icon: "👨‍✈️" },
     { id: "passengers", label: "المستخدمون", icon: "👥" },
+    { id: "pricing", label: "التسعير", icon: "💰" },
   ] as const;
 
   return (
@@ -698,6 +699,43 @@ export default function AdminDashboard() {
             )}
           </>
         )}
+        {/* Pricing Tab */}
+        {activeTab === "pricing" && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>إدارة أسعار الرحلات</Text>
+            <View style={{ backgroundColor: 'rgba(108,63,197,0.12)', borderRadius: 12, padding: 14, marginBottom: 14, borderWidth: 1, borderColor: 'rgba(108,63,197,0.3)' }}>
+              <Text style={{ color: '#C4B5FD', fontSize: 13, textAlign: 'center', lineHeight: 20 }}>
+                🔄 أي تعديل على الأسعار ينعكس فوراً على حساب أجرة الرحلة — لا حاجة لإعادة التشغيل
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={{ backgroundColor: '#6C3FC5', borderRadius: 14, padding: 18, alignItems: 'center', marginBottom: 12 }}
+              onPress={() => router.push('/admin/pricing' as any)}
+              activeOpacity={0.8}
+            >
+              <Text style={{ fontSize: 32, marginBottom: 8 }}>💰</Text>
+              <Text style={{ color: '#FFFFFF', fontSize: 17, fontWeight: '800', marginBottom: 4 }}>فتح مدير التسعير</Text>
+              <Text style={{ color: '#C4B5FD', fontSize: 13 }}>إضافة مدن · تعديل الأسعار · معاينة الأجرة · سجل التغييرات</Text>
+            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+              {[
+                { icon: '📏', title: 'بالكيلومتر', desc: 'تسعير حسب المسافة' },
+                { icon: '⏱', title: 'بالدقيقة', desc: 'تسعير حسب الوقت' },
+                { icon: '🔀', title: 'هجين', desc: 'كم + دقيقة معاً' },
+                { icon: '🌙', title: 'رسوم ليلية', desc: 'مضاعف للساعات المتأخرة' },
+                { icon: '⚡', title: 'طلب عالي', desc: 'مضاعف الذروة' },
+                { icon: '🏙️', title: 'تعدد المدن', desc: 'سعر مختلف لكل مدينة' },
+              ].map((feature, i) => (
+                <View key={i} style={{ backgroundColor: '#1A0533', borderRadius: 12, padding: 12, width: '47%', borderWidth: 1, borderColor: '#2D1B4E' }}>
+                  <Text style={{ fontSize: 22, marginBottom: 6 }}>{feature.icon}</Text>
+                  <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '700', marginBottom: 2 }}>{feature.title}</Text>
+                  <Text style={{ color: '#9B8EC4', fontSize: 11 }}>{feature.desc}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
+
         <View style={{ height: 40 }} />
       </ScrollView>
 
