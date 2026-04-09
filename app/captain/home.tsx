@@ -17,11 +17,12 @@ import {
 import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import MapView, { Marker, Circle, PROVIDER_DEFAULT } from "react-native-maps";
-import { useMemo } from "react";
+import MapView, { Marker, Circle, Polyline, PROVIDER_DEFAULT } from "react-native-maps";
+import { useMemo, useEffect as useEffectOsrm } from "react";
 import { useDriver } from "@/lib/driver-context";
 import { useLocation } from "@/hooks/use-location";
 import { trpc } from "@/lib/trpc";
+import { fetchDualOsrmRoute, type OsrmRouteResult, type LatLng } from "@/lib/osrm";
 
 const { width } = Dimensions.get("window");
 
@@ -60,6 +61,11 @@ export default function CaptainHomeScreen() {
   const [seenRideIds, setSeenRideIds] = useState<Set<number>>(new Set());
   const [timer, setTimer] = useState(30);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // OSRM dual route state
+  const [routeToPassenger, setRouteToPassenger] = useState<OsrmRouteResult | null>(null);
+  const [routePassengerTrip, setRoutePassengerTrip] = useState<OsrmRouteResult | null>(null);
+  const [totalDistanceKm, setTotalDistanceKm] = useState<number>(0);
+  const [totalDurationMin, setTotalDurationMin] = useState<number>(0);
   // حساب دخل اليوم الحقيقي من السيرفر - يعمل دائماً بغض النظر عن حالة الاتصال
   const todayQuery = trpc.driver.getTrips.useQuery(
     { driverId: driver?.id ?? 0, limit: 200 },
@@ -96,6 +102,26 @@ export default function CaptainHomeScreen() {
   const notificationPlayer = useAudioPlayer(
     require("@/assets/sounds/new-ride.mp3")
   );
+
+  // جلب مسارات OSRM المزدوجة عند وصول طلب جديد
+  useEffectOsrm(() => {
+    if (!currentRequest) {
+      setRouteToPassenger(null);
+      setRoutePassengerTrip(null);
+      setTotalDistanceKm(0);
+      setTotalDurationMin(0);
+      return;
+    }
+    const driverLoc: LatLng = { latitude: coords.latitude, longitude: coords.longitude };
+    const pickup: LatLng = { latitude: currentRequest.pickupLat, longitude: currentRequest.pickupLng };
+    const dropoff: LatLng = { latitude: currentRequest.dropoffLat, longitude: currentRequest.dropoffLng };
+    fetchDualOsrmRoute(driverLoc, pickup, dropoff).then((res) => {
+      setRouteToPassenger(res.toPassenger);
+      setRoutePassengerTrip(res.passengerTrip);
+      setTotalDistanceKm(res.totalDistanceKm);
+      setTotalDurationMin(res.totalDurationMin);
+    });
+  }, [currentRequest?.id]);
 
   // عند العودة لهذه الشاشة (بعد إلغاء أو اكتمال رحلة) - تغيير حالة السائق إلى متاح تلقائياً
   useFocusEffect(
@@ -366,6 +392,25 @@ export default function CaptainHomeScreen() {
             </Animated.View>
           </Marker>
 
+          {/* مسار السائق إلى الراكب - أزرق */}
+          {routeToPassenger && routeToPassenger.coords.length >= 2 && (
+            <Polyline
+              coordinates={routeToPassenger.coords}
+              strokeColor="#2196F3"
+              strokeWidth={4}
+              lineDashPattern={[8, 4]}
+            />
+          )}
+
+          {/* مسار رحلة الراكب - أصفر */}
+          {routePassengerTrip && routePassengerTrip.coords.length >= 2 && (
+            <Polyline
+              coordinates={routePassengerTrip.coords}
+              strokeColor="#FFD700"
+              strokeWidth={4}
+            />
+          )}
+
           {/* موقع الراكب إذا في طلب */}
           {currentRequest && (
             <Marker
@@ -374,6 +419,18 @@ export default function CaptainHomeScreen() {
             >
               <View style={styles.passengerMarker}>
                 <Text style={{ fontSize: 24 }}>📍</Text>
+              </View>
+            </Marker>
+          )}
+
+          {/* وجهة الراكب */}
+          {currentRequest && (
+            <Marker
+              coordinate={{ latitude: currentRequest.dropoffLat, longitude: currentRequest.dropoffLng }}
+              title="الوجهة"
+            >
+              <View style={styles.passengerMarker}>
+                <Text style={{ fontSize: 22 }}>🏁</Text>
               </View>
             </Marker>
           )}
@@ -523,8 +580,42 @@ export default function CaptainHomeScreen() {
               </View>
             </View>
 
-            {/* التفاصيل */}
-            <View style={styles.detailsRow}>
+            {/* تفاصيل OSRM المزدوجة */}
+            <View style={styles.osrmDetailsBox}>
+              {/* للوصول إلى الراكب */}
+              <View style={styles.osrmRow}>
+                <View style={[styles.osrmDot, { backgroundColor: "#2196F3" }]} />
+                <Text style={styles.osrmLabel}>للوصول إليك</Text>
+                <Text style={styles.osrmValue}>
+                  {routeToPassenger
+                    ? `${routeToPassenger.distanceKm} كم • ${routeToPassenger.durationMin} دقيقة`
+                    : `${currentRequest?.estimatedDistance?.toFixed(1) ?? "--"} كم`}
+                </Text>
+              </View>
+              {/* رحلة الراكب */}
+              <View style={styles.osrmRow}>
+                <View style={[styles.osrmDot, { backgroundColor: "#FFD700" }]} />
+                <Text style={styles.osrmLabel}>رحلة الراكب</Text>
+                <Text style={styles.osrmValue}>
+                  {routePassengerTrip
+                    ? `${routePassengerTrip.distanceKm} كم • ${routePassengerTrip.durationMin} دقيقة`
+                    : `${currentRequest?.estimatedDistance?.toFixed(1) ?? "--"} كم`}
+                </Text>
+              </View>
+              {/* الإجمالي */}
+              <View style={[styles.osrmRow, styles.osrmTotalRow]}>
+                <View style={[styles.osrmDot, { backgroundColor: "#4CAF50" }]} />
+                <Text style={[styles.osrmLabel, { color: "#4CAF50", fontWeight: "bold" }]}>إجمالي</Text>
+                <Text style={[styles.osrmValue, { color: "#4CAF50", fontWeight: "bold" }]}>
+                  {totalDistanceKm > 0
+                    ? `${totalDistanceKm.toFixed(1)} كم • ${totalDurationMin} دقيقة`
+                    : `${((currentRequest?.estimatedDistance ?? 0) * 1.3).toFixed(1)} كم`}
+                </Text>
+              </View>
+            </View>
+
+            {/* التفاصيل القديمة مخفية */}
+            <View style={[styles.detailsRow, { display: "none" }]}>
               <Text style={styles.detailItem}>
                 📏 {currentRequest?.estimatedDistance?.toFixed(1)} كم
               </Text>
@@ -744,4 +835,39 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   acceptText: { color: "#1A0533", fontSize: 15, fontWeight: "bold" },
+  osrmDetailsBox: {
+    backgroundColor: "#2D1B4E",
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "#3D2070",
+    gap: 8,
+  },
+  osrmRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  osrmTotalRow: {
+    borderTopWidth: 1,
+    borderTopColor: "#3D2070",
+    paddingTop: 8,
+    marginTop: 4,
+  },
+  osrmDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  osrmLabel: {
+    color: "#9B8EC4",
+    fontSize: 13,
+    flex: 1,
+  },
+  osrmValue: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "600",
+  },
 });

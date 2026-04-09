@@ -23,6 +23,7 @@ import { trpc } from "@/lib/trpc";
 import { usePassenger } from "@/lib/passenger-context";
 import { useLocation } from "@/hooks/use-location";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { fetchOsrmRoute } from "@/lib/osrm";
 
 const { width } = Dimensions.get("window");
 
@@ -116,6 +117,8 @@ export default function BookRideScreen() {
   const [showSearch, setShowSearch] = useState(false);
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
   const [routeCoords, setRouteCoords] = useState<Array<{ latitude: number; longitude: number }>>([]);
+  const [osrmDistance, setOsrmDistance] = useState<number | null>(null);
+  const [osrmDuration, setOsrmDuration] = useState<number | null>(null);
   const mapRef = useRef<MapView>(null);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -165,18 +168,16 @@ export default function BookRideScreen() {
       return;
     }
     const fetchRoute = async () => {
-      try {
-        const url = `https://router.project-osrm.org/route/v1/driving/${pickupPin.longitude},${pickupPin.latitude};${dropPin.longitude},${dropPin.latitude}?overview=full&geometries=geojson`;
-        const res = await fetch(url, { signal: AbortSignal.timeout(5000), headers: { "User-Agent": "MasarApp/1.0" } });
-        if (!res.ok) return;
-        const data = await res.json() as { code: string; routes: Array<{ geometry: { coordinates: Array<[number, number]> } }> };
-        if (data.code === "Ok" && data.routes?.[0]) {
-          const coords = data.routes[0].geometry.coordinates.map(([lng, lat]) => ({ latitude: lat, longitude: lng }));
-          setRouteCoords(coords);
-        }
-      } catch {
+      const result = await fetchOsrmRoute(pickupPin, dropPin);
+      if (result) {
+        setRouteCoords(result.coords);
+        setOsrmDistance(result.distanceKm);
+        setOsrmDuration(result.durationMin);
+      } else {
         // fallback: خط مستقيم
         setRouteCoords([pickupPin, dropPin]);
+        setOsrmDistance(null);
+        setOsrmDuration(null);
       }
     };
     fetchRoute();
@@ -318,6 +319,9 @@ export default function BookRideScreen() {
   };
 
   const getDistanceDisplay = () => {
+    if (osrmDistance !== null && osrmDuration !== null) {
+      return `${osrmDistance} كم • ${osrmDuration} دقيقة`;
+    }
     if (!fareQuery.data) return "";
     return `${fareQuery.data.distance} كم • ${fareQuery.data.duration} دقيقة`;
   };
