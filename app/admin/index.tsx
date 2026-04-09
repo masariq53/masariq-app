@@ -62,7 +62,7 @@ function StatCard({
 export default function AdminDashboard() {
   const insets = useSafeAreaInsets();
   const [refreshing, setRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState<"overview" | "rides" | "drivers" | "passengers" | "pending" | "pricing">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "rides" | "drivers" | "passengers" | "pricing">("overview");
 
   const [driversPage, setDriversPage] = useState(0);
   const [passengersPage, setPassengersPage] = useState(0);
@@ -107,7 +107,6 @@ export default function AdminDashboard() {
   const tabs = [
     { id: "overview", label: "نظرة عامة", icon: "📊" },
     { id: "rides", label: "الرحلات", icon: "🚗" },
-    { id: "pending", label: `طلبات${pendingCount > 0 ? ` (${pendingCount})` : ""}`, icon: "⏳" },
     { id: "drivers", label: "السائقون", icon: "👨‍✈️" },
     { id: "passengers", label: "المستخدمون", icon: "👥" },
     { id: "pricing", label: "التسعير", icon: "💰" },
@@ -437,199 +436,6 @@ export default function AdminDashboard() {
                     </>
                   );
                 })()}
-              </View>
-            )}
-
-            {/* ── Pending Drivers Tab ── */}
-            {activeTab === "pending" && (
-              <View style={styles.section}>
-                <Text style={styles.sectionTitle}>
-                  جميع طلبات السائقين ({pendingDrivers?.length ?? 0})
-                </Text>
-                {pendingLoading ? (
-                  <ActivityIndicator color="#FFD700" style={{ marginVertical: 20 }} />
-                ) : pendingDrivers && pendingDrivers.length > 0 ? (
-                  pendingDrivers.map((driver) => (
-                    <View key={driver.id} style={styles.pendingCard}>
-                      {/* Driver Info */}
-                      <View style={styles.pendingHeader}>
-                        <View style={styles.pendingAvatar}>
-                          <Text style={styles.pendingAvatarText}>
-                            {(driver.name || "؟").charAt(0)}
-                          </Text>
-                        </View>
-                        <View style={styles.pendingInfo}>
-                          <Text style={styles.pendingName}>{driver.name || "بدون اسم"}</Text>
-                          <Text style={styles.pendingPhone}>{driver.phone}</Text>
-                          <Text style={styles.pendingDate}>
-                            {driver.createdAt ? new Date(driver.createdAt).toLocaleDateString("ar-IQ") : ""}
-                          </Text>
-                        </View>
-                        <View style={[styles.pendingBadge, {
-                          backgroundColor: driver.registrationStatus === "approved" ? "#D4EDDA" :
-                            driver.registrationStatus === "rejected" ? "#F8D7DA" : "#FFF3CD"
-                        }]}>
-                          <Text style={[styles.pendingBadgeText, {
-                            color: driver.registrationStatus === "approved" ? "#155724" :
-                              driver.registrationStatus === "rejected" ? "#721C24" : "#856404"
-                          }]}>
-                            {driver.registrationStatus === "approved" ? "✅ معتمد" :
-                              driver.registrationStatus === "rejected" ? "❌ مرفوض" : "⏳ قيد المراجعة"}
-                          </Text>
-                        </View>
-                      </View>
-
-                      {/* Vehicle Info */}
-                      {(driver.vehicleModel || driver.vehiclePlate) && (
-                        <View style={styles.pendingVehicle}>
-                          <Text style={styles.pendingVehicleText}>
-                            🚗 {driver.vehicleModel || ""} {driver.vehicleColor ? `• ${driver.vehicleColor}` : ""} {driver.vehicleYear ? `(${driver.vehicleYear})` : ""}
-                          </Text>
-                          {driver.vehiclePlate && (
-                            <Text style={styles.pendingVehicleText}>🔢 {driver.vehiclePlate}</Text>
-                          )}
-                          {driver.nationalId && (
-                            <Text style={styles.pendingVehicleText}>🪪 الهوية: {driver.nationalId}</Text>
-                          )}
-                        </View>
-                      )}
-
-                      {/* Documents - Show actual images */}
-                      <View style={styles.pendingDocs}>
-                        <Text style={styles.pendingDocsTitle}>الوثائق المرفوعة:</Text>
-                        <View style={styles.docsImagesRow}>
-                          {[
-                            { url: driver.photoUrl, label: "صورة شخصية" },
-                            { url: driver.nationalIdPhotoUrl, label: "الهوية" },
-                            { url: driver.licensePhotoUrl, label: "الرخصة" },
-                            { url: driver.vehiclePhotoUrl, label: "السيارة" },
-                          ].map((doc, idx) => (
-                            <TouchableOpacity
-                              key={idx}
-                              style={styles.docImageBox}
-                              onPress={() => doc.url && setPreviewImage(doc.url)}
-                              disabled={!doc.url}
-                            >
-                              {doc.url ? (
-                                <Image source={{ uri: doc.url }} style={styles.docImage} />
-                              ) : (
-                                <View style={styles.docImageMissing}>
-                                  <Text style={styles.docImageMissingIcon}>❌</Text>
-                                </View>
-                              )}
-                              <Text style={styles.docImageLabel}>{doc.label}</Text>
-                            </TouchableOpacity>
-                          ))}
-                        </View>
-                      </View>
-
-                      {/* Actions - only show for pending drivers */}
-                      {driver.registrationStatus === "pending" && (
-                        <View style={styles.pendingActions}>
-                          <TouchableOpacity
-                            style={styles.rejectBtn}
-                            onPress={() =>
-                              Alert.alert(
-                                "رفض الطلب",
-                                `هل تريد رفض طلب ${driver.name}؟`,
-                                [
-                                  { text: "إلغاء", style: "cancel" },
-                                  {
-                                    text: "رفض",
-                                    style: "destructive",
-                                    onPress: () =>
-                                      reviewDriver.mutate({
-                                        driverId: driver.id,
-                                        status: "rejected",
-                                        rejectionReason: "لا تستوفي المتطلبات",
-                                      }),
-                                  },
-                                ]
-                              )
-                            }
-                          >
-                            <Text style={styles.rejectBtnText}>❌ رفض</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={styles.approveBtn}
-                            onPress={() =>
-                              Alert.alert(
-                                "قبول الطلب",
-                                `هل تريد قبول طلب ${driver.name}؟`,
-                                [
-                                  { text: "إلغاء", style: "cancel" },
-                                  {
-                                    text: "قبول",
-                                    onPress: () =>
-                                      reviewDriver.mutate({
-                                        driverId: driver.id,
-                                        status: "approved",
-                                      }),
-                                  },
-                                ]
-                              )
-                            }
-                          >
-                            <Text style={styles.approveBtnText}>✅ قبول</Text>
-                          </TouchableOpacity>
-                        </View>
-                      )}
-                      {/* Show re-review option for rejected drivers */}
-                      {driver.registrationStatus === "rejected" && (
-                        <View style={styles.pendingActions}>
-                          <TouchableOpacity
-                            style={styles.approveBtn}
-                            onPress={() =>
-                              Alert.alert(
-                                "قبول الطلب",
-                                `هل تريد قبول طلب ${driver.name} بعد المراجعة؟`,
-                                [
-                                  { text: "إلغاء", style: "cancel" },
-                                  {
-                                    text: "قبول",
-                                    onPress: () =>
-                                      reviewDriver.mutate({
-                                        driverId: driver.id,
-                                        status: "approved",
-                                      }),
-                                  },
-                                ]
-                              )
-                            }
-                          >
-                            <Text style={styles.approveBtnText}>✅ قبول بعد المراجعة</Text>
-                          </TouchableOpacity>
-                        </View>
-                      )}
-                      {/* Delete button - always visible */}
-                      <TouchableOpacity
-                        style={styles.deleteBtn}
-                        onPress={() =>
-                          Alert.alert(
-                            "حذف الحساب",
-                            `هل تريد حذف حساب السائق ${driver.name} نهائياً؟ لا يمكن التراجع.`,
-                            [
-                              { text: "إلغاء", style: "cancel" },
-                              {
-                                text: "حذف نهائي",
-                                style: "destructive",
-                                onPress: () => deleteDriverMutation.mutate({ driverId: driver.id }),
-                              },
-                            ]
-                          )
-                        }
-                      >
-                        <Text style={styles.deleteBtnText}>🗑️ حذف الحساب</Text>
-                      </TouchableOpacity>
-                    </View>
-                  ))
-                ) : (
-                  <View style={styles.emptyState}>
-                    <Text style={styles.emptyIcon}>✅</Text>
-                    <Text style={styles.emptyText}>لا توجد طلبات معلقة</Text>
-                    <Text style={styles.emptySubText}>جميع الطلبات تمت مراجعتها</Text>
-                  </View>
-                )}
               </View>
             )}
 
