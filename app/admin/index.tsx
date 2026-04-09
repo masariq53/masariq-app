@@ -754,6 +754,7 @@ export default function AdminDashboard() {
                 {[
                   { url: docsDriver?.photoUrl, label: 'صورة شخصية' },
                   { url: docsDriver?.nationalIdPhotoUrl, label: 'الهوية الوطنية' },
+                  { url: docsDriver?.nationalIdPhotoBackUrl, label: 'الهوية الخلفية' },
                   { url: docsDriver?.licensePhotoUrl, label: 'رخصة القيادة' },
                   { url: docsDriver?.vehiclePhotoUrl, label: 'صورة السيارة' },
                 ].map((doc, idx) => (
