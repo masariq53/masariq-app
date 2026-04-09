@@ -315,10 +315,38 @@ export const appRouter = router({
           status: "searching",
         });
 
-        // Send push notifications to all online drivers with push tokens
-        const onlineDriverTokens = Array.from(driverPushTokens.entries());
-        if (onlineDriverTokens.length > 0) {
-          const messages = onlineDriverTokens
+        // Send push notifications to active drivers (lastActiveAt within 10 minutes) with push tokens
+        // فلتر السائقين النشطين خلال آخر 10 دقائق من قاعدة البيانات - منع إرسال طلبات لسائقين أغلقوا التطبيق منذ فترة طويلة
+        const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+        const dbForPush = await (await import("./db")).getDb();
+        let activeDriverTokens: Array<[number, string]> = [];
+        if (dbForPush) {
+          const { drivers: driversSchema } = await import("../drizzle/schema");
+          const { and: andOp, eq: eqOp2, gt: gtOp, isNotNull: isNotNullOp } = await import("drizzle-orm");
+          const activeDrivers: { id: number; pushToken: string | null }[] = await dbForPush
+            .select({ id: driversSchema.id, pushToken: driversSchema.pushToken })
+            .from(driversSchema)
+            .where(
+              andOp(
+                eqOp2(driversSchema.isOnline, true),
+                eqOp2(driversSchema.isAvailable, true),
+                gtOp(driversSchema.lastActiveAt, tenMinutesAgo),
+                isNotNullOp(driversSchema.pushToken)
+              )
+            );
+          activeDriverTokens = activeDrivers
+            .filter((d: { id: number; pushToken: string | null }) => d.pushToken?.startsWith("ExponentPushToken["))
+            .map((d: { id: number; pushToken: string | null }) => [d.id, d.pushToken!] as [number, string]);
+          // تحديث كاش الذاكرة بالسائقين النشطين
+          for (const [id, token] of activeDriverTokens) {
+            driverPushTokens.set(id, token);
+          }
+        } else {
+          // فولباك: استخدام كاش الذاكرة
+          activeDriverTokens = Array.from(driverPushTokens.entries());
+        }
+        if (activeDriverTokens.length > 0) {
+          const messages = activeDriverTokens
             .filter(([, token]) => token.startsWith("ExponentPushToken["))
             .map(([, token]) => ({
               to: token,
@@ -427,6 +455,8 @@ export const appRouter = router({
           return { success: false, reason: "ride_not_available" };
         }
         await updateRideStatus(input.rideId, "accepted", { driverId: input.driverId });
+        // جعل السائق غير متاح فوراً لمنع استقبال طلبات جديدة أثناء الرحلة
+        await setDriverOnlineStatus(input.driverId, true, false);
         // Get ride and driver info to notify passenger
         const ride = await getRideById(input.rideId);
         if (ride) {
@@ -484,7 +514,7 @@ export const appRouter = router({
 
         await updateRideStatus(input.rideId, input.status, extra as any);
 
-        // On completion: increment totalRides for driver and passenger, set driver to offline/unavailable
+        // On completion: increment totalRides, keep driver online but set available=true (ready for new rides)
         if (input.status === "completed") {
           const ride = await getRideById(input.rideId);
           if (ride) {
@@ -494,8 +524,9 @@ export const appRouter = router({
             const db = await getDb();
             if (db) {
               if (ride.driverId) {
+                // عند الاكتمال: أعد السائق لحالة متاح لاستقبال طلبات جديدة
                 await db.update(driversTable)
-                  .set({ totalRides: sqlOp`totalRides + 1`, isOnline: false, isAvailable: false })
+                  .set({ totalRides: sqlOp`totalRides + 1`, isAvailable: true })
                   .where(eqOp(driversTable.id, ride.driverId));
               }
               await db.update(passengersTable)
@@ -504,6 +535,16 @@ export const appRouter = router({
             }
           }
         }
+
+        // On cancellation: restore driver availability so they can receive new rides
+        if (input.status === "cancelled") {
+          const ride = await getRideById(input.rideId);
+          if (ride?.driverId) {
+            // عند الإلغاء: أعد السائق لحالة متاح حتى يستقبل طلبات جديدة
+            await setDriverOnlineStatus(ride.driverId, true, true);
+          }
+        }
+
         return { success: true };
       }),
 

@@ -342,15 +342,54 @@ export default function CaptainActiveTripScreen() {
         </View>
       )}
 
-      {/* زر الرجوع */}
-      <TouchableOpacity style={[styles.backBtn, { top: insets.top + 8, left: 16 }]} onPress={() => {
-        Alert.alert("تنبيه", "الرحلة لا تزال نشطة. هل تريد الرجوع؟", [
-          { text: "لا", style: "cancel" },
-          { text: "نعم", onPress: () => router.replace("/captain/home" as any) },
-        ]);
-      }}>
-        <Text style={styles.backBtnText}>←</Text>
-      </TouchableOpacity>
+      {/* زر الرجوع - مقيّد حسب مرحلة الرحلة */}
+      {phase !== "in_trip" && phase !== "done" && (
+        <TouchableOpacity style={[styles.backBtn, { top: insets.top + 8, left: 16 }]} onPress={() => {
+          if (phase === "pickup") {
+            // مرحلة "في الطريق للراكب" - يُسمح بالإلغاء مع تحذير
+            Alert.alert(
+              "⚠️ إلغاء الرحلة",
+              "هل تريد إلغاء الرحلة والرجوع؟ سيؤثر ذلك على تقييمك.",
+              [
+                { text: "لا، أكمل", style: "cancel" },
+                {
+                  text: "نعم، إلغاء",
+                  style: "destructive",
+                  onPress: () => {
+                    updateStatus.mutate(
+                      { rideId: ride?.id ?? rideId, status: "cancelled", cancelReason: "إلغاء من السائق" },
+                      { onSettled: () => router.replace("/captain/home" as any) }
+                    );
+                  },
+                },
+              ]
+            );
+          } else if (phase === "arrived") {
+            // مرحلة "وصل وينتظر الراكب" - يُسمح بالإلغاء مع تحذير أقوى
+            Alert.alert(
+              "⚠️ إلغاء الرحلة",
+              "وصلت لموقع الراكب بالفعل. هل تريد إلغاء الرحلة؟ سيؤثر ذلك على تقييمك بشكل أكبر.",
+              [
+                { text: "لا، انتظر الراكب", style: "cancel" },
+                {
+                  text: "نعم، إلغاء",
+                  style: "destructive",
+                  onPress: () => {
+                    updateStatus.mutate(
+                      { rideId: ride?.id ?? rideId, status: "cancelled", cancelReason: "إلغاء من السائق بعد الوصول" },
+                      { onSettled: () => router.replace("/captain/home" as any) }
+                    );
+                  },
+                },
+              ]
+            );
+          }
+        }}>
+          <Text style={styles.backBtnText}>←</Text>
+        </TouchableOpacity>
+      )}
+
+      {/* مرحلة in_trip: لا يوجد زر رجوع - الرحلة لا تُلغى بعد ركوب الراكب */}
 
       {/* شريط الحالة */}
       <View style={[styles.statusBar, { top: insets.top + 8 }]}>

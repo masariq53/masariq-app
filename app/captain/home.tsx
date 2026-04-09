@@ -282,7 +282,8 @@ export default function CaptainHomeScreen() {
       }
       const rideId = currentRequest!.id;
       setCurrentRequest(null);
-      router.push({
+      // استخدام replace بدل push لمنع الكابتن من الرجوع لشاشة Home أثناء الرحلة
+      router.replace({
         pathname: "/captain/active-trip",
         params: { rideId: rideId.toString() },
       } as any);
