@@ -494,7 +494,7 @@ export default function BookRideScreen() {
                     <Text style={styles.rideIcon}>{ride.icon}</Text>
                     <Text style={[styles.rideLabel, selectedRide === ride.id && styles.rideLabelActive]}>{ride.label}</Text>
                     <Text style={[styles.ridePrice, selectedRide === ride.id && styles.ridePriceActive]}>
-                      {fare ? `${fare.toLocaleString("ar-IQ")} د` : "---"}
+                      {!dropPin ? "—" : fareQuery.isLoading ? "⏳" : fare ? `${fare.toLocaleString("ar-IQ")} د` : "—"}
                     </Text>
                     <Text style={styles.rideTime}>{ride.desc}</Text>
                   </TouchableOpacity>
@@ -503,15 +503,20 @@ export default function BookRideScreen() {
             </ScrollView>
 
             <TouchableOpacity
-              style={[styles.confirmBtn, (!dropPin || requestRide.isPending) && styles.confirmBtnDisabled]}
+              style={[styles.confirmBtn, (!dropPin || requestRide.isPending || (!!dropPin && (fareQuery.isLoading || !fareQuery.data))) && styles.confirmBtnDisabled]}
               onPress={handleConfirm}
-              disabled={!dropPin || requestRide.isPending}
+              disabled={!dropPin || requestRide.isPending || (!!dropPin && (fareQuery.isLoading || !fareQuery.data))}
             >
               {requestRide.isPending ? (
                 <ActivityIndicator color="#1A0533" />
+              ) : (!!dropPin && fareQuery.isLoading) ? (
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                  <ActivityIndicator color="#1A0533" size="small" />
+                  <Text style={styles.confirmText}>جاري حساب السعر...</Text>
+                </View>
               ) : (
                 <Text style={styles.confirmText}>
-                  {dropPin ? `تأكيد الرحلة — ${getFareDisplay()}` : "حدد وجهتك أو ابحث عنها"}
+                  {dropPin && fareQuery.data ? `تأكيد الرحلة — ${getFareDisplay()}` : !dropPin ? "حدد وجهتك أو ابحث عنها" : "جاري تحميل السعر..."}
                 </Text>
               )}
             </TouchableOpacity>
