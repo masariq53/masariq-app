@@ -195,6 +195,25 @@ export default function AdminDashboard() {
                   </View>
                 </View>
 
+                {/* Quick Actions */}
+                <View style={styles.section}>
+                  <Text style={styles.sectionTitle}>إدارة النظام</Text>
+                  <TouchableOpacity
+                    style={styles.pricingBanner}
+                    onPress={() => router.push("/admin/pricing")}
+                    activeOpacity={0.8}
+                  >
+                    <View style={styles.pricingBannerLeft}>
+                      <Text style={styles.pricingBannerIcon}>💰</Text>
+                      <View>
+                        <Text style={styles.pricingBannerTitle}>إدارة أسعار الرحلات</Text>
+                        <Text style={styles.pricingBannerSub}>تسعير المدن · أجرة الكم والدقيقة · رسوم الليل والانتظار</Text>
+                      </View>
+                    </View>
+                    <Text style={styles.pricingBannerArrow}>←</Text>
+                  </TouchableOpacity>
+                </View>
+
                 {/* Recent Rides */}
                 <View style={styles.section}>
                   <View style={styles.sectionHeader}>
@@ -1002,4 +1021,21 @@ const styles = StyleSheet.create({
   pageBtnDisabled: { opacity: 0.35 },
   pageBtnText: { color: "#FFD700", fontSize: 13, fontWeight: "700" },
   pageInfo: { color: "#9B8EC4", fontSize: 13, fontWeight: "600" },
+
+  // Pricing Banner
+  pricingBanner: {
+    backgroundColor: "#1E1035",
+    borderRadius: 14,
+    padding: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderWidth: 1,
+    borderColor: "#FFD70033",
+  },
+  pricingBannerLeft: { flexDirection: "row", alignItems: "center", gap: 12, flex: 1 },
+  pricingBannerIcon: { fontSize: 32 },
+  pricingBannerTitle: { fontSize: 16, fontWeight: "800", color: "#FFD700" },
+  pricingBannerSub: { fontSize: 12, color: "#9B8EC4", marginTop: 2 },
+  pricingBannerArrow: { fontSize: 20, color: "#FFD700", fontWeight: "700" },
 });

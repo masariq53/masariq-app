@@ -1,4 +1,4 @@
-import { and, eq, gt, desc, inArray } from "drizzle-orm";
+import { and, eq, gt, desc, inArray, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   InsertUser,
@@ -796,4 +796,284 @@ export function calculateDistance(
       Math.sin(dLng / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
+}
+
+// ─── Dynamic Pricing (Zones) ──────────────────────────────────────────────────
+
+import { pricingZones, pricingHistory } from "../drizzle/schema";
+
+/**
+ * Get all pricing zones
+ */
+export async function getAllPricingZones() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(pricingZones).orderBy(pricingZones.cityName);
+}
+
+/**
+ * Get active pricing zone for a city and vehicle type
+ * Falls back to "all" vehicle type, then to default zone
+ */
+export async function getPricingZone(
+  cityName: string,
+  vehicleType: "sedan" | "suv" | "minivan" = "sedan"
+) {
+  const db = await getDb();
+  if (!db) return null;
+
+  // Try exact match: city + vehicle type
+  const exactMatch = await db
+    .select()
+    .from(pricingZones)
+    .where(
+      and(
+        eq(pricingZones.isActive, true),
+        sql`LOWER(${pricingZones.cityName}) = LOWER(${cityName})`,
+        eq(pricingZones.vehicleType, vehicleType)
+      )
+    )
+    .limit(1);
+  if (exactMatch.length > 0) return exactMatch[0];
+
+  // Try city + "all" vehicle type
+  const cityAll = await db
+    .select()
+    .from(pricingZones)
+    .where(
+      and(
+        eq(pricingZones.isActive, true),
+        sql`LOWER(${pricingZones.cityName}) = LOWER(${cityName})`,
+        eq(pricingZones.vehicleType, "all")
+      )
+    )
+    .limit(1);
+  if (cityAll.length > 0) return cityAll[0];
+
+  // Fallback to default zone
+  const defaultZone = await db
+    .select()
+    .from(pricingZones)
+    .where(and(eq(pricingZones.isActive, true), eq(pricingZones.isDefault, true)))
+    .limit(1);
+  if (defaultZone.length > 0) return defaultZone[0];
+
+  return null;
+}
+
+/**
+ * Calculate fare using dynamic pricing zone
+ * Rounds to nearest 250 IQD (smallest IQD denomination)
+ */
+export async function calculateFareDynamic(
+  distanceKm: number,
+  durationMinutes: number,
+  cityName: string = "الموصل",
+  vehicleType: "sedan" | "suv" | "minivan" = "sedan"
+): Promise<{
+  fare: number;
+  breakdown: {
+    baseFare: number;
+    distanceFare: number;
+    timeFare: number;
+    bookingFee: number;
+    surgeMultiplier: number;
+    nightSurcharge: number;
+    total: number;
+    pricingMethod: string;
+    zoneName: string;
+  };
+}> {
+  const zone = await getPricingZone(cityName, vehicleType);
+
+  // If no zone found, use legacy hardcoded pricing
+  if (!zone) {
+    const fare = Math.max(2000 + distanceKm * 1000, 3000);
+    const rounded = Math.ceil(fare / 250) * 250;
+    return {
+      fare: rounded,
+      breakdown: {
+        baseFare: 2000,
+        distanceFare: Math.max(0, rounded - 2000),
+        timeFare: 0,
+        bookingFee: 0,
+        surgeMultiplier: 1,
+        nightSurcharge: 0,
+        total: rounded,
+        pricingMethod: "per_km",
+        zoneName: "افتراضي",
+      },
+    };
+  }
+
+  const baseFare = parseFloat(zone.baseFare.toString());
+  const pricePerKm = parseFloat(zone.pricePerKm.toString());
+  const pricePerMinute = parseFloat(zone.pricePerMinute.toString());
+  const bookingFee = parseFloat(zone.bookingFee.toString());
+  const minimumFare = parseFloat(zone.minimumFare.toString());
+  const maximumFare = parseFloat(zone.maximumFare.toString());
+  const surgeMultiplier = parseFloat(zone.surgeMultiplier.toString());
+  const nightSurchargeAmount = parseFloat((zone.nightSurchargeAmount ?? "0").toString());
+
+  // Check peak hours
+  let effectiveSurge = surgeMultiplier;
+  if (zone.peakHoursConfig) {
+    try {
+      const peakConfig: Array<{ start: string; end: string; multiplier: number }> = JSON.parse(zone.peakHoursConfig);
+      const now = new Date();
+      const currentTime = `${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}`;
+      for (const peak of peakConfig) {
+        if (currentTime >= peak.start && currentTime <= peak.end) {
+          effectiveSurge = Math.max(effectiveSurge, peak.multiplier);
+          break;
+        }
+      }
+    } catch (_) { /* ignore parse errors */ }
+  }
+
+  // Check night surcharge
+  let nightSurcharge = 0;
+  if (zone.nightSurchargeStart && zone.nightSurchargeEnd && nightSurchargeAmount > 0) {
+    const now = new Date();
+    const currentTime = `${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}`;
+    const start = zone.nightSurchargeStart;
+    const end = zone.nightSurchargeEnd;
+    // Handle overnight range (e.g. 22:00 - 06:00)
+    const isNight = start > end
+      ? currentTime >= start || currentTime <= end
+      : currentTime >= start && currentTime <= end;
+    if (isNight) nightSurcharge = nightSurchargeAmount;
+  }
+
+  // Calculate based on pricing method
+  let distanceFare = 0;
+  let timeFare = 0;
+
+  if (zone.pricingMethod === "per_km") {
+    distanceFare = distanceKm * pricePerKm;
+  } else if (zone.pricingMethod === "per_minute") {
+    timeFare = durationMinutes * pricePerMinute;
+  } else {
+    // hybrid: both distance and time
+    distanceFare = distanceKm * pricePerKm;
+    timeFare = durationMinutes * pricePerMinute;
+  }
+
+  let fare = (baseFare + distanceFare + timeFare) * effectiveSurge + bookingFee + nightSurcharge;
+  fare = Math.max(fare, minimumFare);
+  if (maximumFare > 0) fare = Math.min(fare, maximumFare);
+
+  // Round to nearest 250 IQD
+  const rounded = Math.ceil(fare / 250) * 250;
+
+  return {
+    fare: rounded,
+    breakdown: {
+      baseFare,
+      distanceFare: Math.round(distanceFare),
+      timeFare: Math.round(timeFare),
+      bookingFee,
+      surgeMultiplier: effectiveSurge,
+      nightSurcharge,
+      total: rounded,
+      pricingMethod: zone.pricingMethod,
+      zoneName: zone.cityNameAr,
+    },
+  };
+}
+
+/**
+ * Create a new pricing zone
+ */
+export async function createPricingZone(data: Omit<typeof pricingZones.$inferInsert, "id" | "createdAt" | "updatedAt">) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const [result] = await db.insert(pricingZones).values(data);
+  return result;
+}
+
+/**
+ * Update a pricing zone and log history
+ */
+export async function updatePricingZone(
+  zoneId: number,
+  data: Partial<Omit<typeof pricingZones.$inferInsert, "id" | "createdAt">>,
+  changedBy?: string,
+  changeNote?: string
+) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+
+  // Get current values for history
+  const [current] = await db.select().from(pricingZones).where(eq(pricingZones.id, zoneId)).limit(1);
+  if (!current) throw new Error("Zone not found");
+
+  // Update zone
+  await db.update(pricingZones).set(data).where(eq(pricingZones.id, zoneId));
+
+  // Log history
+  await db.insert(pricingHistory).values({
+    zoneId,
+    changedBy: changedBy ?? "admin",
+    changeNote: changeNote ?? null,
+    previousValues: JSON.stringify(current),
+    newValues: JSON.stringify(data),
+  });
+
+  return { success: true };
+}
+
+/**
+ * Delete a pricing zone
+ */
+export async function deletePricingZone(zoneId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  await db.delete(pricingZones).where(eq(pricingZones.id, zoneId));
+  return { success: true };
+}
+
+/**
+ * Get pricing history for a zone
+ */
+export async function getPricingHistory(zoneId: number, limit = 20) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(pricingHistory)
+    .where(eq(pricingHistory.zoneId, zoneId))
+    .orderBy(desc(pricingHistory.createdAt))
+    .limit(limit);
+}
+
+/**
+ * Seed default pricing zone for Mosul if none exists
+ */
+export async function seedDefaultPricingZone() {
+  const db = await getDb();
+  if (!db) return;
+  const existing = await db.select().from(pricingZones).limit(1);
+  if (existing.length > 0) return; // already seeded
+
+  await db.insert(pricingZones).values({
+    cityName: "Mosul",
+    cityNameAr: "الموصل",
+    isActive: true,
+    isDefault: true,
+    pricingMethod: "per_km",
+    vehicleType: "all",
+    baseFare: "2000",
+    pricePerKm: "1000",
+    pricePerMinute: "100",
+    minimumFare: "3000",
+    maximumFare: "0",
+    surgeMultiplier: "1.00",
+    bookingFee: "0",
+    freeWaitMinutes: 3,
+    waitPricePerMinute: "0",
+    cancellationFee: "0",
+    notes: "المنطقة الافتراضية - الموصل",
+    updatedBy: "system",
+  });
 }

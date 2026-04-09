@@ -57,6 +57,13 @@
       "when": 1775743991446,
       "tag": "0007_tired_bullseye",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "5",
+      "when": 1775760559696,
+      "tag": "0008_regular_jamie_braddock",
+      "breakpoints": true
     }
   ]
 }

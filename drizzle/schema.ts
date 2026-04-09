@@ -179,3 +179,69 @@ export const walletTransactions = mysqlTable("walletTransactions", {
 
 export type WalletTransaction = typeof walletTransactions.$inferSelect;
 export type InsertWalletTransaction = typeof walletTransactions.$inferInsert;
+
+/**
+ * Pricing zones table - defines pricing rules per city and vehicle type
+ */
+export const pricingZones = mysqlTable("pricingZones", {
+  id: int("id").autoincrement().primaryKey(),
+  // Zone identity
+  cityName: varchar("cityName", { length: 100 }).notNull(),
+  cityNameAr: varchar("cityNameAr", { length: 100 }).notNull(),
+  isActive: boolean("isActive").default(true).notNull(),
+  isDefault: boolean("isDefault").default(false).notNull(), // fallback zone
+  // Pricing method
+  pricingMethod: mysqlEnum("pricingMethod", ["per_km", "per_minute", "hybrid"]).default("per_km").notNull(),
+  // Vehicle type
+  vehicleType: mysqlEnum("vehicleType", ["sedan", "suv", "minivan", "all"]).default("all").notNull(),
+  // Base fare (minimum charge)
+  baseFare: decimal("baseFare", { precision: 10, scale: 2 }).notNull().default("2000"),
+  // Per-km pricing
+  pricePerKm: decimal("pricePerKm", { precision: 10, scale: 2 }).notNull().default("1000"),
+  // Per-minute pricing
+  pricePerMinute: decimal("pricePerMinute", { precision: 10, scale: 2 }).notNull().default("100"),
+  // Minimum fare (floor price)
+  minimumFare: decimal("minimumFare", { precision: 10, scale: 2 }).notNull().default("3000"),
+  // Maximum fare cap (0 = no cap)
+  maximumFare: decimal("maximumFare", { precision: 10, scale: 2 }).notNull().default("0"),
+  // Surge pricing multiplier (1.0 = normal, 1.5 = 50% surge)
+  surgeMultiplier: decimal("surgeMultiplier", { precision: 4, scale: 2 }).notNull().default("1.00"),
+  // Peak hours surge (JSON: [{start:"08:00",end:"10:00",multiplier:1.5}])
+  peakHoursConfig: text("peakHoursConfig"),
+  // Night hours extra charge (IQD added after certain hour)
+  nightSurchargeStart: varchar("nightSurchargeStart", { length: 5 }), // e.g. "22:00"
+  nightSurchargeEnd: varchar("nightSurchargeEnd", { length: 5 }),   // e.g. "06:00"
+  nightSurchargeAmount: decimal("nightSurchargeAmount", { precision: 10, scale: 2 }).default("0"),
+  // Booking fee (flat fee added to every ride)
+  bookingFee: decimal("bookingFee", { precision: 10, scale: 2 }).notNull().default("0"),
+  // Wait time charge (IQD per minute after free wait period)
+  freeWaitMinutes: int("freeWaitMinutes").notNull().default(3),
+  waitPricePerMinute: decimal("waitPricePerMinute", { precision: 10, scale: 2 }).notNull().default("0"),
+  // Cancellation fee
+  cancellationFee: decimal("cancellationFee", { precision: 10, scale: 2 }).notNull().default("0"),
+  // Notes / description
+  notes: text("notes"),
+  // Audit
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedBy: varchar("updatedBy", { length: 100 }),
+});
+
+export type PricingZone = typeof pricingZones.$inferSelect;
+export type InsertPricingZone = typeof pricingZones.$inferInsert;
+
+/**
+ * Pricing history - audit log of all pricing changes
+ */
+export const pricingHistory = mysqlTable("pricingHistory", {
+  id: int("id").autoincrement().primaryKey(),
+  zoneId: int("zoneId").notNull(),
+  changedBy: varchar("changedBy", { length: 100 }),
+  changeNote: text("changeNote"),
+  previousValues: text("previousValues"), // JSON snapshot of old values
+  newValues: text("newValues"),           // JSON snapshot of new values
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type PricingHistory = typeof pricingHistory.$inferSelect;
+export type InsertPricingHistory = typeof pricingHistory.$inferInsert;

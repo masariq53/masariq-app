@@ -44,6 +44,14 @@ import {
   getPassengerPushToken,
   savePassengerPushToken,
   passengerPushTokens,
+  getAllPricingZones,
+  getPricingZone,
+  calculateFareDynamic,
+  createPricingZone,
+  updatePricingZone,
+  deletePricingZone,
+  getPricingHistory,
+  seedDefaultPricingZone,
 } from "./db";
 import { storagePut } from "./storage";
 
@@ -296,8 +304,11 @@ export const appRouter = router({
             input.dropoffLat,
             input.dropoffLng
           );
-          fare = calculateFare(distance);
           duration = Math.ceil((distance / 30) * 60);
+          // استخدام التسعير الديناميكي من قاعدة البيانات
+          await seedDefaultPricingZone();
+          const fareResult = await calculateFareDynamic(distance, duration, "الموصل", "sedan");
+          fare = fareResult.fare;
         }
 
          const ride = await createRide({
@@ -973,18 +984,199 @@ export const appRouter = router({
           duration = Math.ceil((distance / 40) * 60); // 40 كم/ساعة متوسط المدينة
         }
 
-        const fare = calculateFare(distance);
+        // Seed default zone if none exists
+        await seedDefaultPricingZone();
+
+        // Use dynamic pricing
+        const cityName = "الموصل"; // TODO: detect from coordinates
+        const result = await calculateFareDynamic(distance, duration, cityName, "sedan");
 
         return {
           distance: parseFloat(distance.toFixed(1)),
-          fare: Math.round(fare),
+          fare: result.fare,
           duration,
           fareBreakdown: {
-            baseFare: 2000,
-            distanceFare: Math.round((fare - 2000) > 0 ? fare - 2000 : 0),
-            total: Math.round(fare),
+            baseFare: result.breakdown.baseFare,
+            distanceFare: result.breakdown.distanceFare,
+            timeFare: result.breakdown.timeFare,
+            bookingFee: result.breakdown.bookingFee,
+            surgeMultiplier: result.breakdown.surgeMultiplier,
+            nightSurcharge: result.breakdown.nightSurcharge,
+            total: result.fare,
+            pricingMethod: result.breakdown.pricingMethod,
+            zoneName: result.breakdown.zoneName,
           },
         };
+      }),
+  }),
+
+  // ─── Pricing ──────────────────────────────────────────────────────────────
+  pricing: router({
+    /**
+     * Get all pricing zones
+     */
+    getZones: publicProcedure.query(async () => {
+      await seedDefaultPricingZone();
+      return getAllPricingZones();
+    }),
+
+    /**
+     * Get a specific pricing zone by ID
+     */
+    getZone: publicProcedure
+      .input(z.object({ zoneId: z.number() }))
+      .query(async ({ input }) => {
+        const zones = await getAllPricingZones();
+        return zones.find((z) => z.id === input.zoneId) ?? null;
+      }),
+
+    /**
+     * Create a new pricing zone
+     */
+    createZone: publicProcedure
+      .input(
+        z.object({
+          cityName: z.string().min(1),
+          cityNameAr: z.string().min(1),
+          isActive: z.boolean().default(true),
+          isDefault: z.boolean().default(false),
+          pricingMethod: z.enum(["per_km", "per_minute", "hybrid"]).default("per_km"),
+          vehicleType: z.enum(["sedan", "suv", "minivan", "all"]).default("all"),
+          baseFare: z.number().min(0),
+          pricePerKm: z.number().min(0),
+          pricePerMinute: z.number().min(0),
+          minimumFare: z.number().min(0),
+          maximumFare: z.number().min(0).default(0),
+          surgeMultiplier: z.number().min(1).max(5).default(1),
+          peakHoursConfig: z.string().optional(),
+          nightSurchargeStart: z.string().optional(),
+          nightSurchargeEnd: z.string().optional(),
+          nightSurchargeAmount: z.number().min(0).default(0),
+          bookingFee: z.number().min(0).default(0),
+          freeWaitMinutes: z.number().min(0).default(3),
+          waitPricePerMinute: z.number().min(0).default(0),
+          cancellationFee: z.number().min(0).default(0),
+          notes: z.string().optional(),
+          updatedBy: z.string().optional(),
+        })
+      )
+      .mutation(async ({ input }) => {
+        await createPricingZone({
+          ...input,
+          baseFare: input.baseFare.toString(),
+          pricePerKm: input.pricePerKm.toString(),
+          pricePerMinute: input.pricePerMinute.toString(),
+          minimumFare: input.minimumFare.toString(),
+          maximumFare: input.maximumFare.toString(),
+          surgeMultiplier: input.surgeMultiplier.toString(),
+          nightSurchargeAmount: input.nightSurchargeAmount.toString(),
+          bookingFee: input.bookingFee.toString(),
+          waitPricePerMinute: input.waitPricePerMinute.toString(),
+          cancellationFee: input.cancellationFee.toString(),
+        });
+        return { success: true, message: "تم إنشاء منطقة التسعير بنجاح" };
+      }),
+
+    /**
+     * Update an existing pricing zone
+     */
+    updateZone: publicProcedure
+      .input(
+        z.object({
+          zoneId: z.number(),
+          cityName: z.string().min(1).optional(),
+          cityNameAr: z.string().min(1).optional(),
+          isActive: z.boolean().optional(),
+          isDefault: z.boolean().optional(),
+          pricingMethod: z.enum(["per_km", "per_minute", "hybrid"]).optional(),
+          vehicleType: z.enum(["sedan", "suv", "minivan", "all"]).optional(),
+          baseFare: z.number().min(0).optional(),
+          pricePerKm: z.number().min(0).optional(),
+          pricePerMinute: z.number().min(0).optional(),
+          minimumFare: z.number().min(0).optional(),
+          maximumFare: z.number().min(0).optional(),
+          surgeMultiplier: z.number().min(1).max(5).optional(),
+          peakHoursConfig: z.string().optional(),
+          nightSurchargeStart: z.string().optional(),
+          nightSurchargeEnd: z.string().optional(),
+          nightSurchargeAmount: z.number().min(0).optional(),
+          bookingFee: z.number().min(0).optional(),
+          freeWaitMinutes: z.number().min(0).optional(),
+          waitPricePerMinute: z.number().min(0).optional(),
+          cancellationFee: z.number().min(0).optional(),
+          notes: z.string().optional(),
+          updatedBy: z.string().optional(),
+          changeNote: z.string().optional(),
+        })
+      )
+      .mutation(async ({ input }) => {
+        const { zoneId, changeNote, updatedBy, ...rest } = input;
+        const updateData: Record<string, unknown> = {};
+        if (rest.cityName !== undefined) updateData.cityName = rest.cityName;
+        if (rest.cityNameAr !== undefined) updateData.cityNameAr = rest.cityNameAr;
+        if (rest.isActive !== undefined) updateData.isActive = rest.isActive;
+        if (rest.isDefault !== undefined) updateData.isDefault = rest.isDefault;
+        if (rest.pricingMethod !== undefined) updateData.pricingMethod = rest.pricingMethod;
+        if (rest.vehicleType !== undefined) updateData.vehicleType = rest.vehicleType;
+        if (rest.baseFare !== undefined) updateData.baseFare = rest.baseFare.toString();
+        if (rest.pricePerKm !== undefined) updateData.pricePerKm = rest.pricePerKm.toString();
+        if (rest.pricePerMinute !== undefined) updateData.pricePerMinute = rest.pricePerMinute.toString();
+        if (rest.minimumFare !== undefined) updateData.minimumFare = rest.minimumFare.toString();
+        if (rest.maximumFare !== undefined) updateData.maximumFare = rest.maximumFare.toString();
+        if (rest.surgeMultiplier !== undefined) updateData.surgeMultiplier = rest.surgeMultiplier.toString();
+        if (rest.peakHoursConfig !== undefined) updateData.peakHoursConfig = rest.peakHoursConfig;
+        if (rest.nightSurchargeStart !== undefined) updateData.nightSurchargeStart = rest.nightSurchargeStart;
+        if (rest.nightSurchargeEnd !== undefined) updateData.nightSurchargeEnd = rest.nightSurchargeEnd;
+        if (rest.nightSurchargeAmount !== undefined) updateData.nightSurchargeAmount = rest.nightSurchargeAmount.toString();
+        if (rest.bookingFee !== undefined) updateData.bookingFee = rest.bookingFee.toString();
+        if (rest.freeWaitMinutes !== undefined) updateData.freeWaitMinutes = rest.freeWaitMinutes;
+        if (rest.waitPricePerMinute !== undefined) updateData.waitPricePerMinute = rest.waitPricePerMinute.toString();
+        if (rest.cancellationFee !== undefined) updateData.cancellationFee = rest.cancellationFee.toString();
+        if (rest.notes !== undefined) updateData.notes = rest.notes;
+        if (updatedBy !== undefined) updateData.updatedBy = updatedBy;
+
+        await updatePricingZone(zoneId, updateData, updatedBy ?? "admin", changeNote);
+        return { success: true, message: "تم تحديث منطقة التسعير بنجاح" };
+      }),
+
+    /**
+     * Delete a pricing zone
+     */
+    deleteZone: publicProcedure
+      .input(z.object({ zoneId: z.number() }))
+      .mutation(async ({ input }) => {
+        await deletePricingZone(input.zoneId);
+        return { success: true, message: "تم حذف منطقة التسعير" };
+      }),
+
+    /**
+     * Get pricing change history for a zone
+     */
+    getHistory: publicProcedure
+      .input(z.object({ zoneId: z.number(), limit: z.number().default(20) }))
+      .query(async ({ input }) => {
+        return getPricingHistory(input.zoneId, input.limit);
+      }),
+
+    /**
+     * Preview fare calculation for given parameters
+     */
+    previewFare: publicProcedure
+      .input(
+        z.object({
+          distanceKm: z.number().min(0),
+          durationMinutes: z.number().min(0),
+          cityName: z.string().default("الموصل"),
+          vehicleType: z.enum(["sedan", "suv", "minivan"]).default("sedan"),
+        })
+      )
+      .query(async ({ input }) => {
+        return calculateFareDynamic(
+          input.distanceKm,
+          input.durationMinutes,
+          input.cityName,
+          input.vehicleType
+        );
       }),
   }),
 
