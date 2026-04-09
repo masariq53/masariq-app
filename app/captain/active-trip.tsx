@@ -79,14 +79,14 @@ export default function CaptainActiveTripScreen() {
       if (driverId > 0) {
         setDriverAvailable.mutate({ driverId, isOnline: true, isAvailable: true });
       }
-      // رجوع تلقائي بعد 3 ثواني - استخدام back() للرجوع للشاشة الأصلية بدل فتح نسخة جديدة
+      // رجوع تلقائي بعد 3 ثواني - استخدام replace بدل back() لتجنب GO_BACK error
       const autoRedirectTimer = setTimeout(() => {
-        router.back();
+        router.replace("/captain/home" as any);
       }, 3500);
       Alert.alert(
         "❌ ألغى الراكب الرحلة",
         "قام الراكب بإلغاء الرحلة بينما كنت في الطريق إليه.\nستعود إلى الصفحة الرئيسية تلقائياً.",
-        [{ text: "حسناً", onPress: () => { clearTimeout(autoRedirectTimer); router.back(); } }]
+        [{ text: "حسناً", onPress: () => { clearTimeout(autoRedirectTimer); router.replace("/captain/home" as any); } }]
       );
       return;
     }
@@ -231,8 +231,8 @@ export default function CaptainActiveTripScreen() {
         }
       );
     } else if (phase === "done") {
-      // الرحلة اكتملت بالفعل - العودة للرئيسية باستخدام back()
-      router.back();
+      // الرحلة اكتملت بالفعل - استخدام replace بدل back() لتجنب GO_BACK error
+      router.replace("/captain/home" as any);
     }
   };
 
@@ -346,7 +346,7 @@ export default function CaptainActiveTripScreen() {
       <TouchableOpacity style={[styles.backBtn, { top: insets.top + 8, left: 16 }]} onPress={() => {
         Alert.alert("تنبيه", "الرحلة لا تزال نشطة. هل تريد الرجوع؟", [
           { text: "لا", style: "cancel" },
-          { text: "نعم", onPress: () => router.back() },
+          { text: "نعم", onPress: () => router.replace("/captain/home" as any) },
         ]);
       }}>
         <Text style={styles.backBtnText}>←</Text>
