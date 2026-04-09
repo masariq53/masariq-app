@@ -11,6 +11,7 @@ import {
   Alert,
   Image,
   Modal,
+  TextInput,
 } from "react-native";
 import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -67,6 +68,20 @@ export default function AdminDashboard() {
   const [driversPage, setDriversPage] = useState(0);
   const [passengersPage, setPassengersPage] = useState(0);
   const PAGE_SIZE = 10;
+
+  // ─── Driver Filters ───────────────────────────────────────────────────────────
+  const [driverSearch, setDriverSearch] = useState("");
+  const [driverStatusFilter, setDriverStatusFilter] = useState<"all" | "active" | "blocked" | "pending" | "verified">("all");
+  const [driverSortBy, setDriverSortBy] = useState<"name" | "rating" | "rides" | "newest">("newest");
+  const [driverRatingFilter, setDriverRatingFilter] = useState<"all" | "4+" | "3+" | "below3">("all");
+  const [showDriverFilters, setShowDriverFilters] = useState(false);
+
+  // ─── Passenger Filters ────────────────────────────────────────────────────────
+  const [passengerSearch, setPassengerSearch] = useState("");
+  const [passengerStatusFilter, setPassengerStatusFilter] = useState<"all" | "active" | "blocked">("all");
+  const [passengerSortBy, setPassengerSortBy] = useState<"name" | "rating" | "rides" | "newest">("newest");
+  const [passengerRidesFilter, setPassengerRidesFilter] = useState<"all" | "0" | "1-5" | "6-20" | "20+">("all");
+  const [showPassengerFilters, setShowPassengerFilters] = useState(false);
 
   const { data: stats, isLoading: statsLoading, refetch: refetchStats } = trpc.admin.stats.useQuery();
   const { data: recentRides, isLoading: ridesLoading, refetch: refetchRides } = trpc.admin.recentRides.useQuery({ limit: 8 });
@@ -314,11 +329,150 @@ export default function AdminDashboard() {
             {activeTab === "drivers" && (
               <View style={styles.section}>
                 {(() => {
-                  const pagedDrivers = (allDrivers ?? []).slice(driversPage * PAGE_SIZE, (driversPage + 1) * PAGE_SIZE);
-                  const totalDriverPages = Math.ceil((allDrivers?.length ?? 0) / PAGE_SIZE);
+                  // ─── Apply Filters ───────────────────────────────────────────
+                  let filteredDrivers = (allDrivers ?? []);
+
+                  // Text search
+                  if (driverSearch.trim()) {
+                    const q = driverSearch.trim().toLowerCase();
+                    filteredDrivers = filteredDrivers.filter(d =>
+                      (d.name || "").toLowerCase().includes(q) ||
+                      (d.phone || "").toLowerCase().includes(q) ||
+                      (d.vehicleModel || "").toLowerCase().includes(q) ||
+                      (d.vehiclePlate || "").toLowerCase().includes(q)
+                    );
+                  }
+
+                  // Status filter
+                  if (driverStatusFilter === "blocked") {
+                    filteredDrivers = filteredDrivers.filter(d => d.isBlocked);
+                  } else if (driverStatusFilter === "active") {
+                    filteredDrivers = filteredDrivers.filter(d => !d.isBlocked && d.isVerified);
+                  } else if (driverStatusFilter === "pending") {
+                    filteredDrivers = filteredDrivers.filter(d => !d.isVerified && !d.isBlocked);
+                  } else if (driverStatusFilter === "verified") {
+                    filteredDrivers = filteredDrivers.filter(d => d.isVerified);
+                  }
+
+                  // Rating filter
+                  if (driverRatingFilter === "4+") {
+                    filteredDrivers = filteredDrivers.filter(d => parseFloat(d.rating?.toString() || "0") >= 4);
+                  } else if (driverRatingFilter === "3+") {
+                    filteredDrivers = filteredDrivers.filter(d => parseFloat(d.rating?.toString() || "0") >= 3);
+                  } else if (driverRatingFilter === "below3") {
+                    filteredDrivers = filteredDrivers.filter(d => parseFloat(d.rating?.toString() || "0") < 3);
+                  }
+
+                  // Sort
+                  if (driverSortBy === "name") {
+                    filteredDrivers = [...filteredDrivers].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+                  } else if (driverSortBy === "rating") {
+                    filteredDrivers = [...filteredDrivers].sort((a, b) => parseFloat(b.rating?.toString() || "0") - parseFloat(a.rating?.toString() || "0"));
+                  } else if (driverSortBy === "rides") {
+                    filteredDrivers = [...filteredDrivers].sort((a, b) => (b.totalRides || 0) - (a.totalRides || 0));
+                  }
+                  // newest = default order from server
+
+                  const pagedDrivers = filteredDrivers.slice(driversPage * PAGE_SIZE, (driversPage + 1) * PAGE_SIZE);
+                  const totalDriverPages = Math.ceil(filteredDrivers.length / PAGE_SIZE);
                   return (
                     <>
-                <Text style={styles.sectionTitle}>السائقون ({allDrivers?.length ?? 0}) — صفحة {driversPage + 1} من {totalDriverPages || 1}</Text>
+                {/* ─── Search Bar ─────────────────────────────────────────── */}
+                <View style={filterStyles.searchRow}>
+                  <View style={filterStyles.searchBox}>
+                    <Text style={filterStyles.searchIcon}>🔍</Text>
+                    <TextInput
+                      style={filterStyles.searchInput}
+                      placeholder="بحث بالاسم أو الهاتف أو السيارة..."
+                      placeholderTextColor="#6B7280"
+                      value={driverSearch}
+                      onChangeText={v => { setDriverSearch(v); setDriversPage(0); }}
+                      returnKeyType="search"
+                    />
+                    {driverSearch.length > 0 && (
+                      <TouchableOpacity onPress={() => setDriverSearch("")}>
+                        <Text style={{ color: '#9B8EC4', fontSize: 16, paddingHorizontal: 6 }}>✕</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                  <TouchableOpacity
+                    style={[filterStyles.filterToggleBtn, showDriverFilters && filterStyles.filterToggleBtnActive]}
+                    onPress={() => setShowDriverFilters(v => !v)}
+                  >
+                    <Text style={{ fontSize: 16 }}>⚙️</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* ─── Filter Panel ────────────────────────────────────────── */}
+                {showDriverFilters && (
+                  <View style={filterStyles.filterPanel}>
+                    {/* Status */}
+                    <Text style={filterStyles.filterLabel}>الحالة</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
+                      <View style={{ flexDirection: 'row', gap: 6 }}>
+                        {([
+                          { key: 'all', label: 'الكل' },
+                          { key: 'active', label: '✅ نشط' },
+                          { key: 'pending', label: '⏳ قيد المراجعة' },
+                          { key: 'verified', label: '✓ موثّق' },
+                          { key: 'blocked', label: '🚫 محظور' },
+                        ] as const).map(opt => (
+                          <TouchableOpacity
+                            key={opt.key}
+                            style={[filterStyles.chip, driverStatusFilter === opt.key && filterStyles.chipActive]}
+                            onPress={() => { setDriverStatusFilter(opt.key); setDriversPage(0); }}
+                          >
+                            <Text style={[filterStyles.chipText, driverStatusFilter === opt.key && filterStyles.chipTextActive]}>{opt.label}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </ScrollView>
+
+                    {/* Rating */}
+                    <Text style={filterStyles.filterLabel}>التقييم</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
+                      <View style={{ flexDirection: 'row', gap: 6 }}>
+                        {([
+                          { key: 'all', label: 'الكل' },
+                          { key: '4+', label: '⭐ 4+ ممتاز' },
+                          { key: '3+', label: '⭐ 3+ جيد' },
+                          { key: 'below3', label: '⭐ أقل من 3' },
+                        ] as const).map(opt => (
+                          <TouchableOpacity
+                            key={opt.key}
+                            style={[filterStyles.chip, driverRatingFilter === opt.key && filterStyles.chipActive]}
+                            onPress={() => { setDriverRatingFilter(opt.key); setDriversPage(0); }}
+                          >
+                            <Text style={[filterStyles.chipText, driverRatingFilter === opt.key && filterStyles.chipTextActive]}>{opt.label}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </ScrollView>
+
+                    {/* Sort */}
+                    <Text style={filterStyles.filterLabel}>ترتيب حسب</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                      <View style={{ flexDirection: 'row', gap: 6 }}>
+                        {([
+                          { key: 'newest', label: '🕐 الأحدث' },
+                          { key: 'name', label: '🔤 الاسم' },
+                          { key: 'rating', label: '⭐ التقييم' },
+                          { key: 'rides', label: '🚗 الرحلات' },
+                        ] as const).map(opt => (
+                          <TouchableOpacity
+                            key={opt.key}
+                            style={[filterStyles.chip, driverSortBy === opt.key && filterStyles.chipActive]}
+                            onPress={() => { setDriverSortBy(opt.key); setDriversPage(0); }}
+                          >
+                            <Text style={[filterStyles.chipText, driverSortBy === opt.key && filterStyles.chipTextActive]}>{opt.label}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </ScrollView>
+                  </View>
+                )}
+
+                <Text style={styles.sectionTitle}>السائقون ({filteredDrivers.length} من {allDrivers?.length ?? 0}) — صفحة {driversPage + 1} من {totalDriverPages || 1}</Text>
                 {driversLoading ? (
                   <ActivityIndicator color="#FFD700" style={{ marginVertical: 20 }} />
                 ) : pagedDrivers && pagedDrivers.length > 0 ? (
@@ -443,11 +597,144 @@ export default function AdminDashboard() {
             {activeTab === "passengers" && (
               <View style={styles.section}>
                 {(() => {
-                  const pagedPassengers = (allPassengers ?? []).slice(passengersPage * PAGE_SIZE, (passengersPage + 1) * PAGE_SIZE);
-                  const totalPassengerPages = Math.ceil((allPassengers?.length ?? 0) / PAGE_SIZE);
+                  // ─── Apply Filters ───────────────────────────────────────────
+                  let filteredPassengers = (allPassengers ?? []);
+
+                  // Text search
+                  if (passengerSearch.trim()) {
+                    const q = passengerSearch.trim().toLowerCase();
+                    filteredPassengers = filteredPassengers.filter(p =>
+                      (p.name || "").toLowerCase().includes(q) ||
+                      (p.phone || "").toLowerCase().includes(q)
+                    );
+                  }
+
+                  // Status filter
+                  if (passengerStatusFilter === "blocked") {
+                    filteredPassengers = filteredPassengers.filter(p => (p as any).isBlocked);
+                  } else if (passengerStatusFilter === "active") {
+                    filteredPassengers = filteredPassengers.filter(p => !(p as any).isBlocked);
+                  }
+
+                  // Rides filter
+                  if (passengerRidesFilter === "0") {
+                    filteredPassengers = filteredPassengers.filter(p => (p.totalRides || 0) === 0);
+                  } else if (passengerRidesFilter === "1-5") {
+                    filteredPassengers = filteredPassengers.filter(p => (p.totalRides || 0) >= 1 && (p.totalRides || 0) <= 5);
+                  } else if (passengerRidesFilter === "6-20") {
+                    filteredPassengers = filteredPassengers.filter(p => (p.totalRides || 0) >= 6 && (p.totalRides || 0) <= 20);
+                  } else if (passengerRidesFilter === "20+") {
+                    filteredPassengers = filteredPassengers.filter(p => (p.totalRides || 0) > 20);
+                  }
+
+                  // Sort
+                  if (passengerSortBy === "name") {
+                    filteredPassengers = [...filteredPassengers].sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+                  } else if (passengerSortBy === "rating") {
+                    filteredPassengers = [...filteredPassengers].sort((a, b) => parseFloat(b.rating?.toString() || "0") - parseFloat(a.rating?.toString() || "0"));
+                  } else if (passengerSortBy === "rides") {
+                    filteredPassengers = [...filteredPassengers].sort((a, b) => (b.totalRides || 0) - (a.totalRides || 0));
+                  }
+
+                  const pagedPassengers = filteredPassengers.slice(passengersPage * PAGE_SIZE, (passengersPage + 1) * PAGE_SIZE);
+                  const totalPassengerPages = Math.ceil(filteredPassengers.length / PAGE_SIZE);
                   return (
                     <>
-                <Text style={styles.sectionTitle}>المستخدمون ({allPassengers?.length ?? 0}) — صفحة {passengersPage + 1} من {totalPassengerPages || 1}</Text>
+                {/* ─── Search Bar ─────────────────────────────────────────── */}
+                <View style={filterStyles.searchRow}>
+                  <View style={filterStyles.searchBox}>
+                    <Text style={filterStyles.searchIcon}>🔍</Text>
+                    <TextInput
+                      style={filterStyles.searchInput}
+                      placeholder="بحث بالاسم أو رقم الهاتف..."
+                      placeholderTextColor="#6B7280"
+                      value={passengerSearch}
+                      onChangeText={v => { setPassengerSearch(v); setPassengersPage(0); }}
+                      returnKeyType="search"
+                    />
+                    {passengerSearch.length > 0 && (
+                      <TouchableOpacity onPress={() => setPassengerSearch("")}>
+                        <Text style={{ color: '#9B8EC4', fontSize: 16, paddingHorizontal: 6 }}>✕</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                  <TouchableOpacity
+                    style={[filterStyles.filterToggleBtn, showPassengerFilters && filterStyles.filterToggleBtnActive]}
+                    onPress={() => setShowPassengerFilters(v => !v)}
+                  >
+                    <Text style={{ fontSize: 16 }}>⚙️</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* ─── Filter Panel ────────────────────────────────────────── */}
+                {showPassengerFilters && (
+                  <View style={filterStyles.filterPanel}>
+                    {/* Status */}
+                    <Text style={filterStyles.filterLabel}>الحالة</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
+                      <View style={{ flexDirection: 'row', gap: 6 }}>
+                        {([
+                          { key: 'all', label: 'الكل' },
+                          { key: 'active', label: '✅ نشط' },
+                          { key: 'blocked', label: '🚫 محظور' },
+                        ] as const).map(opt => (
+                          <TouchableOpacity
+                            key={opt.key}
+                            style={[filterStyles.chip, passengerStatusFilter === opt.key && filterStyles.chipActive]}
+                            onPress={() => { setPassengerStatusFilter(opt.key); setPassengersPage(0); }}
+                          >
+                            <Text style={[filterStyles.chipText, passengerStatusFilter === opt.key && filterStyles.chipTextActive]}>{opt.label}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </ScrollView>
+
+                    {/* Rides */}
+                    <Text style={filterStyles.filterLabel}>عدد الرحلات</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
+                      <View style={{ flexDirection: 'row', gap: 6 }}>
+                        {([
+                          { key: 'all', label: 'الكل' },
+                          { key: '0', label: 'لا رحلات' },
+                          { key: '1-5', label: '1–5 رحلات' },
+                          { key: '6-20', label: '6–20 رحلة' },
+                          { key: '20+', label: '+20 رحلة' },
+                        ] as const).map(opt => (
+                          <TouchableOpacity
+                            key={opt.key}
+                            style={[filterStyles.chip, passengerRidesFilter === opt.key && filterStyles.chipActive]}
+                            onPress={() => { setPassengerRidesFilter(opt.key); setPassengersPage(0); }}
+                          >
+                            <Text style={[filterStyles.chipText, passengerRidesFilter === opt.key && filterStyles.chipTextActive]}>{opt.label}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </ScrollView>
+
+                    {/* Sort */}
+                    <Text style={filterStyles.filterLabel}>ترتيب حسب</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                      <View style={{ flexDirection: 'row', gap: 6 }}>
+                        {([
+                          { key: 'newest', label: '🕐 الأحدث' },
+                          { key: 'name', label: '🔤 الاسم' },
+                          { key: 'rating', label: '⭐ التقييم' },
+                          { key: 'rides', label: '🚗 الرحلات' },
+                        ] as const).map(opt => (
+                          <TouchableOpacity
+                            key={opt.key}
+                            style={[filterStyles.chip, passengerSortBy === opt.key && filterStyles.chipActive]}
+                            onPress={() => { setPassengerSortBy(opt.key); setPassengersPage(0); }}
+                          >
+                            <Text style={[filterStyles.chipText, passengerSortBy === opt.key && filterStyles.chipTextActive]}>{opt.label}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </ScrollView>
+                  </View>
+                )}
+
+                <Text style={styles.sectionTitle}>المستخدمون ({filteredPassengers.length} من {allPassengers?.length ?? 0}) — صفحة {passengersPage + 1} من {totalPassengerPages || 1}</Text>
                 {passengersLoading ? (
                   <ActivityIndicator color="#FFD700" style={{ marginVertical: 20 }} />
                 ) : pagedPassengers && pagedPassengers.length > 0 ? (
@@ -607,7 +894,77 @@ export default function AdminDashboard() {
   );
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
+// ─// ─── Filter Styles ──────────────────────────────────────────────────────────
+const filterStyles = StyleSheet.create({
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 10,
+  },
+  searchBox: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1E1035',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: '#2D1B4E',
+  },
+  searchIcon: { fontSize: 14, marginRight: 6 },
+  searchInput: {
+    flex: 1,
+    color: '#FFFFFF',
+    fontSize: 13,
+    paddingVertical: 0,
+  },
+  filterToggleBtn: {
+    backgroundColor: '#1E1035',
+    borderRadius: 12,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#2D1B4E',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filterToggleBtnActive: {
+    backgroundColor: '#2D1B4E',
+    borderColor: '#FFD700',
+  },
+  filterPanel: {
+    backgroundColor: '#1A0533',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#2D1B4E',
+  },
+  filterLabel: {
+    color: '#9B8EC4',
+    fontSize: 11,
+    fontWeight: '700',
+    marginBottom: 6,
+    letterSpacing: 0.5,
+  },
+  chip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: '#2D1B4E',
+    borderWidth: 1,
+    borderColor: '#3D2070',
+  },
+  chipActive: {
+    backgroundColor: '#FFD700',
+    borderColor: '#FFD700',
+  },
+  chipText: { color: '#9B8EC4', fontSize: 12, fontWeight: '600' },
+  chipTextActive: { color: '#1A0533' },
+});
+
+// ─── Styles ───────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#0F0A1E" },
 
@@ -866,6 +1223,75 @@ const styles = StyleSheet.create({
   pageBtnDisabled: { opacity: 0.35 },
   pageBtnText: { color: "#FFD700", fontSize: 13, fontWeight: "700" },
   pageInfo: { color: "#9B8EC4", fontSize: 13, fontWeight: "600" },
+
+  // Filter Styles
+  filterSearchRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 8,
+    marginBottom: 10,
+  },
+  filterSearchBox: {
+    flex: 1,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    backgroundColor: '#1E1035',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: '#2D1B4E',
+  },
+  filterSearchIcon: { fontSize: 14, marginRight: 6 },
+  filterSearchInput: {
+    flex: 1,
+    color: '#FFFFFF',
+    fontSize: 13,
+    paddingVertical: 0,
+  },
+  filterToggleBtn: {
+    backgroundColor: '#1E1035',
+    borderRadius: 12,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#2D1B4E',
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  filterToggleBtnActive: {
+    backgroundColor: '#2D1B4E',
+    borderColor: '#FFD700',
+  },
+  filterPanel: {
+    backgroundColor: '#1A0533',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#2D1B4E',
+  },
+  filterLabel: {
+    color: '#9B8EC4',
+    fontSize: 11,
+    fontWeight: '700' as const,
+    marginBottom: 6,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.5,
+  },
+  filterChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: '#2D1B4E',
+    borderWidth: 1,
+    borderColor: '#3D2070',
+  },
+  filterChipActive: {
+    backgroundColor: '#FFD700',
+    borderColor: '#FFD700',
+  },
+  filterChipText: { color: '#9B8EC4', fontSize: 12, fontWeight: '600' as const },
+  filterChipTextActive: { color: '#1A0533' },
 
   // Pricing Banner
   pricingBanner: {
