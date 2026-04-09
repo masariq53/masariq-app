@@ -334,9 +334,6 @@ export default function CaptainHomeScreen() {
 
       {/* Header */}
       <View style={[styles.header, { top: insets.top + 8 }]}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
-          <Text style={styles.backBtnText}>←</Text>
-        </TouchableOpacity>
         <TouchableOpacity style={styles.headerLeft} onPress={() => router.push("/captain/profile" as any)}>
           {driver?.photoUrl ? (
             <Image source={{ uri: driver.photoUrl }} style={styles.logoSmallImg} />

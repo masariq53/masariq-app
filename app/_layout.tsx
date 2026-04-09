@@ -152,7 +152,7 @@ export default function RootLayout() {
             <Stack.Screen name="subscription" />
             <Stack.Screen name="wallet" />
             <Stack.Screen name="driver/register" />
-            <Stack.Screen name="captain/home" />
+            <Stack.Screen name="captain/home" options={{ headerShown: false, gestureEnabled: false }} />
             <Stack.Screen name="captain/earnings" />
             <Stack.Screen name="captain/active-trip" />
             <Stack.Screen name="captain/trip-summary" />

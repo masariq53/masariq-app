@@ -135,7 +135,8 @@ export default function ProfileScreen() {
           // Check if already logged in as the SAME driver (matching phone)
           if (driver?.id && driverPhone === passengerPhone) {
             // Already logged in as the correct driver - go directly to captain home
-            router.push("/captain/home" as any);
+            // Use replace to avoid stacking captain/home on top of itself
+            router.replace("/captain/home" as any);
             return;
           }
 
