@@ -77,6 +77,10 @@ export default function TrackingScreen() {
   const [currentStep, setCurrentStep] = useState(0);
   const [cancelled, setCancelled] = useState(false);
   const [noDrivers, setNoDrivers] = useState(false);
+  // تتبع مرحلة الرحلة عند الإلغاء لتحديد نوع الاستجابة
+  const [driverCancelledAtPhase, setDriverCancelledAtPhase] = useState<"pickup" | "arrived" | null>(null);
+  // حالة إعادة البحث التلقائية عند إلغاء السائق في مرحلة pickup
+  const [autoRetrying, setAutoRetrying] = useState(false);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const mapRef = useRef<MapView>(null);
   const prevStepRef = useRef(0);
@@ -152,12 +156,66 @@ export default function TrackingScreen() {
     if (!ride) return;
 
     if (ride.status === "cancelled") {
-      setCancelled(true);
-      notifyRideCancelled();
-      Alert.alert("تم إلغاء الرحلة", "تم إلغاء الرحلة.", [
-        { text: "حسناً", onPress: () => router.replace("/(tabs)" as any) },
-      ]);
-      return;
+      // تحديد مرحلة الرحلة عند الإلغاء
+      const cancelReason = ride.cancelReason ?? "";
+      const wasDriverCancel = cancelReason.includes("سائق") || cancelReason.includes("driver");
+      const prevStep = prevStepRef.current;
+
+      if (wasDriverCancel && prevStep === 1) {
+        // الحالة الأولى: السائق ألغى وهو في الطريق للراكب (accepted)
+        // إعادة بحث تلقائية
+        setDriverCancelledAtPhase("pickup");
+        setAutoRetrying(true);
+        notifyRideCancelled();
+        // إعادة بحث تلقائية بعد 2 ثانية
+        setTimeout(() => {
+          requestRideMutation.mutate(
+            {
+              passengerId,
+              pickupLat: pickupCoord.latitude,
+              pickupLng: pickupCoord.longitude,
+              pickupAddress: params.pickupAddress ?? "",
+              dropoffLat: dropoffCoord.latitude,
+              dropoffLng: dropoffCoord.longitude,
+              dropoffAddress: params.dropoffAddress ?? "",
+              paymentMethod: "cash",
+              quotedFare: fare,
+            },
+            {
+              onSuccess: (data) => {
+                setActiveRideId(data.ride.id);
+                prevStepRef.current = 0;
+                setCurrentStep(0);
+                setSearchElapsed(0);
+                setNoDrivers(false);
+                setAutoRetrying(false);
+                setDriverCancelledAtPhase(null);
+              },
+              onError: () => {
+                setAutoRetrying(false);
+                setCancelled(true);
+                setDriverCancelledAtPhase(null);
+              },
+            }
+          );
+        }, 2000);
+        return;
+      } else if (wasDriverCancel && prevStep === 2) {
+        // الحالة الثانية: السائق ألغى بعد الوصول لموقع الراكب
+        // رسالة مع خيار إعادة البحث
+        setCancelled(true);
+        setDriverCancelledAtPhase("arrived");
+        notifyRideCancelled();
+        return;
+      } else {
+        // إلغاء عادي (من الراكب أو من السيرفر)
+        setCancelled(true);
+        notifyRideCancelled();
+        Alert.alert("تم إلغاء الرحلة", "تم إلغاء الرحلة.", [
+          { text: "حسناً", onPress: () => router.replace("/(tabs)" as any) },
+        ]);
+        return;
+      }
     }
 
     const step = STATUS_TO_STEP[ride.status] ?? 0;
@@ -293,6 +351,82 @@ export default function TrackingScreen() {
       }
     );
   };
+
+  // شاشة الحالة الأولى: السائق ألغى وهو في الطريق - إعادة بحث تلقائية
+  if (driverCancelledAtPhase === "pickup") {
+    return (
+      <View style={[styles.container, styles.noDriversContainer]}>
+        <StatusBar style="light" />
+        <Text style={styles.noDriversEmoji}>{autoRetrying ? "🔄" : "😔"}</Text>
+        <Text style={styles.noDriversTitle}>
+          {autoRetrying ? "جاري البحث عن سائق جديد..." : "ألغى السائق الرحلة"}
+        </Text>
+        <Text style={styles.noDriversText}>
+          {autoRetrying
+            ? "ألغى السائق الرحلة أثناء توجهه إليك. نبحث لك عن سائق آخر تلقائياً..."
+            : "لم نتمكن من إيجاد سائق بديل. يمكنك إعادة المحاولة."}
+        </Text>
+        {autoRetrying ? (
+          <ActivityIndicator color="#FFD700" size="large" style={{ marginTop: 20 }} />
+        ) : (
+          <>
+            <TouchableOpacity
+              style={[styles.retryBtn, isRetrying && { opacity: 0.6 }]}
+              onPress={handleRetry}
+              disabled={isRetrying}
+            >
+              {isRetrying ? (
+                <ActivityIndicator color="#1A1040" size="small" />
+              ) : (
+                <Text style={styles.retryBtnText}>🔄 إعادة البحث عن سائق</Text>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.goHomeBtn}
+              onPress={() => router.replace("/(tabs)" as any)}
+            >
+              <Text style={styles.goHomeBtnText}>العودة للرئيسية</Text>
+            </TouchableOpacity>
+          </>
+        )}
+      </View>
+    );
+  }
+
+  // شاشة الحالة الثانية: السائق ألغى بعد الوصول لموقع الراكب
+  if (driverCancelledAtPhase === "arrived") {
+    return (
+      <View style={[styles.container, styles.noDriversContainer]}>
+        <StatusBar style="light" />
+        <Text style={styles.noDriversEmoji}>⚠️</Text>
+        <Text style={styles.noDriversTitle}>ألغى السائق الرحلة</Text>
+        <Text style={styles.noDriversText}>
+          ألغى السائق الرحلة بعد وصوله لموقعك. نعتذر عن الإزعاج. هل تريد البحث عن سائق جديد؟
+        </Text>
+        <TouchableOpacity
+          style={[styles.retryBtn, isRetrying && { opacity: 0.6 }]}
+          onPress={() => {
+            setDriverCancelledAtPhase(null);
+            setCancelled(false);
+            handleRetry();
+          }}
+          disabled={isRetrying}
+        >
+          {isRetrying ? (
+            <ActivityIndicator color="#1A1040" size="small" />
+          ) : (
+            <Text style={styles.retryBtnText}>🔄 البحث عن سائق جديد</Text>
+          )}
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.goHomeBtn}
+          onPress={() => router.replace("/(tabs)" as any)}
+        >
+          <Text style={styles.goHomeBtnText}>إلغاء والعودة للرئيسية</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   // شاشة "لا يوجد سائقون متاحون"
   if (noDrivers) {

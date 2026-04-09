@@ -543,6 +543,29 @@ export const appRouter = router({
             // عند الإلغاء: أعد السائق لحالة متاح حتى يستقبل طلبات جديدة
             await setDriverOnlineStatus(ride.driverId, true, true);
           }
+          // إرسال Push Notification للمستخدم عند إلغاء السائق
+          const isDriverCancel = input.cancelReason?.includes("سائق") || input.cancelReason?.includes("driver");
+          if (isDriverCancel && ride?.passengerId) {
+            const passengerToken = await getPassengerPushToken(ride.passengerId);
+            if (passengerToken && passengerToken.startsWith("ExponentPushToken[")) {
+              const rideStatus = ride.status; // الحالة قبل الإلغاء
+              const isArrivedPhase = rideStatus === "driver_arrived";
+              fetch("https://exp.host/--/api/v2/push/send", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Accept": "application/json" },
+                body: JSON.stringify({
+                  to: passengerToken,
+                  title: isArrivedPhase ? "⚠️ ألغى السائق الرحلة" : "❌ ألغى السائق الرحلة",
+                  body: isArrivedPhase
+                    ? "ألغى السائق بعد وصوله لموقعك. هل تريد البحث عن سائق جديد؟"
+                    : "ألغى السائق الرحلة أثناء توجهه إليك. نبحث لك عن سائق آخر تلقائياً...",
+                  sound: "default",
+                  priority: "high",
+                  channelId: "ride-updates",
+                }),
+              }).catch((err) => console.warn("[Push] Failed to notify passenger of driver cancellation:", err));
+            }
+          }
         }
 
         return { success: true };
@@ -723,7 +746,7 @@ export const appRouter = router({
               andOp(
                 eqOp(ridesTable.passengerId, input.passengerId),
                 eqOp(ridesTable.id, input.rideId),
-                inArrayOp(ridesTable.status, ["searching", "accepted", "driver_arrived", "in_progress", "completed"])
+                inArrayOp(ridesTable.status, ["searching", "accepted", "driver_arrived", "in_progress", "completed", "cancelled"])
               )
             )
             .limit(1);
@@ -764,6 +787,7 @@ export const appRouter = router({
         return {
           id: ride.id,
           status: ride.status,
+          cancelReason: ride.cancelReason ?? null,
           fare: ride.fare ? Math.round(parseFloat(ride.fare.toString())) : 0,
           estimatedDistance: ride.estimatedDistance ? parseFloat(ride.estimatedDistance.toString()) : 0,
           estimatedDuration: ride.estimatedDuration ?? 0,
