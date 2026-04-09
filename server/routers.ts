@@ -43,6 +43,7 @@ import {
   getDriverPushToken,
   getPassengerPushToken,
   savePassengerPushToken,
+  passengerPushTokens,
 } from "./db";
 import { storagePut } from "./storage";
 
@@ -335,6 +336,33 @@ export const appRouter = router({
             }).catch((err) => console.warn("[Push] Failed to send notifications:", err));
           }
         }
+
+        // إلغاء تلقائي بعد 3 دقائق إذا لم يقبل أي سائق الطلب
+        setTimeout(async () => {
+          try {
+            const currentRide = await getRideById(ride.id);
+            if (currentRide && currentRide.status === "searching") {
+              await updateRideStatus(ride.id, "cancelled");
+              // إشعار المستخدم بعدم إيجاد سائق
+              const passengerToken = passengerPushTokens.get(input.passengerId);
+              if (passengerToken?.startsWith("ExponentPushToken[")) {
+                fetch("https://exp.host/--/api/v2/push/send", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify([{
+                    to: passengerToken,
+                    sound: "default",
+                    title: "⚠️ لم يتوفر سائق",
+                    body: "لم نتمكن من إيجاد سائق قريب منك. حاول مرة أخرى.",
+                    data: { rideId: ride.id, type: "no_driver_found" },
+                  }]),
+                }).catch(() => {});
+              }
+            }
+          } catch (e) {
+            console.warn("[AutoCancel] Error:", e);
+          }
+        }, 3 * 60 * 1000); // 3 دقائق
 
         return {
           success: true,

@@ -1,4 +1,6 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { useFocusEffect } from "expo-router";
+import { useAudioPlayer } from "expo-audio";
 import {
   View,
   Text,
@@ -89,6 +91,26 @@ export default function CaptainHomeScreen() {
   }, [todayQuery.data]);
   const rating = parseFloat(driver?.rating ?? "4.9");
   const mapRef = useRef<MapView>(null);
+
+  // مشغل صوت التنبيه عند وصول طلب جديد
+  const notificationPlayer = useAudioPlayer(
+    require("@/assets/sounds/new-ride.mp3")
+  );
+
+  // عند العودة لهذه الشاشة (بعد إلغاء أو اكتمال رحلة) - تغيير حالة السائق إلى متاح تلقائياً
+  useFocusEffect(
+    useRef(() => {
+      if (driver?.id) {
+        // تغيير حالة السائق إلى متاح فور العودة للشاشة
+        setIsOnline(true);
+        setStatusMutation.mutate({
+          driverId: driver.id,
+          isOnline: true,
+          isAvailable: true,
+        });
+      }
+    }).current
+  );
 
   // تمركز الخريطة على موقع GPS الحقيقي عند تحميل الشاشة
   useEffect(() => {
@@ -197,9 +219,15 @@ export default function CaptainHomeScreen() {
     setCurrentRequest(newRide);
     setTimer(30);
 
-    // اهتزاز الجهاز للتنبيه
+    // صوت تنبيه + اهتزاز عند وصول طلب جديد
     if (Platform.OS !== "web") {
-      Vibration.vibrate([0, 300, 200, 300]);
+      try {
+        notificationPlayer.seekTo(0);
+        notificationPlayer.play();
+      } catch (e) {
+        // إذا فشل الصوت نستمر بالاهتزاز
+      }
+      Vibration.vibrate([0, 300, 200, 300, 200, 300]);
     }
   }, [pendingRidesQuery.data, isOnline, currentRequest]);
 
