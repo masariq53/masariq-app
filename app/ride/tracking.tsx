@@ -88,6 +88,12 @@ export default function TrackingScreen() {
   // عداد البحث عن سائق (بالثواني)
   const [searchElapsed, setSearchElapsed] = useState(0);
   const SEARCH_TIMEOUT = 180; // 3 دقائق = 180 ثانية
+  // رقم الرحلة الحالي (يتغير عند إعادة المحاولة)
+  const [activeRideId, setActiveRideId] = useState(rideId);
+  const [isRetrying, setIsRetrying] = useState(false);
+
+  // mutation إعادة المحاولة - ينشئ طلب جديد حقيقي في السيرفر
+  const requestRideMutation = trpc.rides.request.useMutation();
 
   // طلب صلاحيات الإشعارات عند فتح الشاشة
   useEffect(() => {
@@ -129,11 +135,11 @@ export default function TrackingScreen() {
     };
   }, [currentStep, cancelled, completed]);
 
-  // Polling حقيقي لحالة الرحلة كل 5 ثوانٍ - نمرر rideId لتتبع الرحلة الصحيحة فقط
+  // Polling حقيقي لحالة الرحلة كل 5 ثوانّ - يستخدم activeRideId لدعم إعادة المحاولة
   const rideQuery = trpc.rides.passengerActiveRide.useQuery(
-    { passengerId: passengerId ?? 0, rideId: rideId || undefined },
+    { passengerId: passengerId ?? 0, rideId: activeRideId || undefined },
     {
-      enabled: !!passengerId && !!rideId && !cancelled && !completed,
+      enabled: !!passengerId && !!activeRideId && !cancelled && !completed,
       refetchInterval: 5000,
       staleTime: 0,
     }
@@ -254,6 +260,40 @@ export default function TrackingScreen() {
   const driverLng = ride?.driver?.currentLng;
   const actualFare = ride?.fare ?? fare;
 
+  // دالة إعادة المحاولة الحقيقية - تنشئ طلب جديد في السيرفر
+  const handleRetry = () => {
+    if (isRetrying) return;
+    setIsRetrying(true);
+    requestRideMutation.mutate(
+      {
+        passengerId: passengerId,
+        pickupLat: pickupCoord.latitude,
+        pickupLng: pickupCoord.longitude,
+        pickupAddress: params.pickupAddress ?? "",
+        dropoffLat: dropoffCoord.latitude,
+        dropoffLng: dropoffCoord.longitude,
+        dropoffAddress: params.dropoffAddress ?? "",
+        paymentMethod: "cash",
+        quotedFare: fare,
+      },
+      {
+        onSuccess: (data) => {
+          // تحديث رقم الرحلة وإعادة تشغيل البحث
+          setActiveRideId(data.ride.id);
+          prevStepRef.current = 0;
+          setCurrentStep(0);
+          setSearchElapsed(0);
+          setNoDrivers(false);
+          setIsRetrying(false);
+        },
+        onError: () => {
+          setIsRetrying(false);
+          Alert.alert("خطأ", "حدث خطأ أثناء إعادة المحاولة. حاول مرة أخرى.");
+        },
+      }
+    );
+  };
+
   // شاشة "لا يوجد سائقون متاحون"
   if (noDrivers) {
     return (
@@ -261,15 +301,17 @@ export default function TrackingScreen() {
         <StatusBar style="light" />
         <Text style={styles.noDriversEmoji}>😔</Text>
         <Text style={styles.noDriversTitle}>لا يوجد سائقون متاحون</Text>
-        <Text style={styles.noDriversText}>لم نتمكن من إيجاد سائق في منطقتك الآن. يرجى المحاولة مرة أخرى بعد قليل.</Text>
+        <Text style={styles.noDriversText}>لم نتمكن من إيجاد سائق في منطقتك الآن. اضغط إعادة المحاولة لنبحث مجدداً.</Text>
         <TouchableOpacity
-          style={styles.retryBtn}
-          onPress={() => {
-            setNoDrivers(false);
-            setCurrentStep(0);
-          }}
+          style={[styles.retryBtn, isRetrying && { opacity: 0.6 }]}
+          onPress={handleRetry}
+          disabled={isRetrying}
         >
-          <Text style={styles.retryBtnText}>🔄 إعادة المحاولة</Text>
+          {isRetrying ? (
+            <ActivityIndicator color="#1A1040" size="small" />
+          ) : (
+            <Text style={styles.retryBtnText}>🔄 إعادة البحث عن سائق</Text>
+          )}
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.goHomeBtn}
