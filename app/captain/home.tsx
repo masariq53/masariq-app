@@ -183,8 +183,13 @@ export default function CaptainHomeScreen() {
     // إذا في طلب حالي، لا تُظهر طلباً جديداً
     if (currentRequest) return;
 
-    // ابحث عن أول طلب لم يُرَ بعد
-    const newRide = rides.find((r) => !seenRideIds.has(r.id));
+    // ابحث عن أول طلب لم يُرَ بعد وأحدث من 3 دقائق (فلتر ثانٍ في التطبيق)
+    const threeMinutesAgo = Date.now() - 3 * 60 * 1000;
+    const newRide = rides.find((r) => {
+      if (seenRideIds.has(r.id)) return false;
+      const rideAge = Date.now() - new Date(r.createdAt).getTime();
+      return rideAge < 3 * 60 * 1000; // أحدث من 3 دقائق فقط
+    });
     if (!newRide) return;
 
     // أضف الطلب للقائمة المرئية وأظهره

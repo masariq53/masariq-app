@@ -571,10 +571,17 @@ export async function getDriverRideHistory(driverId: number, limit = 20) {
 export async function getPendingRides() {
   const db = await getDb();
   if (!db) return [];
+  // فلتر زمني: فقط الطلبات التي أنشئت خلال آخر 3 دقائق - منع ظهور الطلبات القديمة
+  const threeMinutesAgo = new Date(Date.now() - 3 * 60 * 1000);
   return db
     .select()
     .from(rides)
-    .where(eq(rides.status, "searching"))
+    .where(
+      and(
+        eq(rides.status, "searching"),
+        gt(rides.createdAt, threeMinutesAgo)
+      )
+    )
     .orderBy(desc(rides.createdAt))
     .limit(10);
 }
