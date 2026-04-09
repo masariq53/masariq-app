@@ -948,40 +948,49 @@ export const appRouter = router({
           pickupLng: z.number(),
           dropoffLat: z.number(),
           dropoffLng: z.number(),
+          // إذا أرسلت الواجهة بيانات OSRM جاهزة، نستخدمها مباشرة بدون طلب ثانٍ
+          osrmDistanceKm: z.number().optional(),
+          osrmDurationMin: z.number().optional(),
         })
       )
       .query(async ({ input }) => {
-        // محاولة استخدام OSRM للمسار الحقيقي على الطرق
         let distance: number;
         let duration: number;
-        try {
-          const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${input.pickupLng},${input.pickupLat};${input.dropoffLng},${input.dropoffLat}?overview=false&annotations=false`;
-          const res = await fetch(osrmUrl, {
-            signal: AbortSignal.timeout(5000),
-            headers: { "User-Agent": "MasarApp/1.0" },
-          });
-          if (res.ok) {
-            const data = await res.json() as { code: string; routes: Array<{ distance: number; duration: number }> };
-            if (data.code === "Ok" && data.routes?.[0]) {
-              // OSRM يعطي المسافة بالمتر والوقت بالثانية
-              distance = data.routes[0].distance / 1000; // تحويل إلى كيلومتر
-              duration = Math.ceil(data.routes[0].duration / 60); // تحويل إلى دقائق
+
+        // إذا أرسلت الواجهة بيانات OSRM جاهزة، استخدمها مباشرة (أسرع وأدق)
+        if (input.osrmDistanceKm && input.osrmDistanceKm > 0 && input.osrmDurationMin && input.osrmDurationMin > 0) {
+          distance = input.osrmDistanceKm;
+          duration = input.osrmDurationMin;
+        } else {
+          // محاولة استخدام OSRM للمسار الحقيقي على الطرق
+          try {
+            const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${input.pickupLng},${input.pickupLat};${input.dropoffLng},${input.dropoffLat}?overview=false&annotations=false`;
+            const res = await fetch(osrmUrl, {
+              signal: AbortSignal.timeout(5000),
+              headers: { "User-Agent": "MasarApp/1.0" },
+            });
+            if (res.ok) {
+              const data = await res.json() as { code: string; routes: Array<{ distance: number; duration: number }> };
+              if (data.code === "Ok" && data.routes?.[0]) {
+                distance = data.routes[0].distance / 1000;
+                duration = Math.ceil(data.routes[0].duration / 60);
+              } else {
+                throw new Error("OSRM no route");
+              }
             } else {
-              throw new Error("OSRM no route");
+              throw new Error("OSRM error");
             }
-          } else {
-            throw new Error("OSRM error");
+          } catch {
+            // fallback: خط مستقيم × 1.3
+            const straightLine = calculateDistance(
+              input.pickupLat,
+              input.pickupLng,
+              input.dropoffLat,
+              input.dropoffLng
+            );
+            distance = straightLine * 1.3;
+            duration = Math.ceil((distance / 40) * 60);
           }
-        } catch {
-          // fallback: خط مستقيم × 1.3 (معامل تصحيح للطرق الحقيقية)
-          const straightLine = calculateDistance(
-            input.pickupLat,
-            input.pickupLng,
-            input.dropoffLat,
-            input.dropoffLng
-          );
-          distance = straightLine * 1.3;
-          duration = Math.ceil((distance / 40) * 60); // 40 كم/ساعة متوسط المدينة
         }
 
         // Seed default zone if none exists

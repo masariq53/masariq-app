@@ -161,7 +161,7 @@ export default function BookRideScreen() {
     });
   }, [isRealLocation]);
 
-  // جلب مسار الطريق الحقيقي من OSRM عند تحديد الوجهة
+  // جلب مسار الطريق الحقيقي من OSRM عند تحديد الوجهة + تكبير الخريطة تلقائياً
   useEffect(() => {
     if (!dropPin) {
       setRouteCoords([]);
@@ -173,11 +173,29 @@ export default function BookRideScreen() {
         setRouteCoords(result.coords);
         setOsrmDistance(result.distanceKm);
         setOsrmDuration(result.durationMin);
+        // تكبير الخريطة لتشمل المسار كاملاً
+        if (Platform.OS !== "web" && mapRef.current && result.coords.length >= 2) {
+          setTimeout(() => {
+            mapRef.current?.fitToCoordinates(result.coords, {
+              edgePadding: { top: 80, right: 50, bottom: 280, left: 50 },
+              animated: true,
+            });
+          }, 300);
+        }
       } else {
         // fallback: خط مستقيم
         setRouteCoords([pickupPin, dropPin]);
         setOsrmDistance(null);
         setOsrmDuration(null);
+        // تكبير الخريطة لتشمل نقطتي البداية والوجهة
+        if (Platform.OS !== "web" && mapRef.current) {
+          setTimeout(() => {
+            mapRef.current?.fitToCoordinates([pickupPin, dropPin], {
+              edgePadding: { top: 80, right: 50, bottom: 280, left: 50 },
+              animated: true,
+            });
+          }, 300);
+        }
       }
     };
     fetchRoute();
@@ -189,6 +207,9 @@ export default function BookRideScreen() {
       pickupLng: pickupPin.longitude,
       dropoffLat: dropPin?.latitude ?? pickupPin.latitude,
       dropoffLng: dropPin?.longitude ?? pickupPin.longitude,
+      // تمرير بيانات OSRM الجاهزة للسيرفر لتجنب طلب ثانٍ وتسريع الحساب
+      osrmDistanceKm: osrmDistance ?? undefined,
+      osrmDurationMin: osrmDuration ?? undefined,
     },
     { enabled: !!dropPin }
   );
