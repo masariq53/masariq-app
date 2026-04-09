@@ -718,19 +718,20 @@ export const appRouter = router({
         if (ride.driverId) {
           // تغيير حالة السائق إلى متاح فوراً
           await setDriverOnlineStatus(ride.driverId, true, true);
-          // إرسال Push Notification للسائق
+          // إرسال Push Notification للسائق بشكل احترافي
           const driverToken = await getDriverPushToken(ride.driverId);
           if (driverToken && driverToken.startsWith("ExponentPushToken[")) {
-            fetch("https://exp.host/--/api/v2/push/send", {
+            await fetch("https://exp.host/--/api/v2/push/send", {
               method: "POST",
               headers: { "Content-Type": "application/json", "Accept": "application/json" },
               body: JSON.stringify({
                 to: driverToken,
                 sound: "default",
-                title: "❌ تم إلغاء الرحلة",
-                body: "قام الراكب بإلغاء الرحلة. أنت الآن متاح لطلبات جديدة.",
+                title: "❌ ألغى الراكب الرحلة",
+                body: "قام الراكب بإلغاء الرحلة بينما كنت في الطريق إليه. أنت الآن متاح لطلبات جديدة.",
                 data: { rideId: input.rideId, type: "ride_cancelled" },
                 priority: "high",
+                badge: 1,
               }),
             }).catch((err) => console.warn("[Push] Failed to notify driver of cancellation:", err));
           }

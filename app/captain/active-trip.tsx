@@ -45,12 +45,12 @@ export default function CaptainActiveTripScreen() {
   const rideId = params.rideId ? parseInt(params.rideId) : 0;
   const driverId = driver?.id ?? 0;
 
-  // جلب بيانات الرحلة الحقيقية من السيرفر - نمرر rideId لتجنب جلب رحلة قديمة
+  // جلب بيانات الرحلة الحقيقية من السيرفر - polling كل 4 ثوانٍ للاستجابة السريعة
   const rideQuery = trpc.rides.driverActiveRide.useQuery(
     { driverId, rideId: rideId || undefined },
     {
       enabled: driverId > 0 && rideId > 0,
-      refetchInterval: 8000,
+      refetchInterval: 4000,
       staleTime: 0,
     }
   );
@@ -65,25 +65,28 @@ export default function CaptainActiveTripScreen() {
     ? { latitude: ride.dropoffLat, longitude: ride.dropoffLng }
     : { latitude: 36.3600, longitude: 43.1450 };
 
-  // مزامنة المرحلة مع حالة DB - لكن لا نتراجع عن مرحلة محلية أحدث
-  // معالجة إلغاء الرحلة من طرف الراكب
+  // معالجة إلغاء الرحلة من طرف الراكب بشكل احترافي
   const setDriverAvailable = trpc.driver.setStatus.useMutation();
   const cancelledHandledRef = useRef(false);
 
   useEffect(() => {
     if (!ride?.status) return;
 
-    // إذا ألغى الراكب الرحلة
+    // إذا ألغى الراكب الرحلة بينما السائق في الطريق
     if (ride.status === "cancelled" && !cancelledHandledRef.current) {
       cancelledHandledRef.current = true;
-      // تغيير حالة السائق إلى متاح
+      // تغيير حالة السائق إلى متاح فوراً من جهة التطبيق
       if (driverId > 0) {
         setDriverAvailable.mutate({ driverId, isOnline: true, isAvailable: true });
       }
+      // رجوع تلقائي بعد 3 ثواني حتى لو ما ضغط السائق على حسناً
+      const autoRedirectTimer = setTimeout(() => {
+        router.replace("/captain/home" as any);
+      }, 3500);
       Alert.alert(
-        "❌ تم إلغاء الرحلة",
-        "قام الراكب بإلغاء الرحلة. ستعود إلى الصفحة الرئيسية.",
-        [{ text: "حسناً", onPress: () => router.replace("/captain/home" as any) }]
+        "❌ ألغى الراكب الرحلة",
+        "قام الراكب بإلغاء الرحلة بينما كنت في الطريق إليه.\nستعود إلى الصفحة الرئيسية تلقائياً.",
+        [{ text: "حسناً", onPress: () => { clearTimeout(autoRedirectTimer); router.replace("/captain/home" as any); } }]
       );
       return;
     }
