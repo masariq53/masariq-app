@@ -591,7 +591,7 @@ export const appRouter = router({
               andOp(
                 eqOp(ridesTable.id, input.rideId),
                 eqOp(ridesTable.driverId, input.driverId),
-                inArrayOp(ridesTable.status, ["accepted", "driver_arrived", "in_progress", "completed"])
+                inArrayOp(ridesTable.status, ["accepted", "driver_arrived", "in_progress", "completed", "cancelled"])
               )
             )
             .limit(1);
