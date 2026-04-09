@@ -98,6 +98,9 @@ export const drivers = mysqlTable("drivers", {
   pushToken: text("pushToken"),
   isBlocked: boolean("isBlocked").default(false).notNull(),
   blockReason: text("blockReason"),
+  // Registration location
+  country: varchar("country", { length: 100 }),
+  city: varchar("city", { length: 100 }),
 });
 
 export type Driver = typeof drivers.$inferSelect;

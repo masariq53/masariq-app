@@ -217,6 +217,18 @@ export default function DriverRegisterScreen() {
     setIsLoading(true);
     try {
       const normalizedPhone = normalizePhone(passengerPhone);
+      // جلب الدولة والمدينة من الموقع الجغرافي
+      let country: string | undefined;
+      let city: string | undefined;
+      try {
+        const geoRes = await fetch("https://ipapi.co/json/");
+        if (geoRes.ok) {
+          const geoData = await geoRes.json();
+          country = geoData.country_name || undefined;
+          city = geoData.city || undefined;
+        }
+      } catch (_) {}
+
       await registerMutation.mutateAsync({
         phone: normalizedPhone,
         name: passengerName,
@@ -231,6 +243,8 @@ export default function DriverRegisterScreen() {
         vehicleColor: carColor || undefined,
         vehicleYear: carYear || undefined,
         vehiclePhotoUrl: vehiclePhotoUrl || undefined,
+        country,
+        city,
       });
 
       Alert.alert(

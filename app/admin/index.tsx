@@ -64,10 +64,14 @@ export default function AdminDashboard() {
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<"overview" | "rides" | "drivers" | "passengers" | "pending">("overview");
 
+  const [driversPage, setDriversPage] = useState(0);
+  const [passengersPage, setPassengersPage] = useState(0);
+  const PAGE_SIZE = 10;
+
   const { data: stats, isLoading: statsLoading, refetch: refetchStats } = trpc.admin.stats.useQuery();
   const { data: recentRides, isLoading: ridesLoading, refetch: refetchRides } = trpc.admin.recentRides.useQuery({ limit: 8 });
-  const { data: allDrivers, isLoading: driversLoading, refetch: refetchDrivers } = trpc.admin.drivers.useQuery({ limit: 30 });
-  const { data: allPassengers, isLoading: passengersLoading, refetch: refetchPassengers } = trpc.admin.passengers.useQuery({ limit: 30 });
+  const { data: allDrivers, isLoading: driversLoading, refetch: refetchDrivers } = trpc.admin.drivers.useQuery({ limit: 500 });
+  const { data: allPassengers, isLoading: passengersLoading, refetch: refetchPassengers } = trpc.admin.passengers.useQuery({ limit: 500 });
   const { data: allRides, isLoading: allRidesLoading, refetch: refetchAllRides } = trpc.admin.rides.useQuery({ limit: 50 });
   const { data: pendingDrivers, isLoading: pendingLoading, refetch: refetchPending } = trpc.admin.pendingDrivers.useQuery();
 
@@ -290,11 +294,16 @@ export default function AdminDashboard() {
             {/* ── Drivers Tab ── */}
             {activeTab === "drivers" && (
               <View style={styles.section}>
-                <Text style={styles.sectionTitle}>السائقون ({allDrivers?.length ?? 0})</Text>
+                {(() => {
+                  const pagedDrivers = (allDrivers ?? []).slice(driversPage * PAGE_SIZE, (driversPage + 1) * PAGE_SIZE);
+                  const totalDriverPages = Math.ceil((allDrivers?.length ?? 0) / PAGE_SIZE);
+                  return (
+                    <>
+                <Text style={styles.sectionTitle}>السائقون ({allDrivers?.length ?? 0}) — صفحة {driversPage + 1} من {totalDriverPages || 1}</Text>
                 {driversLoading ? (
                   <ActivityIndicator color="#FFD700" style={{ marginVertical: 20 }} />
-                ) : allDrivers && allDrivers.length > 0 ? (
-                  allDrivers.map((driver) => (
+                ) : pagedDrivers && pagedDrivers.length > 0 ? (
+                  pagedDrivers.map((driver) => (
                     <View key={driver.id} style={[styles.driverCard, driver.isBlocked && { borderLeftWidth: 3, borderLeftColor: '#EF4444' }]}>
                       <View style={styles.driverAvatar}>
                         <Text style={styles.driverAvatarText}>
@@ -323,6 +332,11 @@ export default function AdminDashboard() {
                         ) : (
                           <Text style={[styles.driverVehicle, { color: '#64748B' }]}>🔢 لا توجد لوحة</Text>
                         )}
+                        {(driver as any).country || (driver as any).city ? (
+                          <Text style={[styles.driverVehicle, { color: '#60A5FA' }]}>
+                            📍 {[(driver as any).country, (driver as any).city].filter(Boolean).join("، ")}
+                          </Text>
+                        ) : null}
                         {driver.isBlocked && (
                           <Text style={{ fontSize: 10, color: '#EF4444', marginTop: 2 }}>🚫 محظور: {driver.blockReason || "بدون سبب"}</Text>
                         )}
@@ -380,6 +394,29 @@ export default function AdminDashboard() {
                     <Text style={styles.emptyText}>لا يوجد سائقون مسجلون</Text>
                   </View>
                 )}
+                {/* Pagination */}
+                {totalDriverPages > 1 && (
+                  <View style={styles.paginationRow}>
+                    <TouchableOpacity
+                      style={[styles.pageBtn, driversPage === 0 && styles.pageBtnDisabled]}
+                      onPress={() => setDriversPage(p => Math.max(0, p - 1))}
+                      disabled={driversPage === 0}
+                    >
+                      <Text style={styles.pageBtnText}>→ السابق</Text>
+                    </TouchableOpacity>
+                    <Text style={styles.pageInfo}>{driversPage + 1} / {totalDriverPages}</Text>
+                    <TouchableOpacity
+                      style={[styles.pageBtn, driversPage >= totalDriverPages - 1 && styles.pageBtnDisabled]}
+                      onPress={() => setDriversPage(p => Math.min(totalDriverPages - 1, p + 1))}
+                      disabled={driversPage >= totalDriverPages - 1}
+                    >
+                      <Text style={styles.pageBtnText}>التالي ←</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+                    </>
+                  );
+                })()}
               </View>
             )}
 
@@ -579,11 +616,16 @@ export default function AdminDashboard() {
             {/* ── Passengers Tab ── */}
             {activeTab === "passengers" && (
               <View style={styles.section}>
-                <Text style={styles.sectionTitle}>المستخدمون ({allPassengers?.length ?? 0})</Text>
+                {(() => {
+                  const pagedPassengers = (allPassengers ?? []).slice(passengersPage * PAGE_SIZE, (passengersPage + 1) * PAGE_SIZE);
+                  const totalPassengerPages = Math.ceil((allPassengers?.length ?? 0) / PAGE_SIZE);
+                  return (
+                    <>
+                <Text style={styles.sectionTitle}>المستخدمون ({allPassengers?.length ?? 0}) — صفحة {passengersPage + 1} من {totalPassengerPages || 1}</Text>
                 {passengersLoading ? (
                   <ActivityIndicator color="#FFD700" style={{ marginVertical: 20 }} />
-                ) : allPassengers && allPassengers.length > 0 ? (
-                  allPassengers.map((p) => (
+                ) : pagedPassengers && pagedPassengers.length > 0 ? (
+                  pagedPassengers.map((p) => (
                     <View key={p.id} style={styles.passengerCard}>
                       <View style={styles.passengerAvatar}>
                         <Text style={styles.passengerAvatarText}>
@@ -610,6 +652,29 @@ export default function AdminDashboard() {
                     <Text style={styles.emptyText}>لا يوجد مستخدمون مسجلون</Text>
                   </View>
                 )}
+                {/* Pagination */}
+                {totalPassengerPages > 1 && (
+                  <View style={styles.paginationRow}>
+                    <TouchableOpacity
+                      style={[styles.pageBtn, passengersPage === 0 && styles.pageBtnDisabled]}
+                      onPress={() => setPassengersPage(p => Math.max(0, p - 1))}
+                      disabled={passengersPage === 0}
+                    >
+                      <Text style={styles.pageBtnText}>→ السابق</Text>
+                    </TouchableOpacity>
+                    <Text style={styles.pageInfo}>{passengersPage + 1} / {totalPassengerPages}</Text>
+                    <TouchableOpacity
+                      style={[styles.pageBtn, passengersPage >= totalPassengerPages - 1 && styles.pageBtnDisabled]}
+                      onPress={() => setPassengersPage(p => Math.min(totalPassengerPages - 1, p + 1))}
+                      disabled={passengersPage >= totalPassengerPages - 1}
+                    >
+                      <Text style={styles.pageBtnText}>التالي ←</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+                    </>
+                  );
+                })()}
               </View>
             )}
           </>
@@ -924,4 +989,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32, paddingVertical: 12, borderRadius: 12,
   },
   modalCloseText: { color: "#1A0533", fontWeight: "800", fontSize: 16 },
+
+  // Pagination
+  paginationRow: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    marginTop: 12, paddingHorizontal: 4,
+  },
+  pageBtn: {
+    backgroundColor: "#2D1B4E", borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8,
+    borderWidth: 1, borderColor: "#FFD700",
+  },
+  pageBtnDisabled: { opacity: 0.35 },
+  pageBtnText: { color: "#FFD700", fontSize: 13, fontWeight: "700" },
+  pageInfo: { color: "#9B8EC4", fontSize: 13, fontWeight: "600" },
 });

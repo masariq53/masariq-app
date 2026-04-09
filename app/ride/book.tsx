@@ -292,6 +292,9 @@ export default function BookRideScreen() {
       Alert.alert("تنبيه", "يرجى تحديد وجهتك");
       return;
     }
+    const multiplier = rideTypes.find((r) => r.id === selectedRide)?.multiplier ?? 1;
+    const quotedFare = fareQuery.data ? Math.round(fareQuery.data.fare * multiplier) : undefined;
+    const quotedDuration = fareQuery.data?.duration;
     requestRide.mutate({
       passengerId: passenger?.id ?? 1,
       pickupLat: pickupPin.latitude,
@@ -301,6 +304,8 @@ export default function BookRideScreen() {
       dropoffLng: dropPin.longitude,
       dropoffAddress: to,
       paymentMethod: "cash",
+      quotedFare,
+      quotedDuration,
     });
   };
 

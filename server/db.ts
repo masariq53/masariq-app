@@ -321,6 +321,8 @@ export async function registerDriver(data: {
   vehicleColor?: string;
   vehicleYear?: string;
   vehiclePhotoUrl?: string;
+  country?: string;
+  city?: string;
 }) {
   const db = await getDb();
   if (!db) {
@@ -345,6 +347,8 @@ export async function registerDriver(data: {
       vehicleYear: data.vehicleYear || null,
       vehiclePhotoUrl: data.vehiclePhotoUrl || null,
       registrationStatus: "pending",
+      country: data.country || null,
+      city: data.city || null,
       updatedAt: new Date(),
     }).where(eq(drivers.id, existing[0]!.id));
     const updated = await db.select().from(drivers).where(eq(drivers.id, existing[0]!.id)).limit(1);
@@ -366,6 +370,8 @@ export async function registerDriver(data: {
     vehicleYear: data.vehicleYear || null,
     vehiclePhotoUrl: data.vehiclePhotoUrl || null,
     registrationStatus: "pending",
+    country: data.country || null,
+    city: data.city || null,
   });
 
   const created = await db.select().from(drivers).where(eq(drivers.phone, data.phone)).limit(1);

@@ -275,17 +275,29 @@ export const appRouter = router({
           dropoffLng: z.number(),
           dropoffAddress: z.string().optional(),
           paymentMethod: z.enum(["cash", "wallet"]).default("cash"),
+          quotedFare: z.number().optional(), // السعر المعروض للمستخدم قبل التأكيد
+          quotedDuration: z.number().optional(), // الوقت المقدر من estimateFare
         })
       )
       .mutation(async ({ input }) => {
-        const distance = calculateDistance(
-          input.pickupLat,
-          input.pickupLng,
-          input.dropoffLat,
-          input.dropoffLng
-        );
-        const fare = calculateFare(distance);
-        const duration = Math.ceil((distance / 30) * 60); // Assume 30 km/h avg speed
+        // استخدام السعر المقتبس من estimateFare إذا تم تمريره، وإلا احسب من جديد
+        let fare: number;
+        let duration: number;
+        let distance: number;
+        if (input.quotedFare && input.quotedFare > 0) {
+          fare = input.quotedFare;
+          duration = input.quotedDuration ?? 0;
+          distance = calculateDistance(input.pickupLat, input.pickupLng, input.dropoffLat, input.dropoffLng);
+        } else {
+          distance = calculateDistance(
+            input.pickupLat,
+            input.pickupLng,
+            input.dropoffLat,
+            input.dropoffLng
+          );
+          fare = calculateFare(distance);
+          duration = Math.ceil((distance / 30) * 60);
+        }
 
          const ride = await createRide({
           passengerId: input.passengerId,
@@ -434,7 +446,7 @@ export const appRouter = router({
 
         await updateRideStatus(input.rideId, input.status, extra as any);
 
-        // On completion: increment totalRides for driver and passenger
+        // On completion: increment totalRides for driver and passenger, set driver to offline/unavailable
         if (input.status === "completed") {
           const ride = await getRideById(input.rideId);
           if (ride) {
@@ -445,7 +457,7 @@ export const appRouter = router({
             if (db) {
               if (ride.driverId) {
                 await db.update(driversTable)
-                  .set({ totalRides: sqlOp`totalRides + 1` })
+                  .set({ totalRides: sqlOp`totalRides + 1`, isOnline: false, isAvailable: false })
                   .where(eqOp(driversTable.id, ride.driverId));
               }
               await db.update(passengersTable)
@@ -892,6 +904,8 @@ export const appRouter = router({
         vehicleColor: z.string().optional(),
         vehicleYear: z.string().optional(),
         vehiclePhotoUrl: z.string().optional(),
+        country: z.string().optional(),
+        city: z.string().optional(),
       }))
       .mutation(async ({ input }) => {
         const driver = await registerDriver(input);
