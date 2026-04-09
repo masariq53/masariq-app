@@ -19,14 +19,21 @@ Notifications.setNotificationHandler({
 export async function registerDriverPushToken(): Promise<string | null> {
   if (Platform.OS === "web") return null;
 
-  // Set up Android notification channel
+  // Set up Android notification channel for driver ride alerts
   if (Platform.OS === "android") {
+    // قناة الطلبات الجديدة - أعلى أولوية + اهتزاز قوي
     await Notifications.setNotificationChannelAsync("driver-alerts", {
       name: "تنبيهات السائق",
+      description: "إشعارات طلبات الرحلة الجديدة",
       importance: Notifications.AndroidImportance.MAX,
-      vibrationPattern: [0, 250, 250, 250],
+      // نمط اهتزاز طويل ومتكرر للفت الانتباه
+      vibrationPattern: [0, 400, 200, 400, 200, 400, 200, 600],
       lightColor: "#FFD700",
+      enableLights: true,
+      enableVibrate: true,
+      // صوت النظام الافتراضي (يتبع إعدادات الجهاز)
       sound: "default",
+      bypassDnd: true, // تجاوز وضع عدم الإزعاج
     });
   }
 
@@ -67,6 +74,8 @@ export async function sendDriverLocalNotification(
       body,
       data: data ?? {},
       sound: "default",
+      // Android: استخدام قناة driver-alerts ذات الأولوية القصوى
+      ...(Platform.OS === "android" ? { channelId: "driver-alerts" } : {}),
     },
     trigger: null, // immediate
   });

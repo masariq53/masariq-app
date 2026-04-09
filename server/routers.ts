@@ -327,6 +327,10 @@ export const appRouter = router({
               body: `من: ${input.pickupAddress || "موقع الراكب"} — ${Math.round(fare).toLocaleString("ar-IQ")} دينار`,
               data: { rideId: ride.id, type: "new_ride" },
               priority: "high" as const,
+              // استخدام قناة driver-alerts ذات الأولوية القصوى على Android
+              channelId: "driver-alerts",
+              // إظهار الإشعار حتى في وضع عدم الإزعاج
+              _displayInForeground: true,
             }));
           if (messages.length > 0) {
             fetch("https://exp.host/--/api/v2/push/send", {

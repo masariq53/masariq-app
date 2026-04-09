@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useFocusEffect } from "expo-router";
-import { useAudioPlayer } from "expo-audio";
+import { useAudioPlayer, setAudioModeAsync } from "expo-audio";
 import {
   View,
   Text,
@@ -222,12 +222,19 @@ export default function CaptainHomeScreen() {
     // صوت تنبيه + اهتزاز عند وصول طلب جديد
     if (Platform.OS !== "web") {
       try {
+        // تفعيل التشغيل في الوضع الصامت (iOS)
+        setAudioModeAsync({
+          playsInSilentMode: true,
+          shouldPlayInBackground: false,
+        }).catch(() => {});
         notificationPlayer.seekTo(0);
+        notificationPlayer.volume = 1.0;
         notificationPlayer.play();
       } catch (e) {
         // إذا فشل الصوت نستمر بالاهتزاز
       }
-      Vibration.vibrate([0, 300, 200, 300, 200, 300]);
+      // اهتزاز طويل ومتكرر للفت الانتباه
+      Vibration.vibrate([0, 400, 200, 400, 200, 400, 200, 600]);
     }
   }, [pendingRidesQuery.data, isOnline, currentRequest]);
 
