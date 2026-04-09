@@ -58,11 +58,195 @@ function StatCard({
   );
 }
 
-// ─── Main Screen ──────────────────────────────────────────────────────────────
+// ─── Pricing Tab Content ─────────────────────────────────────────────────────────────────────────────────
+
+function PricingTabContent() {
+  const { data: zones, isLoading, refetch } = trpc.pricing.getZones.useQuery();
+  const deleteMutation = trpc.pricing.deleteZone.useMutation({ onSuccess: () => refetch() });
+  const [selectedZone, setSelectedZone] = React.useState<string | null>(null);
+
+  if (isLoading) {
+    return (
+      <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+        <ActivityIndicator size="large" color="#FFD700" />
+        <Text style={{ color: '#9B8EC4', marginTop: 12 }}>جاري تحميل بيانات التسعير...</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={{ paddingHorizontal: 16, paddingTop: 8 }}>
+      {/* Header */}
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <View>
+          <Text style={{ color: '#FFD700', fontSize: 18, fontWeight: '800' }}>💰 إدارة التسعير</Text>
+          <Text style={{ color: '#9B8EC4', fontSize: 12, marginTop: 2 }}>{zones?.length ?? 0} منطقة تسعير</Text>
+        </View>
+        <TouchableOpacity
+          style={{ backgroundColor: '#6C3FC5', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10 }}
+          onPress={() => router.push('/admin/pricing')}
+        >
+          <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '700' }}>+ إضافة / تعديل</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Info Banner */}
+      <View style={{ backgroundColor: 'rgba(108,63,197,0.15)', borderRadius: 12, padding: 12, marginBottom: 16, borderWidth: 1, borderColor: 'rgba(108,63,197,0.3)' }}>
+        <Text style={{ color: '#C4B5FD', fontSize: 12, textAlign: 'center' }}>
+          🔄 التعديلات تنعكس فوراً على حساب الأجرة — لا حاجة لإعادة التشغيل
+        </Text>
+      </View>
+
+      {/* Zones List */}
+      {!zones || zones.length === 0 ? (
+        <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+          <Text style={{ fontSize: 40, marginBottom: 12 }}>💰</Text>
+          <Text style={{ color: '#9B8EC4', fontSize: 14 }}>لا توجد مناطق تسعير بعد</Text>
+          <TouchableOpacity
+            style={{ backgroundColor: '#6C3FC5', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10, marginTop: 16 }}
+            onPress={() => router.push('/admin/pricing')}
+          >
+            <Text style={{ color: '#FFFFFF', fontWeight: '700' }}>إضافة منطقة تسعير</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        zones.map((zone: any) => (
+          <TouchableOpacity
+            key={zone.id}
+            style={{
+              backgroundColor: '#1A0533',
+              borderRadius: 14,
+              padding: 14,
+              marginBottom: 12,
+              borderWidth: 1,
+              borderColor: selectedZone === zone.id ? '#FFD700' : '#2D1B4E',
+            }}
+            onPress={() => setSelectedZone(selectedZone === zone.id ? null : zone.id)}
+            activeOpacity={0.8}
+          >
+            {/* Zone Header */}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: '#FFFFFF', fontSize: 16, fontWeight: '800' }}>{zone.cityName}</Text>
+                <Text style={{ color: '#9B8EC4', fontSize: 11, marginTop: 2 }}>{zone.cityNameEn}</Text>
+              </View>
+              <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+                <View style={{
+                  backgroundColor: zone.isActive ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)',
+                  paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6,
+                }}>
+                  <Text style={{ color: zone.isActive ? '#4ADE80' : '#F87171', fontSize: 11, fontWeight: '700' }}>
+                    {zone.isActive ? '✅ نشطة' : '❌ معطلة'}
+                  </Text>
+                </View>
+                <View style={{
+                  backgroundColor: 'rgba(108,63,197,0.2)',
+                  paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6,
+                }}>
+                  <Text style={{ color: '#C4B5FD', fontSize: 11 }}>
+                    {zone.pricingType === 'per_km' ? '📏 بالكم' : zone.pricingType === 'per_minute' ? '⏱ بالدقيقة' : '🔀 هجين'}
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Pricing Summary */}
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
+              <View style={{ backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 8, padding: 8, flex: 1, minWidth: 80 }}>
+                <Text style={{ color: '#9B8EC4', fontSize: 10 }}>أجرة البداية</Text>
+                <Text style={{ color: '#FFD700', fontSize: 14, fontWeight: '800' }}>{Number(zone.baseFare).toLocaleString()} د</Text>
+              </View>
+              {zone.pricingType !== 'per_minute' && (
+                <View style={{ backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 8, padding: 8, flex: 1, minWidth: 80 }}>
+                  <Text style={{ color: '#9B8EC4', fontSize: 10 }}>سعر الكم</Text>
+                  <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '800' }}>{Number(zone.pricePerKm).toLocaleString()} د</Text>
+                </View>
+              )}
+              {zone.pricingType !== 'per_km' && (
+                <View style={{ backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 8, padding: 8, flex: 1, minWidth: 80 }}>
+                  <Text style={{ color: '#9B8EC4', fontSize: 10 }}>سعر الدقيقة</Text>
+                  <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '800' }}>{Number(zone.pricePerMinute).toLocaleString()} د</Text>
+                </View>
+              )}
+              <View style={{ backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 8, padding: 8, flex: 1, minWidth: 80 }}>
+                <Text style={{ color: '#9B8EC4', fontSize: 10 }}>الحد الأدنى</Text>
+                <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '800' }}>{Number(zone.minimumFare).toLocaleString()} د</Text>
+              </View>
+            </View>
+
+            {/* Expanded Details */}
+            {selectedZone === zone.id && (
+              <View style={{ marginTop: 12, borderTopWidth: 1, borderTopColor: '#2D1B4E', paddingTop: 12 }}>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+                  {zone.nightFareEnabled && (
+                    <View style={{ backgroundColor: 'rgba(59,130,246,0.15)', borderRadius: 8, padding: 8, flex: 1 }}>
+                      <Text style={{ color: '#93C5FD', fontSize: 10 }}>🌙 رسوم الليل</Text>
+                      <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '700' }}>+{Number(zone.nightFareMultiplier ?? 1.3).toFixed(1)}x</Text>
+                      <Text style={{ color: '#9B8EC4', fontSize: 10 }}>{zone.nightStartHour}:00 – {zone.nightEndHour}:00</Text>
+                    </View>
+                  )}
+                  {zone.surgeEnabled && (
+                    <View style={{ backgroundColor: 'rgba(245,158,11,0.15)', borderRadius: 8, padding: 8, flex: 1 }}>
+                      <Text style={{ color: '#FCD34D', fontSize: 10 }}>⚡ طلب عالي</Text>
+                      <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '700' }}>x{Number(zone.surgeMultiplier ?? 1.5).toFixed(1)}</Text>
+                    </View>
+                  )}
+                  {zone.waitingFeePerMinute > 0 && (
+                    <View style={{ backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 8, padding: 8, flex: 1 }}>
+                      <Text style={{ color: '#9B8EC4', fontSize: 10 }}>⏳ انتظار/دق</Text>
+                      <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '700' }}>{Number(zone.waitingFeePerMinute).toLocaleString()} د</Text>
+                    </View>
+                  )}
+                  {zone.cancellationFee > 0 && (
+                    <View style={{ backgroundColor: 'rgba(239,68,68,0.1)', borderRadius: 8, padding: 8, flex: 1 }}>
+                      <Text style={{ color: '#FCA5A5', fontSize: 10 }}>❌ إلغاء</Text>
+                      <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '700' }}>{Number(zone.cancellationFee).toLocaleString()} د</Text>
+                    </View>
+                  )}
+                </View>
+                {/* Action Buttons */}
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <TouchableOpacity
+                    style={{ flex: 1, backgroundColor: '#6C3FC5', borderRadius: 10, paddingVertical: 10, alignItems: 'center' }}
+                    onPress={() => router.push('/admin/pricing')}
+                  >
+                    <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 13 }}>✏️ تعديل</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={{ flex: 1, backgroundColor: 'rgba(239,68,68,0.15)', borderRadius: 10, paddingVertical: 10, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(239,68,68,0.3)' }}
+                    onPress={() => Alert.alert('حذف المنطقة', `هل تريد حذف ${zone.cityName}؟`, [
+                      { text: 'إلغاء', style: 'cancel' },
+                      { text: 'حذف', style: 'destructive', onPress: () => deleteMutation.mutate({ zoneId: zone.id }) },
+                    ])}
+                  >
+                    <Text style={{ color: '#F87171', fontWeight: '700', fontSize: 13 }}>🗑️ حذف</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+          </TouchableOpacity>
+        ))
+      )}
+
+      {/* Open Full Pricing Manager */}
+      {zones && zones.length > 0 && (
+        <TouchableOpacity
+          style={{ backgroundColor: 'rgba(108,63,197,0.15)', borderRadius: 12, padding: 14, alignItems: 'center', marginTop: 4, borderWidth: 1, borderColor: 'rgba(108,63,197,0.3)' }}
+          onPress={() => router.push('/admin/pricing')}
+        >
+          <Text style={{ color: '#C4B5FD', fontWeight: '700', fontSize: 14 }}>🔧 فتح مدير التسعير الكامل</Text>
+          <Text style={{ color: '#6B7280', fontSize: 11, marginTop: 4 }}>معاينة الأجرة · سجل التغييرات · إضافة منطقة جديدة</Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+}
+
+// ─── Main Screen ─────────────────────────────────────────────────────────────────────────────────
 export default function AdminDashboard() {
   const insets = useSafeAreaInsets();
   const [refreshing, setRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState<"overview" | "rides" | "drivers" | "passengers" | "pending">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "rides" | "drivers" | "passengers" | "pending" | "pricing">("overview");
 
   const [driversPage, setDriversPage] = useState(0);
   const [passengersPage, setPassengersPage] = useState(0);
@@ -110,6 +294,7 @@ export default function AdminDashboard() {
     { id: "pending", label: `طلبات${pendingCount > 0 ? ` (${pendingCount})` : ""}`, icon: "⏳" },
     { id: "drivers", label: "السائقون", icon: "👨‍✈️" },
     { id: "passengers", label: "المستخدمون", icon: "👥" },
+    { id: "pricing", label: "التسعير", icon: "💰" },
   ] as const;
 
   return (
@@ -162,6 +347,11 @@ export default function AdminDashboard() {
           </View>
         ) : (
           <>
+            {/* ── Pricing Tab ── */}
+            {activeTab === "pricing" && (
+              <PricingTabContent />
+            )}
+
             {/* ── Overview Tab ── */}
             {activeTab === "overview" && (
               <>
@@ -193,25 +383,6 @@ export default function AdminDashboard() {
                       <Text style={styles.totalLabel}>إجمالي المستخدمين</Text>
                     </View>
                   </View>
-                </View>
-
-                {/* Quick Actions */}
-                <View style={styles.section}>
-                  <Text style={styles.sectionTitle}>إدارة النظام</Text>
-                  <TouchableOpacity
-                    style={styles.pricingBanner}
-                    onPress={() => router.push("/admin/pricing")}
-                    activeOpacity={0.8}
-                  >
-                    <View style={styles.pricingBannerLeft}>
-                      <Text style={styles.pricingBannerIcon}>💰</Text>
-                      <View>
-                        <Text style={styles.pricingBannerTitle}>إدارة أسعار الرحلات</Text>
-                        <Text style={styles.pricingBannerSub}>تسعير المدن · أجرة الكم والدقيقة · رسوم الليل والانتظار</Text>
-                      </View>
-                    </View>
-                    <Text style={styles.pricingBannerArrow}>←</Text>
-                  </TouchableOpacity>
                 </View>
 
                 {/* Recent Rides */}
