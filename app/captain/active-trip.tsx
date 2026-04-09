@@ -79,14 +79,14 @@ export default function CaptainActiveTripScreen() {
       if (driverId > 0) {
         setDriverAvailable.mutate({ driverId, isOnline: true, isAvailable: true });
       }
-      // رجوع تلقائي بعد 3 ثواني حتى لو ما ضغط السائق على حسناً
+      // رجوع تلقائي بعد 3 ثواني - استخدام back() للرجوع للشاشة الأصلية بدل فتح نسخة جديدة
       const autoRedirectTimer = setTimeout(() => {
-        router.replace("/captain/home" as any);
+        router.back();
       }, 3500);
       Alert.alert(
         "❌ ألغى الراكب الرحلة",
         "قام الراكب بإلغاء الرحلة بينما كنت في الطريق إليه.\nستعود إلى الصفحة الرئيسية تلقائياً.",
-        [{ text: "حسناً", onPress: () => { clearTimeout(autoRedirectTimer); router.replace("/captain/home" as any); } }]
+        [{ text: "حسناً", onPress: () => { clearTimeout(autoRedirectTimer); router.back(); } }]
       );
       return;
     }
@@ -231,8 +231,8 @@ export default function CaptainActiveTripScreen() {
         }
       );
     } else if (phase === "done") {
-      // الرحلة اكتملت بالفعل - العودة للرئيسية
-      router.replace("/captain/home" as any);
+      // الرحلة اكتملت بالفعل - العودة للرئيسية باستخدام back()
+      router.back();
     }
   };
 
