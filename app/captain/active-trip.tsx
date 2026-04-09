@@ -66,23 +66,42 @@ export default function CaptainActiveTripScreen() {
     : { latitude: 36.3600, longitude: 43.1450 };
 
   // مزامنة المرحلة مع حالة DB - لكن لا نتراجع عن مرحلة محلية أحدث
+  // معالجة إلغاء الرحلة من طرف الراكب
+  const setDriverAvailable = trpc.driver.setStatus.useMutation();
+  const cancelledHandledRef = useRef(false);
+
   useEffect(() => {
-    if (ride?.status) {
-      const mappedPhase = STATUS_TO_PHASE[ride.status];
-      if (!mappedPhase) return;
-      // مرتبة المراحل: pickup < arrived < in_trip < done
-      const phaseOrder: TripPhase[] = ["pickup", "arrived", "in_trip", "done"];
-      const dbPhaseIndex = phaseOrder.indexOf(mappedPhase);
-      const currentPhaseIndex = phaseOrder.indexOf(localPhaseRef.current ?? phase);
-      // فقط تحديث إذا كانت حالة DB أحدث من الحالة المحلية
-      if (dbPhaseIndex > currentPhaseIndex) {
-        localPhaseRef.current = mappedPhase;
-        setPhase(mappedPhase);
-      } else if (localPhaseRef.current === null) {
-        // أول تحميل: استخدم حالة DB
-        localPhaseRef.current = mappedPhase;
-        setPhase(mappedPhase);
+    if (!ride?.status) return;
+
+    // إذا ألغى الراكب الرحلة
+    if (ride.status === "cancelled" && !cancelledHandledRef.current) {
+      cancelledHandledRef.current = true;
+      // تغيير حالة السائق إلى متاح
+      if (driverId > 0) {
+        setDriverAvailable.mutate({ driverId, isOnline: true, isAvailable: true });
       }
+      Alert.alert(
+        "❌ تم إلغاء الرحلة",
+        "قام الراكب بإلغاء الرحلة. ستعود إلى الصفحة الرئيسية.",
+        [{ text: "حسناً", onPress: () => router.replace("/captain/home" as any) }]
+      );
+      return;
+    }
+
+    const mappedPhase = STATUS_TO_PHASE[ride.status];
+    if (!mappedPhase) return;
+    // مرتبة المراحل: pickup < arrived < in_trip < done
+    const phaseOrder: TripPhase[] = ["pickup", "arrived", "in_trip", "done"];
+    const dbPhaseIndex = phaseOrder.indexOf(mappedPhase);
+    const currentPhaseIndex = phaseOrder.indexOf(localPhaseRef.current ?? phase);
+    // فقط تحديث إذا كانت حالة DB أحدث من الحالة المحلية
+    if (dbPhaseIndex > currentPhaseIndex) {
+      localPhaseRef.current = mappedPhase;
+      setPhase(mappedPhase);
+    } else if (localPhaseRef.current === null) {
+      // أول تحميل: استخدم حالة DB
+      localPhaseRef.current = mappedPhase;
+      setPhase(mappedPhase);
     }
   }, [ride?.status]);
 

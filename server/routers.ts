@@ -714,8 +714,11 @@ export const appRouter = router({
         if (!ride) throw new Error("الرحلة غير موجودة");
         if (ride.passengerId !== input.passengerId) throw new Error("غير مصرح");
         await updateRideStatus(input.rideId, "cancelled", { cancelReason: input.reason ?? "ألغى الراكب الرحلة" } as any);
-        // Notify driver if assigned
+        // Notify driver if assigned + reset driver to available
         if (ride.driverId) {
+          // تغيير حالة السائق إلى متاح فوراً
+          await setDriverOnlineStatus(ride.driverId, true, true);
+          // إرسال Push Notification للسائق
           const driverToken = await getDriverPushToken(ride.driverId);
           if (driverToken && driverToken.startsWith("ExponentPushToken[")) {
             fetch("https://exp.host/--/api/v2/push/send", {
@@ -725,7 +728,7 @@ export const appRouter = router({
                 to: driverToken,
                 sound: "default",
                 title: "❌ تم إلغاء الرحلة",
-                body: "قام الراكب بإلغاء الرحلة",
+                body: "قام الراكب بإلغاء الرحلة. أنت الآن متاح لطلبات جديدة.",
                 data: { rideId: input.rideId, type: "ride_cancelled" },
                 priority: "high",
               }),
