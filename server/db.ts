@@ -649,20 +649,29 @@ export const passengerPushTokens = new Map<number, string>();
  */
 export async function savePassengerPushToken(passengerId: number, token: string) {
   const db = await getDb();
+  // Store in memory cache for fast access
   passengerPushTokens.set(passengerId, token);
   if (!db) return;
-  // Store in passengers table (add pushToken column if needed - using lastActiveAt as proxy for now)
-  // We store in memory map for now; in production add pushToken column to passengers table
-  await db.update(passengers).set({ lastActiveAt: new Date() }).where(eq(passengers.id, passengerId));
+  // Persist to DB so it survives server restarts
+  await db.update(passengers).set({ pushToken: token, lastActiveAt: new Date() }).where(eq(passengers.id, passengerId));
 }
 
 /**
  * Get push notification token for a passenger
  */
 export async function getPassengerPushToken(passengerId: number): Promise<string | null> {
-  // Check memory cache first
+  // Check memory cache first (fast path)
   if (passengerPushTokens.has(passengerId)) {
     return passengerPushTokens.get(passengerId) ?? null;
+  }
+  // Fallback: load from DB (handles server restarts)
+  const db = await getDb();
+  if (!db) return null;
+  const [row] = await db.select({ pushToken: passengers.pushToken }).from(passengers).where(eq(passengers.id, passengerId)).limit(1);
+  if (row?.pushToken) {
+    // Cache it for future calls
+    passengerPushTokens.set(passengerId, row.pushToken);
+    return row.pushToken;
   }
   return null;
 }

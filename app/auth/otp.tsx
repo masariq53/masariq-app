@@ -14,6 +14,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { trpc } from "@/lib/trpc";
 import { usePassenger } from "@/lib/passenger-context";
+import { registerPassengerNotifications } from "@/lib/passenger-notifications";
 
 const OTP_LENGTH = 6;
 
@@ -30,8 +31,21 @@ export default function OTPScreen() {
   const [error, setError] = useState("");
   const inputs = useRef<(TextInput | null)[]>([]);
   const { setPassenger } = usePassenger();
+  const savePushToken = trpc.rides.savePassengerPushToken.useMutation();
 
   const isRegister = mode === "register";
+
+  // دالة مشتركة: تسجيل إشعارات الراكب وحفظ الـ token في الـ server
+  const registerAndSavePushToken = async (passengerId: number) => {
+    try {
+      const token = await registerPassengerNotifications();
+      if (token) {
+        savePushToken.mutate({ passengerId, token });
+      }
+    } catch (e) {
+      console.warn("[Push] Failed to register passenger push token:", e);
+    }
+  };
 
   // Show dev code hint
   useEffect(() => {
@@ -64,6 +78,8 @@ export default function OTPScreen() {
         totalRides: data.passenger.totalRides,
         rating: data.passenger.rating?.toString() || "5.00",
       });
+      // تسجيل push token للإشعارات (بدون انتظار)
+      registerAndSavePushToken(data.passenger.id);
       router.replace("/(tabs)");
     },
     onError: (err) => {
@@ -85,6 +101,8 @@ export default function OTPScreen() {
         totalRides: data.passenger.totalRides,
         rating: data.passenger.rating?.toString() || "5.00",
       });
+      // تسجيل push token للإشعارات (بدون انتظار)
+      registerAndSavePushToken(data.passenger.id);
       router.replace("/(tabs)");
     },
     onError: (err) => {
