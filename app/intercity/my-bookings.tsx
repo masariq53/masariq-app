@@ -320,8 +320,8 @@ export default function MyIntercityBookingsScreen() {
                   </TouchableOpacity>
                 )}
 
-                {/* Tracking Button — يظهر عندما الكابتن في الطريق أو وصل */}
-                {(displayStatus === "scheduled" || displayStatus === "in_progress") && !isBookingCancelled && driver && (
+                {/* Tracking Button — يظهر فقط عند scheduled وليس عند in_progress */}
+                {displayStatus === "scheduled" && !isBookingCancelled && driver && (
                   <TouchableOpacity
                     style={styles.trackingBtn}
                     onPress={() =>
