@@ -1,4 +1,4 @@
-import { and, eq, gt, desc, inArray, sql } from "drizzle-orm";
+import { and, eq, gt, desc, inArray, sql, ne } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   InsertUser,
@@ -1608,4 +1608,51 @@ export async function cancelPassengerByDriver(bookingId: number, driverId: numbe
     .set({ availableSeats: trip[0].availableSeats + booking[0].seatsBooked })
     .where(eq(intercityTrips.id, booking[0].tripId));
   return { success: true };
+}
+
+/**
+ * Admin: Get all intercity trips with driver info and booking counts
+ */
+export async function getAllIntercityTripsAdmin(limit = 100, offset = 0) {
+  const db = await getDb();
+  if (!db) return [];
+  const trips = await db
+    .select()
+    .from(intercityTrips)
+    .orderBy(desc(intercityTrips.createdAt))
+    .limit(limit)
+    .offset(offset);
+
+  const enriched = await Promise.all(
+    trips.map(async (trip) => {
+      const [driver] = await db
+        .select({ name: drivers.name, phone: drivers.phone, vehicleModel: drivers.vehicleModel, vehiclePlate: drivers.vehiclePlate })
+        .from(drivers)
+        .where(eq(drivers.id, trip.driverId))
+        .limit(1);
+      const bookings = await db
+        .select({ seatsBooked: intercityBookings.seatsBooked })
+        .from(intercityBookings)
+        .where(and(eq(intercityBookings.tripId, trip.id), ne(intercityBookings.status, "cancelled")));
+      return {
+        ...trip,
+        driver: driver ?? null,
+        bookingsCount: bookings.length,
+        totalPassengers: bookings.reduce((sum, b) => sum + b.seatsBooked, 0),
+      };
+    })
+  );
+  return enriched;
+}
+
+/**
+ * Admin: Cancel an intercity trip
+ */
+export async function adminCancelIntercityTrip(tripId: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db
+    .update(intercityTrips)
+    .set({ status: "cancelled" })
+    .where(eq(intercityTrips.id, tripId));
 }

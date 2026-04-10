@@ -68,6 +68,9 @@ import {
   updatePassengerPickupStatus,
   getDriverTripPassengers,
   cancelPassengerByDriver,
+  getDb,
+  getAllIntercityTripsAdmin,
+  adminCancelIntercityTrip,
 } from "./db";
 import { storagePut } from "./storage";
 
@@ -1786,8 +1789,20 @@ export const appRouter = router({
 
         return { success: true, message: input.isBlocked ? "تم تعطيل الحساب" : "تم تفعيل الحساب" };
       }),
+    // Admin: All intercity trips
+    intercityTrips: publicProcedure
+      .input(z.object({ limit: z.number().default(100), offset: z.number().default(0) }))
+      .query(async ({ input }) => {
+        return getAllIntercityTripsAdmin(input.limit, input.offset);
+      }),
+    // Admin: Cancel intercity trip
+    cancelIntercityTrip: publicProcedure
+      .input(z.object({ tripId: z.number() }))
+      .mutation(async ({ input }) => {
+        await adminCancelIntercityTrip(input.tripId);
+        return { success: true };
+      }),
   }),
-
   // ─── Intercity Trips ───────────────────────────────────────────────────────────
   intercity: router({
     // السائق: جدولة رحلة جديدة
@@ -1936,6 +1951,38 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => {
         const booking = await bookIntercityWithGPS(input);
+        // إرسال Push notification للكابتن
+        try {
+          const db = await getDb();
+          if (db) {
+            const { intercityTrips: tripsTable } = await import("../drizzle/schema");
+            const { eq: eqFn } = await import("drizzle-orm");
+            const [trip] = await db
+              .select({ driverId: tripsTable.driverId, fromCity: tripsTable.fromCity, toCity: tripsTable.toCity })
+              .from(tripsTable)
+              .where(eqFn(tripsTable.id, input.tripId))
+              .limit(1);
+            if (trip?.driverId) {
+              const pushToken = await getDriverPushToken(trip.driverId);
+              if (pushToken && pushToken.startsWith("ExponentPushToken[")) {
+                fetch("https://exp.host/--/api/v2/push/send", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", "Accept": "application/json" },
+                  body: JSON.stringify({
+                    to: pushToken,
+                    sound: "default",
+                    title: "🎉 حجز مقعد جديد!",
+                    body: `${input.passengerName} حجز ${input.seatsBooked} مقعد في رحلتك ${trip.fromCity} → ${trip.toCity}`,
+                    data: { type: "intercity_booking", tripId: input.tripId },
+                    priority: "high",
+                  }),
+                }).catch((err) => console.warn("[Push] intercity booking notification failed:", err));
+              }
+            }
+          }
+        } catch (e) {
+          console.warn("[Push] Error sending intercity booking notification:", e);
+        }
         return { success: true, booking };
       }),
     // الكابتن: قائمة مسافرين رحلة معينة

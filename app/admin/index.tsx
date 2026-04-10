@@ -63,7 +63,7 @@ function StatCard({
 export default function AdminDashboard() {
   const insets = useSafeAreaInsets();
   const [refreshing, setRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState<"overview" | "rides" | "drivers" | "passengers" | "pricing">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "rides" | "drivers" | "passengers" | "pricing" | "intercity">("overview");
 
   const [driversPage, setDriversPage] = useState(0);
   const [passengersPage, setPassengersPage] = useState(0);
@@ -109,9 +109,16 @@ export default function AdminDashboard() {
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [blockReasonInput, setBlockReasonInput] = useState("");
 
+  // ─── Intercity Trips ───────────────────────────────────────────────────────────
+  const [intercityStatusFilter, setIntercityStatusFilter] = useState<"all" | "scheduled" | "in_progress" | "completed" | "cancelled">("all");
+  const { data: allIntercityTrips, isLoading: intercityLoading, refetch: refetchIntercity } = trpc.admin.intercityTrips.useQuery({ limit: 100 });
+  const cancelIntercityTripMutation = trpc.admin.cancelIntercityTrip.useMutation({
+    onSuccess: () => refetchIntercity(),
+  });
+
   const onRefresh = async () => {
     setRefreshing(true);
-    await Promise.all([refetchStats(), refetchRides(), refetchDrivers(), refetchPassengers(), refetchAllRides(), refetchPending()]);
+    await Promise.all([refetchStats(), refetchRides(), refetchDrivers(), refetchPassengers(), refetchAllRides(), refetchPending(), refetchIntercity()]);
     setRefreshing(false);
   };
 
@@ -125,6 +132,7 @@ export default function AdminDashboard() {
     { id: "drivers", label: "السائقون", icon: "👨‍✈️" },
     { id: "passengers", label: "المستخدمون", icon: "👥" },
     { id: "pricing", label: "التسعير", icon: "💰" },
+    { id: "intercity", label: "بين المدن", icon: "🗯️" },
   ] as const;
 
   return (
@@ -792,6 +800,109 @@ export default function AdminDashboard() {
             )}
           </>
         )}
+        {/* Intercity Trips Tab */}
+        {activeTab === "intercity" && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>🗺️ رحلات بين المدن</Text>
+
+            {/* Status Filter */}
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
+              {(['all', 'scheduled', 'in_progress', 'completed', 'cancelled'] as const).map((s) => (
+                <TouchableOpacity
+                  key={s}
+                  style={[styles.filterChip, intercityStatusFilter === s && styles.filterChipActive]}
+                  onPress={() => setIntercityStatusFilter(s)}
+                >
+                  <Text style={[styles.filterChipText, intercityStatusFilter === s && styles.filterChipTextActive]}>
+                    {s === 'all' ? 'الكل' : s === 'scheduled' ? '⏰ مجدولة' : s === 'in_progress' ? '🚗 جارية' : s === 'completed' ? '✅ مكتملة' : '❌ ملغاة'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {intercityLoading ? (
+              <ActivityIndicator color="#FFD700" style={{ marginTop: 40 }} />
+            ) : (
+              (allIntercityTrips ?? []).filter(t => intercityStatusFilter === 'all' || t.status === intercityStatusFilter).length === 0 ? (
+                <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                  <Text style={{ fontSize: 40, marginBottom: 8 }}>🗺️</Text>
+                  <Text style={{ color: '#9B8EC4', fontSize: 14 }}>لا توجد رحلات</Text>
+                </View>
+              ) : (
+                (allIntercityTrips ?? []).filter(t => intercityStatusFilter === 'all' || t.status === intercityStatusFilter).map((trip) => (
+                  <View key={trip.id} style={{ backgroundColor: '#1A0533', borderRadius: 14, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: '#2D1B4E' }}>
+                    {/* Header */}
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: '#FFD700', fontSize: 16, fontWeight: '800' }}>
+                          {trip.fromCity} ← {trip.toCity}
+                        </Text>
+                        <Text style={{ color: '#9B8EC4', fontSize: 12, marginTop: 2 }}>
+                          {new Date(trip.departureTime).toLocaleDateString('ar-IQ', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                        </Text>
+                      </View>
+                      <View style={[styles.badge, {
+                        backgroundColor: trip.status === 'scheduled' ? '#FFF3CD' : trip.status === 'in_progress' ? '#D1ECF1' : trip.status === 'completed' ? '#D4EDDA' : '#F8D7DA'
+                      }]}>
+                        <Text style={[styles.badgeText, {
+                          color: trip.status === 'scheduled' ? '#856404' : trip.status === 'in_progress' ? '#0C5460' : trip.status === 'completed' ? '#155724' : '#721C24'
+                        }]}>
+                          {trip.status === 'scheduled' ? '⏰ مجدولة' : trip.status === 'in_progress' ? '🚗 جارية' : trip.status === 'completed' ? '✅ مكتملة' : '❌ ملغاة'}
+                        </Text>
+                      </View>
+                    </View>
+
+                    {/* Driver Info */}
+                    {trip.driver && (
+                      <View style={{ backgroundColor: 'rgba(255,215,0,0.08)', borderRadius: 10, padding: 10, marginBottom: 10 }}>
+                        <Text style={{ color: '#FFD700', fontSize: 12, fontWeight: '700', marginBottom: 4 }}>👨‍✈️ السائق</Text>
+                        <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '600' }}>{trip.driver.name}</Text>
+                        <Text style={{ color: '#9B8EC4', fontSize: 12 }}>{trip.driver.phone}</Text>
+                        {trip.driver.vehicleModel && <Text style={{ color: '#9B8EC4', fontSize: 12 }}>{trip.driver.vehicleModel} {trip.driver.vehiclePlate ? `• ${trip.driver.vehiclePlate}` : ''}</Text>}
+                      </View>
+                    )}
+
+                    {/* Stats Row */}
+                    <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
+                      <View style={{ flex: 1, backgroundColor: '#0D0820', borderRadius: 10, padding: 10, alignItems: 'center' }}>
+                        <Text style={{ color: '#FFD700', fontSize: 18, fontWeight: '800' }}>{trip.totalPassengers}/{trip.totalSeats}</Text>
+                        <Text style={{ color: '#9B8EC4', fontSize: 11 }}>المقاعد المحجوزة</Text>
+                      </View>
+                      <View style={{ flex: 1, backgroundColor: '#0D0820', borderRadius: 10, padding: 10, alignItems: 'center' }}>
+                        <Text style={{ color: '#4ADE80', fontSize: 18, fontWeight: '800' }}>{Number(trip.pricePerSeat).toLocaleString()}</Text>
+                        <Text style={{ color: '#9B8EC4', fontSize: 11 }}>دينار/مقعد</Text>
+                      </View>
+                      <View style={{ flex: 1, backgroundColor: '#0D0820', borderRadius: 10, padding: 10, alignItems: 'center' }}>
+                        <Text style={{ color: '#60A5FA', fontSize: 18, fontWeight: '800' }}>{trip.bookingsCount}</Text>
+                        <Text style={{ color: '#9B8EC4', fontSize: 11 }}>حجز</Text>
+                      </View>
+                    </View>
+
+                    {/* Meeting Point */}
+                    {trip.meetingPoint && (
+                      <Text style={{ color: '#9B8EC4', fontSize: 12, marginBottom: 8 }}>📍 {trip.meetingPoint}</Text>
+                    )}
+
+                    {/* Cancel Button */}
+                    {(trip.status === 'scheduled' || trip.status === 'in_progress') && (
+                      <TouchableOpacity
+                        style={{ backgroundColor: '#7F1D1D', borderRadius: 10, padding: 10, alignItems: 'center', borderWidth: 1, borderColor: '#991B1B' }}
+                        onPress={() => Alert.alert('إلغاء الرحلة', `هل تريد إلغاء رحلة ${trip.fromCity} ← ${trip.toCity}؟`, [
+                          { text: 'تراجع', style: 'cancel' },
+                          { text: 'إلغاء الرحلة', style: 'destructive', onPress: () => cancelIntercityTripMutation.mutate({ tripId: trip.id }) },
+                        ])}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={{ color: '#FCA5A5', fontSize: 13, fontWeight: '700' }}>❌ إلغاء الرحلة</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                ))
+              )
+            )}
+          </View>
+        )}
+
         {/* Pricing Tab */}
         {activeTab === "pricing" && (
           <View style={styles.section}>
