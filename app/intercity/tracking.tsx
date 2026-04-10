@@ -51,10 +51,33 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-// تقدير وقت الوصول بالدقائق (سرعة متوسطة 30 كم/ساعة في المدينة)
+// تقدير وقت الوصول بالدقائق (fallback - سرعة متوسطة 30 كم/ساعة في المدينة)
 function estimateMinutes(distKm: number) {
   const avgSpeedKmh = 30;
   return Math.max(1, Math.round((distKm / avgSpeedKmh) * 60));
+}
+
+// جلب ETA الحقيقي من OSRM (مثل Waze)
+async function fetchOSRMEta(
+  fromLat: number, fromLng: number,
+  toLat: number, toLng: number
+): Promise<{ minutes: number; distKm: number } | null> {
+  try {
+    const url = `https://router.project-osrm.org/route/v1/driving/${fromLng},${fromLat};${toLng},${toLat}?overview=false`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+    if (!res.ok) return null;
+    const json = await res.json();
+    if (json.code === "Ok" && json.routes?.[0]) {
+      const route = json.routes[0];
+      return {
+        minutes: Math.max(1, Math.round(route.duration / 60)),
+        distKm: Math.round((route.distance / 1000) * 10) / 10,
+      };
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 export default function IntercityTrackingScreen() {
@@ -78,6 +101,7 @@ export default function IntercityTrackingScreen() {
   const [prevApproachStatus, setPrevApproachStatus] = useState<ApproachStatus>("idle");
   const [driverCoords, setDriverCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [etaMinutes, setEtaMinutes] = useState<number | null>(null);
+  const [etaDistKm, setEtaDistKm] = useState<number | null>(null);
   const [soundPlayed, setSoundPlayed] = useState(false);
 
   // Animated marker position
@@ -156,13 +180,22 @@ export default function IntercityTrackingScreen() {
 
         setDriverCoords({ lat: newLat, lng: newLng });
 
-        // حساب وقت الوصول التقديري
+        // حساب وقت الوصول التقديري باستخدام OSRM
         if (passengerLat && passengerLng) {
           const pLat = parseFloat(passengerLat);
           const pLng = parseFloat(passengerLng);
           if (!isNaN(pLat) && !isNaN(pLng)) {
-            const distKm = haversineKm(newLat, newLng, pLat, pLng);
-            setEtaMinutes(estimateMinutes(distKm));
+            // جلب ETA من OSRM أولاً، وإذا فشل استخدم الحساب البسيط
+            fetchOSRMEta(newLat, newLng, pLat, pLng).then((result) => {
+              if (result) {
+                setEtaMinutes(result.minutes);
+                setEtaDistKm(result.distKm);
+              } else {
+                const distKm = haversineKm(newLat, newLng, pLat, pLng);
+                setEtaMinutes(estimateMinutes(distKm));
+                setEtaDistKm(Math.round(distKm * 10) / 10);
+              }
+            });
           }
         }
 
@@ -262,8 +295,14 @@ export default function IntercityTrackingScreen() {
         {/* ETA Badge */}
         {etaMinutes !== null && approachStatus === "heading" && (
           <View style={styles.etaBadge}>
-            <Text style={styles.etaTime}>{etaMinutes}</Text>
-            <Text style={styles.etaUnit}>دقيقة</Text>
+            <Text style={styles.etaLabel}>وقت الوصول</Text>
+            <View style={styles.etaRow}>
+              <Text style={styles.etaTime}>{etaMinutes}</Text>
+              <Text style={styles.etaUnit}>دقيقة</Text>
+            </View>
+            {etaDistKm !== null && (
+              <Text style={styles.etaDist}>{etaDistKm} كم</Text>
+            )}
           </View>
         )}
 
@@ -335,7 +374,12 @@ export default function IntercityTrackingScreen() {
             {carModel || "السيارة"}{carPlate ? ` • ${carPlate}` : ""}
           </Text>
           {etaMinutes !== null && approachStatus === "heading" && (
-            <Text style={styles.etaInline}>⏱ وقت الوصول التقديري: {etaMinutes} دقيقة</Text>
+            <View style={styles.etaInlineRow}>
+              <Text style={styles.etaInline}>⏱ يصل خلال {etaMinutes} دقيقة</Text>
+              {etaDistKm !== null && (
+                <Text style={styles.etaInlineDist}> • {etaDistKm} كم</Text>
+              )}
+            </View>
           )}
           {approachStatus === "arrived_at_pickup" && (
             <Text style={styles.arrivedInline}>✅ وصل إلى موقعك</Text>
@@ -420,8 +464,11 @@ const styles = StyleSheet.create({
     borderColor: "#5B9BD5",
     alignItems: "center",
   },
-  etaTime: { color: "#5B9BD5", fontSize: 22, fontWeight: "900" },
-  etaUnit: { color: "#9B8EC4", fontSize: 11, marginTop: -2 },
+  etaLabel: { color: "#9B8EC4", fontSize: 10, fontWeight: "600", marginBottom: 2 },
+  etaRow: { flexDirection: "row", alignItems: "flex-end", gap: 3 },
+  etaTime: { color: "#5B9BD5", fontSize: 26, fontWeight: "900", lineHeight: 28 },
+  etaUnit: { color: "#9B8EC4", fontSize: 12, marginBottom: 2 },
+  etaDist: { color: "#5B9BD5", fontSize: 11, marginTop: 2, opacity: 0.8 },
   // Status Card
   statusCard: {
     margin: 12,
@@ -473,7 +520,9 @@ const styles = StyleSheet.create({
   driverInfo: { flex: 1 },
   driverName: { color: "#E0D0FF", fontSize: 15, fontWeight: "bold" },
   driverCar: { color: "#9B8EC4", fontSize: 13, marginTop: 2 },
-  etaInline: { color: "#5B9BD5", fontSize: 12, marginTop: 4, fontWeight: "600" },
+  etaInlineRow: { flexDirection: "row", alignItems: "center", marginTop: 4 },
+  etaInline: { color: "#5B9BD5", fontSize: 12, fontWeight: "700" },
+  etaInlineDist: { color: "#9B8EC4", fontSize: 11 },
   arrivedInline: { color: "#2ECC71", fontSize: 12, marginTop: 4, fontWeight: "700" },
   callBtn: {
     width: 46, height: 46, borderRadius: 23,
