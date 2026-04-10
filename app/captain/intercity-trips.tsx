@@ -43,6 +43,8 @@ export default function CaptainIntercityTripsScreen() {
   const [selectedTripId, setSelectedTripId] = useState<number | null>(null);
   const [showBookings, setShowBookings] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  // تخزين حالات التوجه لكل رحلة: tripId → hasArrivedPassenger
+  const [tripArrivedMap, setTripArrivedMap] = useState<Record<number, boolean>>({});
 
   // Cancel reason modal state
   const [showCancelModal, setShowCancelModal] = useState(false);
@@ -63,6 +65,22 @@ export default function CaptainIntercityTripsScreen() {
     { driverId: driverId! },
     { enabled: !!driverId, refetchInterval: 15000 }
   );
+
+  // جلب حالات التوجه لجميع الرحلات المجدولة عند تحديث قائمة الرحلات
+  const utils = trpc.useUtils();
+  useEffect(() => {
+    if (!driverId || !tripsQuery.data) return;
+    const scheduledTrips = (tripsQuery.data as any[]).filter((t) => t.status === "scheduled");
+    scheduledTrips.forEach(async (trip) => {
+      try {
+        const passengers = await utils.intercity.tripPassengers.fetch({ tripId: trip.id, driverId });
+        const hasArrived = (passengers as any[]).some(
+          (p) => p.driverApproachStatus === "arrived_at_pickup"
+        );
+        setTripArrivedMap((prev) => ({ ...prev, [trip.id]: hasArrived }));
+      } catch {}
+    });
+  }, [tripsQuery.data, driverId]);
 
   const bookingsQuery = trpc.intercity.tripBookings.useQuery(
     { tripId: selectedTripId!, driverId: driverId! },
@@ -275,13 +293,16 @@ export default function CaptainIntercityTripsScreen() {
                       >
                         <Text style={styles.actionBtnText}>🚗 انطلق</Text>
                       </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.actionBtn, styles.cancelBtnStyle]}
-                        onPress={() => handleCancelTrip(item.id, status)}
-                        disabled={cancelTrip.isPending}
-                      >
-                        <Text style={styles.cancelBtnText}>❌ إلغاء</Text>
-                      </TouchableOpacity>
+                      {/* إخفاء زر الإلغاء إذا وصل الكابتن لموقع أي راكب */}
+                      {!tripArrivedMap[item.id] && (
+                        <TouchableOpacity
+                          style={[styles.actionBtn, styles.cancelBtnStyle]}
+                          onPress={() => handleCancelTrip(item.id, status)}
+                          disabled={cancelTrip.isPending}
+                        >
+                          <Text style={styles.cancelBtnText}>❌ إلغاء</Text>
+                        </TouchableOpacity>
+                      )}
                     </>
                   )}
                   {status === "in_progress" && (
