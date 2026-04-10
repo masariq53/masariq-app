@@ -10,6 +10,7 @@ import * as Haptics from "expo-haptics";
 import { ScreenContainer } from "@/components/screen-container";
 import { trpc } from "@/lib/trpc";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useT } from "@/lib/i18n";
 
 const IRAQI_CITIES = [
   "الكل", "الموصل", "بغداد", "أربيل", "السليمانية", "كركوك",
@@ -37,6 +38,7 @@ function timeUntil(dateStr: string | Date) {
 }
 
 export default function IntercityBrowseScreen() {
+  const t = useT();
   const router = useRouter();
   const [passenger, setPassenger] = useState<{ id: number; name: string; phone: string } | null>(null);
   const [fromFilter, setFromFilter] = useState("الكل");
@@ -159,15 +161,15 @@ export default function IntercityBrowseScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Text style={styles.backIcon}>{"<"}</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>السفر بين المدن</Text>
+        <Text style={styles.headerTitle}>{t.intercity.title}</Text>
         <TouchableOpacity onPress={() => router.push("/intercity/my-bookings")} style={styles.myBookingsBtn}>
-          <Text style={styles.myBookingsBtnText}>حجوزاتي</Text>
+          <Text style={styles.myBookingsBtnText}>{t.intercity.myBookings}</Text>
         </TouchableOpacity>
       </View>
 
       {/* Filters */}
       <View style={styles.filtersContainer}>
-        <Text style={styles.filterLabel}>من:</Text>
+        <Text style={styles.filterLabel}>{t.common.from}:</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
           <View style={{ flexDirection: "row", gap: 6 }}>
             {IRAQI_CITIES.map((city) => (
@@ -181,7 +183,7 @@ export default function IntercityBrowseScreen() {
             ))}
           </View>
         </ScrollView>
-        <Text style={styles.filterLabel}>إلى:</Text>
+        <Text style={styles.filterLabel}>{t.common.to}:</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
           <View style={{ flexDirection: "row", gap: 6 }}>
             {IRAQI_CITIES.map((city) => (
@@ -203,7 +205,7 @@ export default function IntercityBrowseScreen() {
       ) : !trips || trips.length === 0 ? (
         <View style={styles.emptyState}>
           <Text style={styles.emptyEmoji}>🛣️</Text>
-          <Text style={styles.emptyTitle}>لا توجد رحلات متاحة</Text>
+          <Text style={styles.emptyTitle}>{t.intercity.noTrips}</Text>
           <Text style={styles.emptyDesc}>جرب تغيير الفلاتر أو تحقق لاحقاً</Text>
         </View>
       ) : (
@@ -221,13 +223,13 @@ export default function IntercityBrowseScreen() {
                 </View>
                 <View style={styles.priceTag}>
                   <Text style={styles.priceText}>{parseInt(item.pricePerSeat).toLocaleString()}</Text>
-                  <Text style={styles.priceUnit}>دينار/مقعد</Text>
+                  <Text style={styles.priceUnit}>{t.common.iqd}/{t.common.seat}</Text>
                 </View>
               </View>
               <Text style={styles.detailText}>🕐 {formatDate(item.departureTime)}</Text>
               <Text style={styles.detailText}>⏱️ تغادر خلال {timeUntil(item.departureTime)}</Text>
               <View style={styles.seatsAvailRow}>
-                <Text style={styles.detailText}>💺 {item.availableSeats} مقعد متاح</Text>
+                <Text style={styles.detailText}>💺 {item.availableSeats} {t.intercity.seatsAvailable}</Text>
                 <View style={[styles.seatsBadge, item.availableSeats <= 2 && styles.seatsBadgeRed]}>
                   <Text style={styles.seatsBadgeText}>
                     {item.availableSeats <= 2 ? "🔥 أوشك على الامتلاء" : "✅ متاح"}
@@ -244,7 +246,7 @@ export default function IntercityBrowseScreen() {
                 </View>
               ) : null}
               <TouchableOpacity style={styles.bookBtn} onPress={() => openBookingModal(item)}>
-                <Text style={styles.bookBtnText}>احجز الآن 🎫</Text>
+                <Text style={styles.bookBtnText}>{t.intercity.bookSeat} 🎫</Text>
               </TouchableOpacity>
             </View>
           )}

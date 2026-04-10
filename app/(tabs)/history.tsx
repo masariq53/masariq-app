@@ -14,6 +14,7 @@ import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { trpc } from "@/lib/trpc";
 import { usePassenger } from "@/lib/passenger-context";
+import { useT } from "@/lib/i18n";
 
 type FilterType = "all" | "completed" | "cancelled";
 
@@ -64,17 +65,19 @@ type RideItem = {
   } | null;
 };
 
-const FILTERS: { key: FilterType; label: string }[] = [
-  { key: "all", label: "الكل" },
-  { key: "completed", label: "مكتملة" },
-  { key: "cancelled", label: "ملغاة" },
-];
+// FILTERS defined inside component to use translations
 
 const PAGE_SIZE = 15;
 
 export default function HistoryScreen() {
+  const t = useT();
   const insets = useSafeAreaInsets();
   const { passenger } = usePassenger();
+  const FILTERS: { key: FilterType; label: string }[] = [
+    { key: "all", label: t.common.noData.replace("لا توجد بيانات", "الكل") },
+    { key: "completed", label: t.statusLabels.completed },
+    { key: "cancelled", label: t.statusLabels.cancelled },
+  ];
   const [filter, setFilter] = useState<FilterType>("all");
   const [cursor, setCursor] = useState<number | undefined>(undefined);
   const [allRides, setAllRides] = useState<RideItem[]>([]);
@@ -204,17 +207,17 @@ export default function HistoryScreen() {
         {/* الأجرة والتفاصيل */}
         <View style={styles.cardFooter}>
           <View style={styles.detailItem}>
-            <Text style={styles.detailLabel}>الأجرة</Text>
+            <Text style={styles.detailLabel}>{t.history.fare}</Text>
             <Text style={styles.fareValue}>{(item.fare ?? 0).toLocaleString("ar-IQ")} دينار</Text>
           </View>
           {item.estimatedDistance > 0 && (
             <View style={styles.detailItem}>
-              <Text style={styles.detailLabel}>المسافة</Text>
+              <Text style={styles.detailLabel}>{t.ride.distance}</Text>
               <Text style={styles.detailValue}>{item.estimatedDistance.toFixed(1)} كم</Text>
             </View>
           )}
           <View style={styles.detailItem}>
-            <Text style={styles.detailLabel}>الدفع</Text>
+            <Text style={styles.detailLabel}>{t.ride.paymentMethod}</Text>
             <Text style={styles.detailValue}>{item.paymentMethod === "cash" ? "💵 نقداً" : "👛 محفظة"}</Text>
           </View>
         </View>
@@ -241,9 +244,9 @@ export default function HistoryScreen() {
 
       {/* رأس الصفحة */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>سجل الرحلات</Text>
+        <Text style={styles.headerTitle}>{t.history.myRides}</Text>
         {!isLoading && (
-          <Text style={styles.headerSub}>{totalCompleted} رحلة مكتملة</Text>
+          <Text style={styles.headerSub}>{totalCompleted} {t.statusLabels.completed}</Text>
         )}
       </View>
 
@@ -252,17 +255,17 @@ export default function HistoryScreen() {
         <View style={styles.statsRow}>
           <View style={styles.statCard}>
             <Text style={styles.statValue}>{allRides.length}</Text>
-            <Text style={styles.statLabel}>إجمالي الرحلات</Text>
+            <Text style={styles.statLabel}>{t.captain.totalRides}</Text>
           </View>
           <View style={styles.statDivider} />
           <View style={styles.statCard}>
             <Text style={styles.statValue}>{totalCompleted}</Text>
-            <Text style={styles.statLabel}>مكتملة</Text>
+            <Text style={styles.statLabel}>{t.statusLabels.completed}</Text>
           </View>
           <View style={styles.statDivider} />
           <View style={styles.statCard}>
             <Text style={styles.statValue}>{totalSpent.toLocaleString("ar-IQ")}</Text>
-            <Text style={styles.statLabel}>دينار مصروف</Text>
+            <Text style={styles.statLabel}>{t.common.iqd}</Text>
           </View>
         </View>
       )}
@@ -293,18 +296,18 @@ export default function HistoryScreen() {
       {isLoading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#FFD700" />
-          <Text style={styles.loadingText}>جاري تحميل سجل رحلاتك...</Text>
+          <Text style={styles.loadingText}>{t.common.loading}</Text>
         </View>
       ) : !passenger?.id ? (
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyIcon}>🔐</Text>
-          <Text style={styles.emptyTitle}>يرجى تسجيل الدخول</Text>
-          <Text style={styles.emptyText}>سجّل دخولك لعرض سجل رحلاتك</Text>
+          <Text style={styles.emptyTitle}>{t.auth.login}</Text>
+          <Text style={styles.emptyText}>{t.errors.sessionExpired}</Text>
         </View>
       ) : allRides.length === 0 ? (
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyIcon}>🚗</Text>
-          <Text style={styles.emptyTitle}>لا توجد رحلات</Text>
+          <Text style={styles.emptyTitle}>{t.history.noRides}</Text>
           <Text style={styles.emptyText}>
             {filter === "all"
               ? "لم تقم بأي رحلة بعد. اطلب رحلتك الأولى الآن!"

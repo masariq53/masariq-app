@@ -10,6 +10,7 @@ import {
 import { router } from "expo-router";
 import { ScreenContainer } from "@/components/screen-container";
 import { StatusBar } from "expo-status-bar";
+import { useT } from "@/lib/i18n";
 
 const packageTypes = [
   { id: "small", icon: "📦", label: "صغير", size: "حتى 2 كغ", price: "3,000" },
@@ -19,6 +20,7 @@ const packageTypes = [
 ];
 
 export default function DeliveryScreen() {
+  const t = useT();
   const [selectedType, setSelectedType] = useState("small");
   const [fromAddress, setFromAddress] = useState("");
   const [toAddress, setToAddress] = useState("");
@@ -37,14 +39,14 @@ export default function DeliveryScreen() {
 
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>توصيل الطرود</Text>
-        <Text style={styles.headerSubtitle}>أرسل طردك بأمان وسرعة</Text>
+        <Text style={styles.headerTitle}>{t.delivery.newDelivery}</Text>
+        <Text style={styles.headerSubtitle}>{t.delivery.trackDelivery}</Text>
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} style={styles.scroll}>
         {/* Package Type */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>نوع الطرد</Text>
+          <Text style={styles.sectionTitle}>{t.delivery.packageDescription}</Text>
           <View style={styles.typesGrid}>
             {packageTypes.map((type) => (
               <TouchableOpacity
@@ -69,13 +71,13 @@ export default function DeliveryScreen() {
 
         {/* Addresses */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>عنوان الإرسال والاستلام</Text>
+          <Text style={styles.sectionTitle}>{t.delivery.pickupAddress} / {t.delivery.deliveryAddress}</Text>
           <View style={styles.addressCard}>
             <View style={styles.addressRow}>
               <View style={[styles.dot, { backgroundColor: "#22C55E" }]} />
               <TextInput
                 style={styles.addressInput}
-                placeholder="عنوان الإرسال"
+                placeholder={t.delivery.pickupAddress}
                 placeholderTextColor="#9BA1A6"
                 value={fromAddress}
                 onChangeText={setFromAddress}
@@ -87,7 +89,7 @@ export default function DeliveryScreen() {
               <View style={[styles.dot, { backgroundColor: "#EF4444" }]} />
               <TextInput
                 style={styles.addressInput}
-                placeholder="عنوان الاستلام"
+                placeholder={t.delivery.deliveryAddress}
                 placeholderTextColor="#9BA1A6"
                 value={toAddress}
                 onChangeText={setToAddress}
@@ -99,11 +101,11 @@ export default function DeliveryScreen() {
 
         {/* Recipient Info */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>معلومات المستلم</Text>
+          <Text style={styles.sectionTitle}>{t.delivery.receiverInfo}</Text>
           <View style={styles.inputCard}>
             <TextInput
               style={styles.input}
-              placeholder="اسم المستلم"
+              placeholder={t.delivery.receiverName}
               placeholderTextColor="#9BA1A6"
               value={recipientName}
               onChangeText={setRecipientName}
@@ -112,7 +114,7 @@ export default function DeliveryScreen() {
             <View style={styles.inputDivider} />
             <TextInput
               style={styles.input}
-              placeholder="رقم هاتف المستلم"
+              placeholder={t.delivery.receiverPhone}
               placeholderTextColor="#9BA1A6"
               value={recipientPhone}
               onChangeText={setRecipientPhone}
@@ -126,7 +128,7 @@ export default function DeliveryScreen() {
         <View style={styles.summaryCard}>
           <View style={styles.summaryRow}>
             <Text style={styles.summaryValue}>{selectedPackage?.price} د.ع</Text>
-            <Text style={styles.summaryLabel}>تكلفة التوصيل</Text>
+            <Text style={styles.summaryLabel}>{t.delivery.requestDelivery}</Text>
           </View>
           <View style={styles.summaryRow}>
             <Text style={styles.summaryValue}>20-40 دقيقة</Text>
@@ -136,7 +138,7 @@ export default function DeliveryScreen() {
 
         {/* Order Button */}
         <TouchableOpacity style={styles.orderBtn} onPress={handleOrder}>
-          <Text style={styles.orderBtnText}>🚚  اطلب التوصيل الآن</Text>
+          <Text style={styles.orderBtnText}>🚚  {t.delivery.requestDelivery}</Text>
         </TouchableOpacity>
 
         <View style={{ height: 100 }} />

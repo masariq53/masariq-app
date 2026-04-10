@@ -22,6 +22,7 @@ import { useMemo, useEffect as useEffectOsrm } from "react";
 import { useDriver } from "@/lib/driver-context";
 import { useLocation } from "@/hooks/use-location";
 import { trpc } from "@/lib/trpc";
+import { useT } from "@/lib/i18n";
 import { fetchDualOsrmRoute, type OsrmRouteResult, type LatLng } from "@/lib/osrm";
 
 const { width } = Dimensions.get("window");
@@ -53,6 +54,7 @@ type PendingRide = {
 };
 
 export default function CaptainHomeScreen() {
+  const t = useT();
   const insets = useSafeAreaInsets();
   const { driver, logout } = useDriver();
   const { coords, isRealLocation } = useLocation();
@@ -459,7 +461,7 @@ export default function CaptainHomeScreen() {
             {isOnline ? "⭐" : "🚗"}
           </Animated.Text>
           <Text style={styles.webMapLabel}>
-            {isOnline ? "أنت متاح — الموصل" : "غير متاح"}
+            {isOnline ? t.captain.online + " — " + t.common.appName : t.captain.offline}
           </Text>
           <Text style={styles.webMapCoords}>36.3392° N, 43.1289° E</Text>
         </View>
@@ -476,7 +478,7 @@ export default function CaptainHomeScreen() {
             </View>
           )}
           <View>
-            <Text style={styles.headerName}>{driver?.name ?? "كابتن مسار"}</Text>
+            <Text style={styles.headerName}>{driver?.name ?? t.captain.captain + " " + t.common.appName}</Text>
             <View style={styles.ratingRow}>
               <Text style={styles.star}>⭐</Text>
               <Text style={styles.ratingText}>{rating}</Text>
@@ -496,7 +498,7 @@ export default function CaptainHomeScreen() {
             <Text style={styles.onlineBtnIcon}>{isOnline ? "🟢" : "⚫"}</Text>
           </Animated.View>
           <Text style={[styles.onlineBtnText, isOnline && styles.onlineBtnTextActive]}>
-            {isOnline ? "متاح" : "غير متاح"}
+            {isOnline ? t.captain.online : t.captain.offline}
           </Text>
         </TouchableOpacity>
       </View>
@@ -505,17 +507,17 @@ export default function CaptainHomeScreen() {
       <View style={[styles.statsBar, { bottom: insets.bottom + 16 }]}>
         <View style={styles.statItem}>
           <Text style={styles.statValue}>{todayTrips}</Text>
-          <Text style={styles.statLabel}>رحلة</Text>
+          <Text style={styles.statLabel}>{t.captain.totalRides}</Text>
         </View>
         <View style={styles.statDivider} />
         <View style={styles.statItem}>
           <Text style={styles.statValue}>{todayEarnings.toLocaleString()}</Text>
-          <Text style={styles.statLabel}>دخل اليوم</Text>
+          <Text style={styles.statLabel}>{t.captain.todayEarnings}</Text>
         </View>
         <View style={styles.statDivider} />
         <View style={styles.statItem}>
           <Text style={styles.statValue}>{rating}</Text>
-          <Text style={styles.statLabel}>تقييم</Text>
+          <Text style={styles.statLabel}>{t.captain.rating}</Text>
         </View>
         <View style={styles.statDivider} />
         <TouchableOpacity
@@ -523,7 +525,7 @@ export default function CaptainHomeScreen() {
           onPress={() => router.push("/captain/earnings" as any)}
         >
           <Text style={styles.statValue}>📊</Text>
-          <Text style={styles.statLabel}>الرحلات</Text>
+          <Text style={styles.statLabel}>{t.captain.tripHistory}</Text>
         </TouchableOpacity>
         <View style={styles.statDivider} />
         <TouchableOpacity
@@ -531,7 +533,7 @@ export default function CaptainHomeScreen() {
           onPress={() => router.push("/captain/intercity-trips" as any)}
         >
           <Text style={styles.statValue}>🛣️</Text>
-          <Text style={styles.statLabel}>بين المدن</Text>
+          <Text style={styles.statLabel}>{t.captain.intercityTrips}</Text>
         </TouchableOpacity>
       </View>
 
@@ -554,7 +556,7 @@ export default function CaptainHomeScreen() {
               </View>
             </View>
 
-            <Text style={styles.requestTitle}>🚗 طلب رحلة جديد!</Text>
+            <Text style={styles.requestTitle}>🚗 {t.captain.newRideRequest}</Text>
 
             {/* معلومات الراكب */}
             <View style={styles.passengerRow}>
@@ -562,19 +564,19 @@ export default function CaptainHomeScreen() {
                 <Text style={{ fontSize: 24 }}>👤</Text>
               </View>
               <View style={styles.passengerInfo}>
-                <Text style={styles.passengerName}>{currentRequest?.passengerName || "راكب"}</Text>
+                <Text style={styles.passengerName}>{currentRequest?.passengerName || t.captain.passenger}</Text>
                 <View style={styles.passengerRating}>
                   <Text style={styles.passengerRatingText}>⭐ {currentRequest?.passengerRating?.toFixed(1) || "5.0"}</Text>
                   {(currentRequest?.passengerTotalRides ?? 0) > 0 && (
                     <Text style={[styles.passengerRatingText, { color: "#9B8EC4", marginLeft: 6 }]}>
-                      • {currentRequest?.passengerTotalRides} رحلة
+                      • {currentRequest?.passengerTotalRides} {t.captain.totalRides}
                     </Text>
                   )}
                 </View>
               </View>
               <View style={styles.priceTag}>
                 <Text style={styles.priceValue}>{currentRequest?.fare?.toLocaleString()}</Text>
-                <Text style={styles.priceCurrency}>دينار</Text>
+                <Text style={styles.priceCurrency}>{t.common.iqd}</Text>
               </View>
             </View>
 
@@ -583,14 +585,14 @@ export default function CaptainHomeScreen() {
               <View style={styles.routeRow}>
                 <View style={styles.dotGreen} />
                 <Text style={styles.routeText} numberOfLines={1}>
-                  {currentRequest?.pickupAddress || "موقع الراكب"}
+                  {currentRequest?.pickupAddress || t.ride.pickupLocation}
                 </Text>
               </View>
               <View style={styles.routeLine} />
               <View style={styles.routeRow}>
                 <View style={styles.dotRed} />
                 <Text style={styles.routeText} numberOfLines={1}>
-                  {currentRequest?.dropoffAddress || "الوجهة"}
+                  {currentRequest?.dropoffAddress || t.ride.destination}
                 </Text>
               </View>
             </View>
@@ -600,7 +602,7 @@ export default function CaptainHomeScreen() {
               {/* للوصول إلى الراكب */}
               <View style={styles.osrmRow}>
                 <View style={[styles.osrmDot, { backgroundColor: "#2196F3" }]} />
-                <Text style={styles.osrmLabel}>للوصول إليك</Text>
+                <Text style={styles.osrmLabel}>{t.captain.toPassenger}</Text>
                 <Text style={styles.osrmValue}>
                   {routeToPassenger
                     ? `${routeToPassenger.distanceKm} كم • ${routeToPassenger.durationMin} دقيقة`
@@ -610,7 +612,7 @@ export default function CaptainHomeScreen() {
               {/* رحلة الراكب */}
               <View style={styles.osrmRow}>
                 <View style={[styles.osrmDot, { backgroundColor: "#FFD700" }]} />
-                <Text style={styles.osrmLabel}>رحلة الراكب</Text>
+                <Text style={styles.osrmLabel}>{t.captain.passengerTrip}</Text>
                 <Text style={styles.osrmValue}>
                   {routePassengerTrip
                     ? `${routePassengerTrip.distanceKm} كم • ${routePassengerTrip.durationMin} دقيقة`
@@ -646,7 +648,7 @@ export default function CaptainHomeScreen() {
                 onPress={handleReject}
                 disabled={rejectRideMutation.isPending}
               >
-                <Text style={styles.rejectText}>رفض</Text>
+                <Text style={styles.rejectText}>{t.captain.reject}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.acceptBtn}
@@ -654,7 +656,7 @@ export default function CaptainHomeScreen() {
                 disabled={acceptRideMutation.isPending}
               >
                 <Text style={styles.acceptText}>
-                  {acceptRideMutation.isPending ? "جاري القبول..." : "✅ قبول"}
+                  {acceptRideMutation.isPending ? t.common.loading : `✅ ${t.captain.accept}`}
                 </Text>
               </TouchableOpacity>
             </View>

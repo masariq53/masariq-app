@@ -14,39 +14,40 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { usePassenger } from "@/lib/passenger-context";
 import { useLocation } from "@/hooks/use-location";
 import { useThemeContext } from "@/lib/theme-provider";
+import { useT } from "@/lib/i18n";
 
 const { width } = Dimensions.get("window");
-
-const services = [
-  { id: "ride", icon: "🚗", label: "توصيلة" },
-  { id: "delivery", icon: "📦", label: "توصيل طرود" },
-  { id: "subscription", icon: "⭐", label: "اشتراكات" },
-  { id: "women", icon: "👩", label: "سائقة" },
-];
 
 const serviceColors = {
   light: ["#E8E0F8", "#FFF5D6", "#E8F0FE", "#FDE8F8"],
   dark: ["#2D1B69", "#3D2800", "#1A2A5E", "#3D1A3D"],
 };
 
-const promos = [
-  { id: "1", title: "أول رحلة مجانية!", subtitle: "استخدم كود: MASAR1", color: "#FFD700", textColor: "#1A0533", emoji: "🎉" },
-  { id: "2", title: "اشتراك شهري", subtitle: "وفّر حتى 40% على رحلاتك", color: "#1A0533", textColor: "#FFFFFF", emoji: "💰" },
-];
-
-const quickDestinations = [
-  { id: "1", name: "المستشفى الجمهوري", icon: "🏥", distance: "3.2 كم" },
-  { id: "2", name: "جامعة الموصل", icon: "🎓", distance: "5.8 كم" },
-  { id: "3", name: "سوق الشعارين", icon: "🛒", distance: "1.5 كم" },
-];
-
 export default function HomeScreen() {
+  const t = useT();
   const insets = useSafeAreaInsets();
-
   const { passenger } = usePassenger();
   const { coords, isRealLocation } = useLocation();
   const { colorScheme } = useThemeContext();
   const isDark = colorScheme === "dark";
+
+  const services = [
+    { id: "ride", icon: "🚗", label: t.home.ride },
+    { id: "delivery", icon: "📦", label: t.home.delivery },
+    { id: "subscription", icon: "⭐", label: t.home.subscription },
+    { id: "intercity", icon: "🛣️", label: t.home.intercity },
+  ];
+
+  const promos = [
+    { id: "1", title: t.home.firstRideFree, subtitle: t.home.useCode + ": MASAR1", color: "#FFD700", textColor: "#1A0533", emoji: "🎉" },
+    { id: "2", title: t.home.monthlySubscription, subtitle: t.home.saveUpTo40, color: "#1A0533", textColor: "#FFFFFF", emoji: "💰" },
+  ];
+
+  const quickDestinations = [
+    { id: "1", name: t.home.republicanHospital, icon: "🏥", distance: "3.2 " + t.common.km },
+    { id: "2", name: t.home.mosulUniversity, icon: "🎓", distance: "5.8 " + t.common.km },
+    { id: "3", name: t.home.shaarMarket, icon: "🛒", distance: "1.5 " + t.common.km },
+  ];
 
   const colors = {
     scrollBg: isDark ? "#0D0019" : "#F0EBF8",
@@ -65,14 +66,14 @@ export default function HomeScreen() {
     if (id === "ride") router.push("/ride-type-select" as any);
     else if (id === "delivery") router.push("/delivery/new" as any);
     else if (id === "subscription") router.push("/subscription" as any);
-    else if (id === "women") router.push("/ride/book" as any);
+    else if (id === "intercity") router.push("/intercity" as any);
   };
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <StatusBar style="light" />
 
-      {/* Header — always dark purple */}
+      {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <TouchableOpacity onPress={() => router.push("/(tabs)/profile" as any)}>
@@ -87,8 +88,8 @@ export default function HomeScreen() {
             )}
           </TouchableOpacity>
           <View>
-            <Text style={styles.greeting}>مرحباً 👋</Text>
-            <Text style={styles.userName}>{passenger?.name || passenger?.phone || "مستخدم مسار"}</Text>
+            <Text style={styles.greeting}>{t.home.hello} 👋</Text>
+            <Text style={styles.userName}>{passenger?.name || passenger?.phone || t.home.masarUser}</Text>
           </View>
         </View>
         <TouchableOpacity style={styles.notifBtn}>
@@ -108,12 +109,12 @@ export default function HomeScreen() {
           onPress={() => router.push("/ride-type-select" as any)}
         >
           <Text style={styles.searchIcon}>🔍</Text>
-          <Text style={[styles.searchInput, { color: colors.searchPlaceholder }]}>إلى أين تريد الذهاب؟</Text>
+          <Text style={[styles.searchInput, { color: colors.searchPlaceholder }]}>{t.home.whereToGo}</Text>
         </TouchableOpacity>
 
         {/* Services Grid */}
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: colors.sectionTitle }]}>خدماتنا</Text>
+          <Text style={[styles.sectionTitle, { color: colors.sectionTitle }]}>{t.home.ourServices}</Text>
           <View style={styles.servicesGrid}>
             {services.map((s, i) => (
               <TouchableOpacity
@@ -130,7 +131,7 @@ export default function HomeScreen() {
 
         {/* Promo Banners */}
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: colors.sectionTitle }]}>عروض خاصة</Text>
+          <Text style={[styles.sectionTitle, { color: colors.sectionTitle }]}>{t.home.specialOffers}</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.promoScroll}>
             {promos.map((p) => (
               <TouchableOpacity key={p.id} style={[styles.promoCard, { backgroundColor: p.color }]}>
@@ -144,7 +145,7 @@ export default function HomeScreen() {
 
         {/* Quick Destinations */}
         <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: colors.sectionTitle }]}>وجهات مقترحة</Text>
+          <Text style={[styles.sectionTitle, { color: colors.sectionTitle }]}>{t.home.suggestedDestinations}</Text>
           {quickDestinations.map((d) => (
             <TouchableOpacity
               key={d.id}
@@ -167,8 +168,8 @@ export default function HomeScreen() {
         <TouchableOpacity style={styles.safetyBanner}>
           <Text style={styles.safetyEmoji}>🛡️</Text>
           <View style={styles.safetyText}>
-            <Text style={styles.safetyTitle}>رحلاتك آمنة دائماً</Text>
-            <Text style={styles.safetySubtitle}>جميع السائقين موثّقون ومعتمدون</Text>
+            <Text style={styles.safetyTitle}>{t.home.safeRides}</Text>
+            <Text style={styles.safetySubtitle}>{t.home.allDriversVerified}</Text>
           </View>
           <Text style={styles.safetyArrow}>←</Text>
         </TouchableOpacity>
@@ -248,11 +249,12 @@ const styles = StyleSheet.create({
   destArrow: { color: "#FFD700", fontSize: 20, fontWeight: "700" },
   safetyBanner: {
     flexDirection: "row", alignItems: "center", backgroundColor: "#1A0533",
-    borderRadius: 18, padding: 18, marginHorizontal: 20, marginBottom: 20, gap: 14,
+    borderRadius: 18, marginHorizontal: 20, marginBottom: 20, padding: 16,
+    borderWidth: 1, borderColor: "#2D1B69", gap: 12,
   },
-  safetyEmoji: { fontSize: 32 },
+  safetyEmoji: { fontSize: 28 },
   safetyText: { flex: 1, alignItems: "flex-end" },
   safetyTitle: { color: "#FFFFFF", fontSize: 15, fontWeight: "700" },
-  safetySubtitle: { color: "rgba(255,255,255,0.6)", fontSize: 12, marginTop: 2 },
-  safetyArrow: { color: "#FFD700", fontSize: 20, fontWeight: "700" },
+  safetySubtitle: { color: "#9B8AB0", fontSize: 12, marginTop: 2 },
+  safetyArrow: { color: "#FFD700", fontSize: 20 },
 });
