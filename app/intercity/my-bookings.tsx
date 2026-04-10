@@ -337,6 +337,8 @@ export default function MyIntercityBookingsScreen() {
                           carPlate: driver.vehiclePlate || "",
                           fromCity,
                           toCity,
+                          passengerLat: item.pickupLat?.toString() || "",
+                          passengerLng: item.pickupLng?.toString() || "",
                         },
                       } as any)
                     }

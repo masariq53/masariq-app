@@ -109,7 +109,27 @@ export default function IntercityTrackingScreen() {
     };
   }, []);
 
-  // جلب موقع السائق كل 5 ثوانٍ
+  // إذا لم يأت ETA من DB ولا من موقع السائق بعد 10 ثواني من فتح الشاشة في حالة heading احسب تقديري
+  useEffect(() => {
+    if (approachStatus !== "heading") return;
+    const timer = setTimeout(() => {
+      if (etaMinutes === null && passengerLat && passengerLng) {
+        const pLat = parseFloat(passengerLat);
+        const pLng = parseFloat(passengerLng);
+        if (!isNaN(pLat) && !isNaN(pLng) && driverCoords) {
+          const distKm = haversineKm(driverCoords.lat, driverCoords.lng, pLat, pLng);
+          setEtaMinutes(estimateMinutes(distKm));
+          setEtaDistKm(Math.round(distKm * 10) / 10);
+        } else if (!isNaN(pLat) && !isNaN(pLng)) {
+          // لا يوجد موقع سائق بعد — اعطي تقدير افتراضي بسيط
+          setEtaMinutes(10);
+        }
+      }
+    }, 8000); // بعد 8 ثواني إذا لم يظهر ETA
+    return () => clearTimeout(timer);
+  }, [approachStatus, etaMinutes, passengerLat, passengerLng, driverCoords]);
+
+  // جلب موقع السائق كل 5 ثواني
   const locationQuery = trpc.intercity.getDriverLocation.useQuery(
     { tripId: parseInt(tripId || "0") },
     { enabled: !!tripId, refetchInterval: 5000 }
@@ -140,8 +160,8 @@ export default function IntercityTrackingScreen() {
         }
       }
 
-      // إذا كان الـ booking يحتوي على ETA من الـ server استخدمه مباشرة
-      if (data.etaMinutes && etaMinutes === null) {
+      // جلب ETA المخزون من DB فور فتح الشاشة (لا ينتظر تحديث موقع السائق)
+      if (data.etaMinutes && data.etaMinutes > 0 && etaMinutes === null) {
         setEtaMinutes(data.etaMinutes);
       }
     }
