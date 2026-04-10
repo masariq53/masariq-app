@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import {
   View, Text, TouchableOpacity, FlatList,
   ActivityIndicator, Alert, StyleSheet, Modal,
-  RefreshControl,
+  RefreshControl, Linking,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { ScreenContainer } from "@/components/screen-container";
@@ -32,8 +32,10 @@ const STATUS_ICONS: Record<TripStatus, string> = {
   cancelled: "❌",
 };
 
-function formatDate(dateStr: string | Date) {
-  const d = new Date(dateStr);
+function formatDate(val: string | Date | null | undefined) {
+  if (!val) return "—";
+  const d = typeof val === "string" ? new Date(val) : val;
+  if (isNaN(d.getTime())) return "—";
   return (
     d.toLocaleDateString("ar-IQ", { weekday: "long", month: "short", day: "numeric" }) +
     "  " +
@@ -86,7 +88,11 @@ export default function MyIntercityBookingsScreen() {
     setRefreshing(false);
   };
 
-  const handleCancel = (bookingId: number) => {
+  const handleCancel = (bookingId: number, tripStatus: TripStatus) => {
+    if (tripStatus === "in_progress" || tripStatus === "completed") {
+      Alert.alert("تنبيه", "لا يمكن إلغاء الحجز بعد انطلاق الرحلة");
+      return;
+    }
     Alert.alert("إلغاء الحجز", "هل أنت متأكد من إلغاء هذا الحجز؟", [
       { text: "لا", style: "cancel" },
       {
@@ -95,6 +101,12 @@ export default function MyIntercityBookingsScreen() {
         onPress: () => cancelBooking.mutate({ bookingId, passengerId: passenger!.id }),
       },
     ]);
+  };
+
+  const callDriver = (phone: string) => {
+    Linking.openURL(`tel:${phone}`).catch(() =>
+      Alert.alert("خطأ", "لا يمكن فتح تطبيق الهاتف")
+    );
   };
 
   const handleRate = (bookingId: number, tripId: number) => {
@@ -162,7 +174,14 @@ export default function MyIntercityBookingsScreen() {
             <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#FFD700" />
           }
           renderItem={({ item }) => {
-            const status = (item.tripStatus || "scheduled") as TripStatus;
+            const trip = item.trip;
+            const driver = item.driver;
+            const status = (trip?.status || item.tripStatus || "scheduled") as TripStatus;
+            const fromCity = trip?.fromCity ?? "—";
+            const toCity = trip?.toCity ?? "—";
+            const departureTime = trip?.departureTime ?? null;
+            const canCancel = status === "scheduled";
+
             return (
               <View style={styles.bookingCard}>
                 {/* Status Badge */}
@@ -179,53 +198,71 @@ export default function MyIntercityBookingsScreen() {
 
                 {/* Route */}
                 <Text style={styles.route}>
-                  {item.fromCity} {">"} {item.toCity}
+                  {fromCity} {"→"} {toCity}
                 </Text>
-                <Text style={styles.detail}>🕐 {formatDate(item.departureTime)}</Text>
+                <Text style={styles.detail}>🕐 {formatDate(departureTime)}</Text>
                 <Text style={styles.detail}>💺 {item.seatsBooked} مقعد</Text>
-                <Text style={styles.detail}>💰 {parseInt(item.totalPrice).toLocaleString()} دينار (كاش)</Text>
+                <Text style={styles.detail}>💰 {parseInt(item.totalPrice ?? "0").toLocaleString()} دينار (كاش)</Text>
                 {item.pickupAddress ? (
-                  <Text style={styles.detail}>📍 {item.pickupAddress}</Text>
+                  <Text style={styles.detail}>📍 موقع استلامك: {item.pickupAddress}</Text>
                 ) : null}
-                {item.meetingPoint ? (
-                  <Text style={styles.detail}>📌 نقطة التجمع: {item.meetingPoint}</Text>
+                {trip?.meetingPoint ? (
+                  <Text style={styles.detail}>📌 نقطة التجمع: {trip.meetingPoint}</Text>
+                ) : null}
+                {item.passengerNote ? (
+                  <Text style={styles.detail}>📝 ملاحظتك: {item.passengerNote}</Text>
                 ) : null}
 
-                {/* Captain Info */}
-                {item.driverName ? (
+                {/* Captain Info — يظهر دائماً بعد الحجز */}
+                {driver ? (
                   <View style={styles.captainBox}>
-                    <Text style={styles.captainTitle}>معلومات السائق</Text>
-                    <Text style={styles.captainDetail}>👤 {item.driverName}</Text>
-                    {item.driverPhone ? (
-                      <Text style={styles.captainDetail}>📞 {item.driverPhone}</Text>
+                    <Text style={styles.captainTitle}>👨‍✈️ معلومات السائق</Text>
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                      <Text style={styles.captainDetail}>👤 {driver.name}</Text>
+                      {driver.rating ? (
+                        <Text style={{ color: "#FFD700", fontWeight: "bold" }}>⭐ {parseFloat(driver.rating).toFixed(1)}</Text>
+                      ) : null}
+                    </View>
+                    {driver.vehicleModel ? (
+                      <Text style={styles.captainDetail}>🚗 {driver.vehicleModel}{driver.vehicleColor ? ` (${driver.vehicleColor})` : ""}</Text>
                     ) : null}
-                    {item.carModel ? (
-                      <Text style={styles.captainDetail}>🚗 {item.carModel}</Text>
+                    {driver.vehiclePlate ? (
+                      <Text style={styles.captainDetail}>🔢 {driver.vehiclePlate}</Text>
                     ) : null}
-                    {item.carPlate ? (
-                      <Text style={styles.captainDetail}>🔢 {item.carPlate}</Text>
+                    {driver.phone ? (
+                      <TouchableOpacity
+                        style={styles.callBtn}
+                        onPress={() => callDriver(driver.phone)}
+                      >
+                        <Text style={styles.callBtnText}>📞 اتصل بالسائق</Text>
+                      </TouchableOpacity>
                     ) : null}
                   </View>
                 ) : null}
 
-                {/* Notes */}
-                {item.notes ? (
+                {/* Driver notes */}
+                {trip?.notes ? (
                   <View style={styles.notesBox}>
-                    <Text style={styles.notesLabel}>📝 ملاحظات السائق:</Text>
-                    <Text style={styles.notesText}>{item.notes}</Text>
+                    <Text style={styles.notesLabel}>📋 ملاحظات السائق:</Text>
+                    <Text style={styles.notesText}>{trip.notes}</Text>
                   </View>
                 ) : null}
 
                 {/* Actions */}
                 <View style={styles.actionsRow}>
-                  {status === "scheduled" && (
+                  {canCancel && (
                     <TouchableOpacity
                       style={styles.cancelBtn}
-                      onPress={() => handleCancel(item.id)}
+                      onPress={() => handleCancel(item.id, status)}
                       disabled={cancelBooking.isPending}
                     >
                       <Text style={styles.cancelBtnText}>إلغاء الحجز</Text>
                     </TouchableOpacity>
+                  )}
+                  {status === "in_progress" && (
+                    <View style={[styles.statusBadge, { backgroundColor: "#22C55E22", borderColor: "#22C55E" }]}>
+                      <Text style={{ color: "#22C55E", fontWeight: "bold" }}>🚗 الرحلة جارية</Text>
+                    </View>
                   )}
                   {status === "completed" && !item.passengerRating ? (
                     <TouchableOpacity
@@ -339,4 +376,6 @@ const styles = StyleSheet.create({
   ratingCancelText: { color: "#9B8EC4", fontSize: 15, fontWeight: "700" },
   ratingConfirmBtn: { flex: 1, backgroundColor: "#FFD700", borderRadius: 14, padding: 14, alignItems: "center" },
   ratingConfirmText: { color: "#1A0533", fontSize: 15, fontWeight: "800" },
+  callBtn: { backgroundColor: "#22C55E22", borderRadius: 10, padding: 10, alignItems: "center", marginTop: 8, borderWidth: 1, borderColor: "#22C55E" },
+  callBtnText: { color: "#22C55E", fontSize: 13, fontWeight: "700" },
 });

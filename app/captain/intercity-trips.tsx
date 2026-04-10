@@ -24,8 +24,10 @@ const STATUS_COLORS: Record<TripStatus, string> = {
   cancelled: "#F87171",
 };
 
-function formatDate(dateStr: string | Date) {
-  const d = new Date(dateStr);
+function formatDate(val: string | Date | null | undefined) {
+  if (!val) return "—";
+  const d = typeof val === "string" ? new Date(val) : val;
+  if (isNaN(d.getTime())) return "—";
   return d.toLocaleDateString("ar-IQ", {
     weekday: "short", year: "numeric", month: "short", day: "numeric",
   }) + "  " + d.toLocaleTimeString("ar-IQ", { hour: "2-digit", minute: "2-digit" });
@@ -80,7 +82,15 @@ export default function CaptainIntercityTripsScreen() {
     ]);
   };
 
-  const handleCancelTrip = (tripId: number) => {
+  const handleCancelTrip = (tripId: number, status: TripStatus) => {
+    if (status === "in_progress") {
+      Alert.alert("تنبيه", "لا يمكن إلغاء رحلة جارية. أكمل الرحلة أولاً.");
+      return;
+    }
+    if (status === "completed") {
+      Alert.alert("تنبيه", "لا يمكن إلغاء رحلة مكتملة.");
+      return;
+    }
     Alert.alert("❌ إلغاء الرحلة", "هل أنت متأكد؟ سيتم إشعار المسافرين.", [
       { text: "لا", style: "cancel" },
       { text: "نعم، ألغِ", style: "destructive", onPress: () => cancelTrip.mutate({ tripId, driverId: driverId! }) },
@@ -170,7 +180,7 @@ export default function CaptainIntercityTripsScreen() {
                       </TouchableOpacity>
                       <TouchableOpacity
                         style={[styles.actionBtn, styles.cancelBtnStyle]}
-                        onPress={() => handleCancelTrip(item.id)}
+                        onPress={() => handleCancelTrip(item.id, status)}
                         disabled={cancelTrip.isPending}
                       >
                         <Text style={styles.cancelBtnText}>❌ إلغاء</Text>

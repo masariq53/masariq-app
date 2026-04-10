@@ -71,6 +71,7 @@ import {
   getDb,
   getAllIntercityTripsAdmin,
   adminCancelIntercityTrip,
+  getAdminTripPassengers,
 } from "./db";
 import { storagePut } from "./storage";
 
@@ -1801,6 +1802,12 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         await adminCancelIntercityTrip(input.tripId);
         return { success: true };
+      }),
+    // Admin: Get passengers for a specific intercity trip
+    intercityTripPassengers: publicProcedure
+      .input(z.object({ tripId: z.number() }))
+      .query(async ({ input }) => {
+        return getAdminTripPassengers(input.tripId);
       }),
   }),
   // ─── Intercity Trips ───────────────────────────────────────────────────────────

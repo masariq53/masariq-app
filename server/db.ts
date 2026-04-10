@@ -1646,6 +1646,25 @@ export async function getAllIntercityTripsAdmin(limit = 100, offset = 0) {
 }
 
 /**
+ * Admin: Get passengers for a specific intercity trip
+ */
+export async function getAdminTripPassengers(tripId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const bookings = await db
+    .select()
+    .from(intercityBookings)
+    .where(
+      and(
+        eq(intercityBookings.tripId, tripId),
+        ne(intercityBookings.status, "cancelled")
+      )
+    )
+    .orderBy(intercityBookings.createdAt);
+  return bookings;
+}
+
+/**
  * Admin: Cancel an intercity trip
  */
 export async function adminCancelIntercityTrip(tripId: number) {

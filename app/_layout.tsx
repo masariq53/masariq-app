@@ -16,6 +16,7 @@ import {
 } from "react-native-safe-area-context";
 import type { EdgeInsets, Metrics, Rect } from "react-native-safe-area-context";
 import * as Notifications from "expo-notifications";
+import { useAudioPlayer, setAudioModeAsync } from "expo-audio";
 
 import { trpc, createTRPCClient } from "@/lib/trpc";
 import { PassengerProvider } from "@/lib/passenger-context";
@@ -36,6 +37,13 @@ export const unstable_settings = {
 function NotificationHandler() {
   const { logout } = useDriver();
   const notificationListener = useRef<Notifications.EventSubscription | null>(null);
+  const bookingSound = useAudioPlayer(require("../assets/sounds/new-booking.mp3"));
+
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+    // Enable audio in silent mode
+    setAudioModeAsync({ playsInSilentMode: true }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (Platform.OS === "web") return;
@@ -43,6 +51,16 @@ function NotificationHandler() {
     // Listen for notifications received while app is in foreground
     notificationListener.current = Notifications.addNotificationReceivedListener((notification) => {
       const data = notification.request.content.data as any;
+
+      // Play sound for new intercity booking
+      if (data?.type === "intercity_booking") {
+        try {
+          bookingSound.seekTo(0);
+          bookingSound.play();
+        } catch (e) {
+          console.warn("[Sound] Failed to play booking sound:", e);
+        }
+      }
 
       if (data?.type === "account_blocked") {
         const reason = data.blockReason || "تم تعطيل حسابك من قِبل الإدارة";
