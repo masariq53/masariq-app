@@ -52,23 +52,7 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-// تقدير وقت الوصول بالدقائق (fallback عند فشل OSRM)
-// OSRM يستخدم سرعة متوسطة ~75 كم/ساعة للطرق السريعة بين المدن
-function estimateMinutes(distKm: number) {
-  // سرعة مطابقة لـ OSRM: مدينة 30، طريق مختلط 55، طريق سريع 75 كم/ساعة
-  const avgSpeedKmh = distKm < 15 ? 30 : distKm < 50 ? 55 : 75;
-  return Math.max(1, Math.round((distKm / avgSpeedKmh) * 60));
-}
-
-// تنسيق ETA: أقل من ساعة = "45 د" | ساعة فأكثر = "1 س 25 د"
-function formatEta(minutes: number): string {
-  if (minutes < 60) return `${minutes} د`;
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  return m === 0 ? `${h} س` : `${h} س ${m} د`;
-}
-
-// fetchOSRMEta تم استبدالها بـ fetchOsrmRoute من @/lib/osrm التي تجلب المسار كاملاً
+// fetchOsrmRoute من @/lib/osrm يُستخدم لرسم مسار الطريق فقط
 
 export default function IntercityTrackingScreen() {
   const router = useRouter();
@@ -90,8 +74,6 @@ export default function IntercityTrackingScreen() {
   const [approachStatus, setApproachStatus] = useState<ApproachStatus>("idle");
   const [prevApproachStatus, setPrevApproachStatus] = useState<ApproachStatus>("idle");
   const [driverCoords, setDriverCoords] = useState<{ lat: number; lng: number } | null>(null);
-  const [etaMinutes, setEtaMinutes] = useState<number | null>(null);
-  const [etaDistKm, setEtaDistKm] = useState<number | null>(null);
   const [soundPlayed, setSoundPlayed] = useState(false);
   // مسار الطريق الفعلي من OSRM
   const [routePolyline, setRoutePolyline] = useState<LatLng[]>([]);
@@ -118,26 +100,6 @@ export default function IntercityTrackingScreen() {
       arrivedPlayer.release();
     };
   }, []);
-
-  // إذا لم يأت ETA من DB ولا من موقع السائق بعد 10 ثواني من فتح الشاشة في حالة heading احسب تقديري
-  useEffect(() => {
-    if (approachStatus !== "heading") return;
-    const timer = setTimeout(() => {
-      if (etaMinutes === null && passengerLat && passengerLng) {
-        const pLat = parseFloat(passengerLat);
-        const pLng = parseFloat(passengerLng);
-        if (!isNaN(pLat) && !isNaN(pLng) && driverCoords) {
-          const distKm = haversineKm(driverCoords.lat, driverCoords.lng, pLat, pLng);
-          setEtaMinutes(estimateMinutes(distKm));
-          setEtaDistKm(Math.round(distKm * 10) / 10);
-        } else if (!isNaN(pLat) && !isNaN(pLng)) {
-          // لا يوجد موقع سائق بعد — اعطي تقدير افتراضي بسيط
-          setEtaMinutes(10);
-        }
-      }
-    }, 8000); // بعد 8 ثواني إذا لم يظهر ETA
-    return () => clearTimeout(timer);
-  }, [approachStatus, etaMinutes, passengerLat, passengerLng, driverCoords]);
 
   // جلب موقع السائق كل 5 ثواني
   const locationQuery = trpc.intercity.getDriverLocation.useQuery(
@@ -170,10 +132,7 @@ export default function IntercityTrackingScreen() {
         }
       }
 
-      // جلب ETA المخزون من DB فور فتح الشاشة (لا ينتظر تحديث موقع السائق)
-      if (data.etaMinutes && data.etaMinutes > 0 && etaMinutes === null) {
-        setEtaMinutes(data.etaMinutes);
-      }
+
     }
   }, [bookingStatusQuery.data]);
 
@@ -198,7 +157,7 @@ export default function IntercityTrackingScreen() {
 
         setDriverCoords({ lat: newLat, lng: newLng });
 
-        // جلب مسار الطريق الفعلي من OSRM (يتضمن ETA والمسافة والمسار)
+        // جلب مسار الطريق الفعلي من OSRM لرسم الخط الأزرق
         if (passengerLat && passengerLng) {
           const pLat = parseFloat(passengerLat);
           const pLng = parseFloat(passengerLng);
@@ -207,18 +166,9 @@ export default function IntercityTrackingScreen() {
               { latitude: newLat, longitude: newLng },
               { latitude: pLat, longitude: pLng }
             ).then((osrmResult) => {
-              if (osrmResult) {
-                setEtaMinutes(osrmResult.durationMin);
-                setEtaDistKm(osrmResult.distanceKm);
-                // تحديث مسار الخريطة بالمسار الحقيقي
-                if (osrmResult.coords.length >= 2) {
-                  setRoutePolyline(osrmResult.coords);
-                }
+              if (osrmResult && osrmResult.coords.length >= 2) {
+                setRoutePolyline(osrmResult.coords);
               } else {
-                // فالباك: حساب بسيط بدون مسار
-                const distKm = haversineKm(newLat, newLng, pLat, pLng);
-                setEtaMinutes(estimateMinutes(distKm));
-                setEtaDistKm(Math.round(distKm * 10) / 10);
                 setRoutePolyline([]);
               }
             });
@@ -342,19 +292,6 @@ export default function IntercityTrackingScreen() {
           )}
         </MapView>
 
-        {/* ETA Badge */}
-        {etaMinutes !== null && approachStatus === "heading" && (
-          <View style={styles.etaBadge}>
-            <Text style={styles.etaLabel}>وقت الوصول</Text>
-            <View style={styles.etaRow}>
-              <Text style={styles.etaTime}>{formatEta(etaMinutes!)}</Text>
-            </View>
-            {etaDistKm !== null && (
-              <Text style={styles.etaDist}>{etaDistKm} كم</Text>
-            )}
-          </View>
-        )}
-
         {/* No location overlay */}
         {!driverCoords && (
           <View style={styles.noLocationOverlay}>
@@ -375,21 +312,7 @@ export default function IntercityTrackingScreen() {
             <Text style={[styles.statusTitle, { color: statusConfig.color }]}>
               {statusConfig.title}
             </Text>
-            {/* ETA بارز عند حالة heading */}
-            {approachStatus === "heading" && etaMinutes !== null ? (
-              <View style={styles.etaStatusRow}>
-                <Text style={[styles.etaStatusTime, { color: statusConfig.color }]}>
-                  ⧱ يصل خلال {formatEta(etaMinutes!)}
-                </Text>
-                {etaDistKm !== null && (
-                  <Text style={styles.etaStatusDist}> • {etaDistKm} كم</Text>
-                )}
-              </View>
-            ) : approachStatus === "heading" ? (
-              <Text style={styles.statusSubtitle}>جاري حساب وقت الوصول...</Text>
-            ) : (
-              <Text style={styles.statusSubtitle}>{statusConfig.subtitle}</Text>
-            )}
+            <Text style={styles.statusSubtitle}>{statusConfig.subtitle}</Text>
           </View>
         </View>
 
@@ -436,14 +359,6 @@ export default function IntercityTrackingScreen() {
           <Text style={styles.driverCar}>
             {carModel || "السيارة"}{carPlate ? ` • ${carPlate}` : ""}
           </Text>
-          {etaMinutes !== null && approachStatus === "heading" && (
-            <View style={styles.etaInlineRow}>
-              <Text style={styles.etaInline}>⧱ يصل خلال {formatEta(etaMinutes!)}</Text>
-              {etaDistKm !== null && (
-                <Text style={styles.etaInlineDist}> • {etaDistKm} كم</Text>
-              )}
-            </View>
-          )}
           {approachStatus === "arrived_at_pickup" && (
             <Text style={styles.arrivedInline}>✅ وصل إلى موقعك</Text>
           )}

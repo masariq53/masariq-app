@@ -11,7 +11,6 @@ import * as Location from "expo-location";
 import { ScreenContainer } from "@/components/screen-container";
 import { trpc } from "@/lib/trpc";
 import { useDriver } from "@/lib/driver-context";
-import { fetchOsrmRoute } from "@/lib/osrm";
 
 const CANCEL_PRESETS = [
   { label: "⚠️ ظرف طارئ" },
@@ -124,37 +123,9 @@ export default function IntercityPassengersScreen() {
   const handleHeadingToPassenger = async (bookingId: number, passengerName: string, passengerLat?: string | null, passengerLng?: string | null) => {
     if (!driver?.id) return;
 
-    // حساب ETA باستخدام fetchOsrmRoute (يطبق معامل الازدحام الصحيح)
-    let etaText = "";
-    let etaMinutes: number | undefined;
-    if (passengerLat && passengerLng) {
-      try {
-        const { status: locStatus } = await Location.requestForegroundPermissionsAsync();
-        if (locStatus === "granted") {
-          const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-          const pLat = parseFloat(passengerLat);
-          const pLng = parseFloat(passengerLng);
-          if (!isNaN(pLat) && !isNaN(pLng)) {
-            const osrmResult = await fetchOsrmRoute(
-              { latitude: loc.coords.latitude, longitude: loc.coords.longitude },
-              { latitude: pLat, longitude: pLng }
-            );
-            if (osrmResult) {
-              etaMinutes = osrmResult.durationMin;
-              // تنسيق ساعة:دقيقة
-              const h = Math.floor(etaMinutes / 60);
-              const m = etaMinutes % 60;
-              const etaFormatted = h > 0 ? (m > 0 ? `${h} ساعة ${m} د` : `${h} ساعة`) : `${m} دقيقة`;
-              etaText = ` — يصل خلال ${etaFormatted}`;
-            }
-          }
-        }
-      } catch {}
-    }
-
     Alert.alert(
       "🧭 التوجه إلى الراكب",
-      `هل تريد إشعار ${passengerName} بأنك في طريقك إليه؟${etaText}`,
+      `هل تريد إشعار ${passengerName} بأنك في طريقك إليه؟`,
       [
         { text: "تراجع", style: "cancel" },
         {
@@ -165,7 +136,6 @@ export default function IntercityPassengersScreen() {
               bookingId,
               driverId: driver.id,
               status: "heading",
-              etaMinutes,
             } as any);
             // بدء إرسال الموقع فوراً ليرى الراكب موقع السائق
             startLocationTracking();
