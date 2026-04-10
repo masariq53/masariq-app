@@ -84,23 +84,8 @@ const config: ExpoConfig = {
     output: "static",
     favicon: "./assets/images/favicon.png",
   },
-  extra: {
-    eas: {
-      projectId: "mosul-ride-app",
-    },
-  },
   plugins: [
     "expo-router",
-    [
-      "expo-notifications",
-      {
-        icon: "./assets/images/icon.png",
-        color: "#6C3FE8",
-        sounds: [],
-        androidMode: "default",
-        androidCollapsedTitle: "مسار",
-      },
-    ],
     [
       "expo-image-picker",
       {

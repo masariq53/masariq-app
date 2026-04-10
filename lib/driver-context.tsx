@@ -53,24 +53,7 @@ export function DriverProvider({ children }: { children: React.ReactNode }) {
       try {
         const stored = await AsyncStorage.getItem(DRIVER_STORAGE_KEY);
         if (stored) {
-          const driverSession = JSON.parse(stored) as DriverSession;
-          setDriverState(driverSession);
-          // تسجيل push token عند استعادة الجلسة لضمان تحديث التوكن في DB
-          registerDriverPushToken()
-            .then(async (token) => {
-              if (token && driverSession.id) {
-                try {
-                  await _trpcClient.rides.savePushToken.mutate({
-                    driverId: driverSession.id,
-                    token,
-                  });
-                  console.log("[DriverContext] Push token refreshed on session restore");
-                } catch (e) {
-                  console.warn("[DriverContext] Failed to save push token on restore:", e);
-                }
-              }
-            })
-            .catch(() => {});
+          setDriverState(JSON.parse(stored));
         }
       } catch (e) {
         console.warn("[DriverContext] Failed to load session:", e);

@@ -1,6 +1,4 @@
 import * as Notifications from "expo-notifications";
-import * as Device from "expo-device";
-import Constants from "expo-constants";
 import { Platform } from "react-native";
 
 // Handler مشترك مع driver-notifications (يُضبط مرة واحدة)
@@ -9,16 +7,9 @@ import { Platform } from "react-native";
 /**
  * طلب صلاحيات الإشعارات للراكب وإعداد قناة Android.
  * يُستدعى عند تسجيل الدخول أو أول استخدام.
- * يعيد Expo Push Token أو null إذا فشل.
  */
 export async function registerPassengerNotifications(): Promise<string | null> {
   if (Platform.OS === "web") return null;
-
-  // الإشعارات تعمل فقط على الأجهزة الحقيقية
-  if (!Device.isDevice) {
-    console.warn("[Push] Push notifications only work on physical devices");
-    return null;
-  }
 
   if (Platform.OS === "android") {
     await Notifications.setNotificationChannelAsync("passenger-alerts", {
@@ -38,24 +29,12 @@ export async function registerPassengerNotifications(): Promise<string | null> {
     finalStatus = status;
   }
 
-  if (finalStatus !== "granted") {
-    console.warn("[Push] Passenger notification permission denied");
-    return null;
-  }
+  if (finalStatus !== "granted") return null;
 
   try {
-    // الحصول على projectId من Expo config
-    const projectId =
-      Constants?.expoConfig?.extra?.eas?.projectId ??
-      Constants?.easConfig?.projectId;
-
-    const tokenData = await Notifications.getExpoPushTokenAsync(
-      projectId ? { projectId } : undefined
-    );
-    console.log("[Push] Passenger push token registered:", tokenData.data.substring(0, 30) + "...");
+    const tokenData = await Notifications.getExpoPushTokenAsync();
     return tokenData.data;
-  } catch (e) {
-    console.warn("[Push] Failed to get passenger push token:", e);
+  } catch {
     return null;
   }
 }

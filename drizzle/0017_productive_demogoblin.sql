@@ -1,1 +1,0 @@
-ALTER TABLE `passengers` ADD `pushToken` text;

@@ -97,19 +97,6 @@ export default function IntercityPassengersScreen() {
     };
   }, []);
 
-  // استئناف تتبع الموقع تلقائياً عند تحميل البيانات من DB
-  // إذا كان أي راكب في حالة heading في DB
-  useEffect(() => {
-    if (!passengers) return;
-    const hasHeadingPassenger = passengers.some(
-      (p) => p.status !== "cancelled" && (p as any).driverApproachStatus === "heading"
-    );
-    if (hasHeadingPassenger) {
-      startLocationTracking();
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [passengers]);
-
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await refetch();
