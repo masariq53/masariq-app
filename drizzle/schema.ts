@@ -261,6 +261,8 @@ export const intercityTrips = mysqlTable("intercityTrips", {
   meetingPoint: text("meetingPoint"),
   notes: text("notes"),
   status: mysqlEnum("status", ["scheduled", "in_progress", "completed", "cancelled"]).default("scheduled").notNull(),
+  cancelReason: text("cancelReason"),
+  cancelledBy: mysqlEnum("cancelledBy", ["driver", "admin"]),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });

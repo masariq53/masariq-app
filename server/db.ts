@@ -1155,13 +1155,35 @@ export async function getDriverIntercityTrips(driverId: number) {
 /**
  * Cancel an intercity trip (by driver)
  */
-export async function cancelIntercityTrip(tripId: number, driverId: number) {
+export async function cancelIntercityTrip(tripId: number, driverId: number, cancelReason?: string) {
   const db = await getDb();
-  if (!db) return;
+  if (!db) return null;
+  // فحص الرحلة والتحقق من الصلاحية
+  const [trip] = await db
+    .select()
+    .from(intercityTrips)
+    .where(and(eq(intercityTrips.id, tripId), eq(intercityTrips.driverId, driverId)))
+    .limit(1);
+  if (!trip) throw new Error("الرحلة غير موجودة أو غير مصرح");
+  if (trip.status === "in_progress") throw new Error("لا يمكن إلغاء رحلة جارية");
+  if (trip.status === "completed") throw new Error("لا يمكن إلغاء رحلة مكتملة");
+  // تحديث حالة الرحلة مع سبب الإلغاء
   await db
     .update(intercityTrips)
-    .set({ status: "cancelled" })
-    .where(and(eq(intercityTrips.id, tripId), eq(intercityTrips.driverId, driverId)));
+    .set({ status: "cancelled", cancelReason: cancelReason || null, cancelledBy: "driver" } as any)
+    .where(eq(intercityTrips.id, tripId));
+  // إلغاء جميع الحجوزات وإعادة المقاعد
+  const bookings = await db
+    .select()
+    .from(intercityBookings)
+    .where(and(eq(intercityBookings.tripId, tripId), eq(intercityBookings.status, "confirmed")));
+  if (bookings.length > 0) {
+    await db
+      .update(intercityBookings)
+      .set({ status: "cancelled" })
+      .where(and(eq(intercityBookings.tripId, tripId), eq(intercityBookings.status, "confirmed")));
+  }
+  return { trip, bookings, cancelReason };
 }
 
 /**

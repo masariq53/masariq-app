@@ -248,6 +248,22 @@ export default function MyIntercityBookingsScreen() {
                   </View>
                 ) : null}
 
+                {/* Cancel reason — shown when trip cancelled by driver */}
+                {status === "cancelled" && (trip?.cancelledBy === "driver" || item.status === "cancelled") ? (
+                  <View style={styles.cancelledByDriverBox}>
+                    <Text style={styles.cancelledByDriverTitle}>❌ تم إلغاء هذه الرحلة من قبل السائق</Text>
+                    {trip?.cancelReason ? (
+                      <>
+                        <Text style={styles.cancelledByDriverReasonLabel}>سبب الإلغاء:</Text>
+                        <Text style={styles.cancelledByDriverReason}>{trip.cancelReason}</Text>
+                      </>
+                    ) : (
+                      <Text style={styles.cancelledByDriverReason}>لم يذكر السائق سبباً للإلغاء.</Text>
+                    )}
+                    <Text style={styles.cancelledByDriverNote}>يمكنك تصفح رحلات أخرى وحجز بديلاً.</Text>
+                  </View>
+                ) : null}
+
                 {/* Actions */}
                 <View style={styles.actionsRow}>
                   {canCancel && (
@@ -378,4 +394,16 @@ const styles = StyleSheet.create({
   ratingConfirmText: { color: "#1A0533", fontSize: 15, fontWeight: "800" },
   callBtn: { backgroundColor: "#22C55E22", borderRadius: 10, padding: 10, alignItems: "center", marginTop: 8, borderWidth: 1, borderColor: "#22C55E" },
   callBtnText: { color: "#22C55E", fontSize: 13, fontWeight: "700" },
+  cancelledByDriverBox: {
+    backgroundColor: "#2D0A0A",
+    borderRadius: 12,
+    padding: 14,
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: "#EF444444",
+  },
+  cancelledByDriverTitle: { color: "#F87171", fontSize: 14, fontWeight: "800", marginBottom: 8 },
+  cancelledByDriverReasonLabel: { color: "#FCA5A5", fontSize: 12, fontWeight: "700", marginBottom: 4 },
+  cancelledByDriverReason: { color: "#FCA5A5", fontSize: 13, lineHeight: 20, marginBottom: 8 },
+  cancelledByDriverNote: { color: "#9B8EC4", fontSize: 11, fontStyle: "italic" },
 });

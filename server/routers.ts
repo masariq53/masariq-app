@@ -1847,9 +1847,44 @@ export const appRouter = router({
 
     // السائق: إلغاء رحلة
     cancelTrip: publicProcedure
-      .input(z.object({ tripId: z.number(), driverId: z.number() }))
+      .input(z.object({
+        tripId: z.number(),
+        driverId: z.number(),
+        cancelReason: z.string().optional(),
+      }))
       .mutation(async ({ input }) => {
-        await cancelIntercityTrip(input.tripId, input.driverId);
+        const result = await cancelIntercityTrip(input.tripId, input.driverId, input.cancelReason);
+        // إرسال Push Notification لجميع المسافرين المحجوزين
+        if (result?.bookings && result.bookings.length > 0) {
+          const trip = result.trip;
+          const reasonText = input.cancelReason ? `\nسبب الإلغاء: ${input.cancelReason}` : "";
+          for (const booking of result.bookings) {
+            try {
+              const passengerToken = await getPassengerPushToken(booking.passengerId);
+              if (passengerToken && passengerToken.startsWith("ExponentPushToken[")) {
+                fetch("https://exp.host/--/api/v2/push/send", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", "Accept": "application/json" },
+                  body: JSON.stringify({
+                    to: passengerToken,
+                    sound: "default",
+                    title: "❌ تم إلغاء رحلتك",
+                    body: `ألغى السائق رحلة ${trip.fromCity} → ${trip.toCity}${reasonText}`,
+                    data: {
+                      type: "trip_cancelled_by_driver",
+                      tripId: trip.id,
+                      fromCity: trip.fromCity,
+                      toCity: trip.toCity,
+                      cancelReason: input.cancelReason || null,
+                    },
+                    priority: "high",
+                    badge: 1,
+                  }),
+                }).catch((err) => console.warn("[Push] Failed to notify passenger of trip cancellation:", err));
+              }
+            } catch (e) { console.warn("[Push] Error notifying passenger:", e); }
+          }
+        }
         return { success: true };
       }),
 

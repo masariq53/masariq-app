@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import {
   View, Text, TouchableOpacity, FlatList,
-  ActivityIndicator, Alert, StyleSheet, Modal, ScrollView, RefreshControl,
+  ActivityIndicator, Alert, StyleSheet, Modal, ScrollView, RefreshControl, TextInput,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { ScreenContainer } from "@/components/screen-container";
@@ -42,6 +42,11 @@ export default function CaptainIntercityTripsScreen() {
   const [showBookings, setShowBookings] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
+  // Cancel reason modal state
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelTripId, setCancelTripId] = useState<number | null>(null);
+  const [cancelReason, setCancelReason] = useState("");
+
   const tripsQuery = trpc.intercity.myTrips.useQuery(
     { driverId: driverId! },
     { enabled: !!driverId, refetchInterval: 15000 }
@@ -58,7 +63,13 @@ export default function CaptainIntercityTripsScreen() {
   });
 
   const cancelTrip = trpc.intercity.cancelTrip.useMutation({
-    onSuccess: () => { tripsQuery.refetch(); Alert.alert("✅", "تم إلغاء الرحلة"); },
+    onSuccess: () => {
+      tripsQuery.refetch();
+      setShowCancelModal(false);
+      setCancelReason("");
+      setCancelTripId(null);
+      Alert.alert("✅", "تم إلغاء الرحلة وإشعار المسافرين");
+    },
     onError: (err) => Alert.alert("خطأ", err.message),
   });
 
@@ -91,15 +102,23 @@ export default function CaptainIntercityTripsScreen() {
       Alert.alert("تنبيه", "لا يمكن إلغاء رحلة مكتملة.");
       return;
     }
-    Alert.alert("❌ إلغاء الرحلة", "هل أنت متأكد؟ سيتم إشعار المسافرين.", [
-      { text: "لا", style: "cancel" },
-      { text: "نعم، ألغِ", style: "destructive", onPress: () => cancelTrip.mutate({ tripId, driverId: driverId! }) },
-    ]);
+    // فتح modal إدخال سبب الإلغاء
+    setCancelTripId(tripId);
+    setCancelReason("");
+    setShowCancelModal(true);
   };
 
-  const openBookings = (tripId: number) => {
-    setSelectedTripId(tripId);
-    setShowBookings(true);
+  const confirmCancel = () => {
+    if (!cancelTripId || !driverId) return;
+    if (!cancelReason.trim()) {
+      Alert.alert("مطلوب", "يرجى كتابة سبب الإلغاء قبل المتابعة.");
+      return;
+    }
+    cancelTrip.mutate({
+      tripId: cancelTripId,
+      driverId,
+      cancelReason: cancelReason.trim(),
+    });
   };
 
   if (!driverId) {
@@ -162,8 +181,22 @@ export default function CaptainIntercityTripsScreen() {
                 {item.meetingPoint ? <Text style={styles.detail}>📌 {item.meetingPoint}</Text> : null}
                 {item.notes ? <Text style={styles.notes}>📝 {item.notes}</Text> : null}
 
+                {/* Cancel reason — if cancelled by driver */}
+                {status === "cancelled" && item.cancelledBy === "driver" && item.cancelReason ? (
+                  <View style={styles.cancelReasonBox}>
+                    <Text style={styles.cancelReasonLabel}>سبب الإلغاء:</Text>
+                    <Text style={styles.cancelReasonText}>{item.cancelReason}</Text>
+                  </View>
+                ) : null}
+
                 {/* Bookings Button */}
-                <TouchableOpacity style={styles.bookingsBtn} onPress={() => router.push({ pathname: "/captain/intercity-passengers", params: { tripId: item.id.toString(), tripRoute: `${item.fromCity} ← ${item.toCity}` } })}>
+                <TouchableOpacity
+                  style={styles.bookingsBtn}
+                  onPress={() => router.push({
+                    pathname: "/captain/intercity-passengers",
+                    params: { tripId: item.id.toString(), tripRoute: `${item.fromCity} ← ${item.toCity}` }
+                  })}
+                >
                   <Text style={styles.bookingsBtnText}>👥 قائمة المسافرين ({bookedSeats} حجز)</Text>
                 </TouchableOpacity>
 
@@ -202,6 +235,50 @@ export default function CaptainIntercityTripsScreen() {
           }}
         />
       )}
+
+      {/* Cancel Reason Modal */}
+      <Modal visible={showCancelModal} transparent animationType="slide" onRequestClose={() => setShowCancelModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.cancelModal}>
+            <Text style={styles.cancelModalTitle}>❌ إلغاء الرحلة</Text>
+            <Text style={styles.cancelModalDesc}>
+              سيتم إشعار جميع المسافرين المحجوزين بإلغاء الرحلة.{"\n"}
+              يرجى كتابة سبب الإلغاء:
+            </Text>
+            <TextInput
+              style={styles.cancelReasonInput}
+              placeholder="مثال: عطل في السيارة، ظرف طارئ..."
+              placeholderTextColor="#6B7280"
+              value={cancelReason}
+              onChangeText={setCancelReason}
+              multiline
+              numberOfLines={3}
+              maxLength={200}
+              textAlignVertical="top"
+            />
+            <Text style={styles.charCount}>{cancelReason.length}/200</Text>
+            <View style={styles.cancelModalActions}>
+              <TouchableOpacity
+                style={styles.cancelModalDismiss}
+                onPress={() => { setShowCancelModal(false); setCancelReason(""); setCancelTripId(null); }}
+              >
+                <Text style={styles.cancelModalDismissText}>تراجع</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.cancelModalConfirm, cancelTrip.isPending && { opacity: 0.6 }]}
+                onPress={confirmCancel}
+                disabled={cancelTrip.isPending}
+              >
+                {cancelTrip.isPending ? (
+                  <ActivityIndicator color="#FFFFFF" size="small" />
+                ) : (
+                  <Text style={styles.cancelModalConfirmText}>تأكيد الإلغاء</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Bookings Modal */}
       <Modal visible={showBookings} transparent animationType="slide">
@@ -261,6 +338,9 @@ const styles = StyleSheet.create({
   route: { color: "#FFFFFF", fontSize: 18, fontWeight: "800", marginBottom: 8 },
   detail: { color: "#C4B5E0", fontSize: 13, marginBottom: 4 },
   notes: { color: "#9B8EC4", fontSize: 12, marginTop: 4, fontStyle: "italic" },
+  cancelReasonBox: { backgroundColor: "#2D0A0A", borderRadius: 10, padding: 10, marginTop: 8, borderWidth: 1, borderColor: "#EF444433" },
+  cancelReasonLabel: { color: "#F87171", fontSize: 11, fontWeight: "700", marginBottom: 4 },
+  cancelReasonText: { color: "#FCA5A5", fontSize: 13 },
   bookingsBtn: { backgroundColor: "#2D1B4E", borderRadius: 10, padding: 10, alignItems: "center", marginTop: 10, marginBottom: 8 },
   bookingsBtnText: { color: "#FFD700", fontSize: 13, fontWeight: "700" },
   actionsRow: { flexDirection: "row", gap: 10, marginTop: 4 },
@@ -270,6 +350,22 @@ const styles = StyleSheet.create({
   cancelBtnStyle: { backgroundColor: "#2D1B4E", borderWidth: 1, borderColor: "#EF4444" },
   actionBtnText: { color: "#FFFFFF", fontSize: 14, fontWeight: "800" },
   cancelBtnText: { color: "#EF4444", fontSize: 14, fontWeight: "700" },
+  // Cancel reason modal
+  cancelModal: { backgroundColor: "#1A0533", borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40 },
+  cancelModalTitle: { color: "#F87171", fontSize: 20, fontWeight: "800", textAlign: "center", marginBottom: 12 },
+  cancelModalDesc: { color: "#C4B5E0", fontSize: 14, textAlign: "center", lineHeight: 22, marginBottom: 16 },
+  cancelReasonInput: {
+    backgroundColor: "#2D1B4E", borderRadius: 12, padding: 14,
+    color: "#FFFFFF", fontSize: 14, borderWidth: 1, borderColor: "#4B3B8C",
+    minHeight: 90, textAlign: "right",
+  },
+  charCount: { color: "#6B7280", fontSize: 11, textAlign: "left", marginTop: 4, marginBottom: 16 },
+  cancelModalActions: { flexDirection: "row", gap: 12 },
+  cancelModalDismiss: { flex: 1, backgroundColor: "#2D1B4E", borderRadius: 12, padding: 14, alignItems: "center", borderWidth: 1, borderColor: "#4B3B8C" },
+  cancelModalDismissText: { color: "#C4B5E0", fontSize: 14, fontWeight: "700" },
+  cancelModalConfirm: { flex: 1, backgroundColor: "#EF4444", borderRadius: 12, padding: 14, alignItems: "center" },
+  cancelModalConfirmText: { color: "#FFFFFF", fontSize: 14, fontWeight: "800" },
+  // Bookings modal
   modalOverlay: { flex: 1, backgroundColor: "#000000AA", justifyContent: "flex-end" },
   bookingsModal: { backgroundColor: "#1A0533", borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 40 },
   modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 },
