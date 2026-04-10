@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import {
   View, Text, TouchableOpacity, FlatList,
   ActivityIndicator, Alert, StyleSheet, Modal,
@@ -10,6 +10,7 @@ import { trpc } from "@/lib/trpc";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 type TripStatus = "scheduled" | "in_progress" | "completed" | "cancelled";
+type TimeFilter = "today" | "yesterday" | "week" | "month" | "all";
 
 const STATUS_LABELS: Record<TripStatus, string> = {
   scheduled: "مجدولة",
@@ -32,6 +33,16 @@ const STATUS_ICONS: Record<TripStatus, string> = {
   cancelled: "❌",
 };
 
+const TIME_FILTERS: { key: TimeFilter; label: string }[] = [
+  { key: "today", label: "اليوم" },
+  { key: "yesterday", label: "أمس" },
+  { key: "week", label: "هذا الأسبوع" },
+  { key: "month", label: "هذا الشهر" },
+  { key: "all", label: "الكل" },
+];
+
+const PAGE_SIZE = 10;
+
 function formatDate(val: string | Date | null | undefined) {
   if (!val) return "—";
   const d = typeof val === "string" ? new Date(val) : val;
@@ -43,6 +54,25 @@ function formatDate(val: string | Date | null | undefined) {
   );
 }
 
+function isInTimeRange(dateVal: string | Date | null | undefined, filter: TimeFilter): boolean {
+  if (filter === "all") return true;
+  if (!dateVal) return false;
+  const d = typeof dateVal === "string" ? new Date(dateVal) : dateVal;
+  if (isNaN(d.getTime())) return false;
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startOfYesterday = new Date(startOfToday.getTime() - 86400000);
+  const startOfWeek = new Date(startOfToday.getTime() - startOfToday.getDay() * 86400000);
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  switch (filter) {
+    case "today": return d >= startOfToday;
+    case "yesterday": return d >= startOfYesterday && d < startOfToday;
+    case "week": return d >= startOfWeek;
+    case "month": return d >= startOfMonth;
+    default: return true;
+  }
+}
+
 export default function MyIntercityBookingsScreen() {
   const router = useRouter();
   const [passenger, setPassenger] = useState<{ id: number } | null>(null);
@@ -50,6 +80,8 @@ export default function MyIntercityBookingsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [ratingModal, setRatingModal] = useState<{ bookingId: number; tripId: number } | null>(null);
   const [selectedRating, setSelectedRating] = useState(5);
+  const [timeFilter, setTimeFilter] = useState<TimeFilter>("all");
+  const [page, setPage] = useState(1);
 
   React.useEffect(() => {
     AsyncStorage.getItem("@masar_passenger").then((raw) => {
@@ -114,6 +146,27 @@ export default function MyIntercityBookingsScreen() {
     setRatingModal({ bookingId, tripId });
   };
 
+  // تطبيق الفلتر الزمني
+  const filteredBookings = useMemo(() => {
+    const all = (bookingsQuery.data as any[]) ?? [];
+    return all.filter((item) => {
+      const departureTime = item.trip?.departureTime ?? null;
+      return isInTimeRange(departureTime, timeFilter);
+    });
+  }, [bookingsQuery.data, timeFilter]);
+
+  // Pagination
+  const paginatedBookings = useMemo(() => {
+    return filteredBookings.slice(0, page * PAGE_SIZE);
+  }, [filteredBookings, page]);
+
+  const hasMore = paginatedBookings.length < filteredBookings.length;
+
+  const handleTimeFilterChange = (filter: TimeFilter) => {
+    setTimeFilter(filter);
+    setPage(1);
+  };
+
   if (!loaded) {
     return (
       <ScreenContainer>
@@ -154,68 +207,104 @@ export default function MyIntercityBookingsScreen() {
         <View style={{ width: 40 }} />
       </View>
 
+      {/* Time Filters */}
+      <View style={styles.filtersWrapper}>
+        <FlatList
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          data={TIME_FILTERS}
+          keyExtractor={(item) => item.key}
+          contentContainerStyle={styles.filtersContainer}
+          renderItem={({ item: f }) => (
+            <TouchableOpacity
+              style={[styles.filterChip, timeFilter === f.key && styles.filterChipActive]}
+              onPress={() => handleTimeFilterChange(f.key)}
+            >
+              <Text style={[styles.filterChipText, timeFilter === f.key && styles.filterChipTextActive]}>
+                {f.label}
+              </Text>
+            </TouchableOpacity>
+          )}
+        />
+      </View>
+
+      {/* Count */}
+      {!bookingsQuery.isLoading && (
+        <View style={styles.countRow}>
+          <Text style={styles.countText}>
+            {filteredBookings.length} حجز
+          </Text>
+        </View>
+      )}
+
       {bookingsQuery.isLoading ? (
         <ActivityIndicator color="#FFD700" style={{ marginTop: 40 }} />
-      ) : !bookingsQuery.data?.length ? (
+      ) : filteredBookings.length === 0 ? (
         <View style={styles.centered}>
           <Text style={styles.emptyEmoji}>🎫</Text>
-          <Text style={styles.emptyTitle}>لا توجد حجوزات</Text>
-          <Text style={styles.emptyDesc}>احجز رحلتك الأولى بين المدن</Text>
-          <TouchableOpacity style={styles.browseBtn} onPress={() => router.push("/intercity")}>
-            <Text style={styles.browseBtnText}>تصفح الرحلات</Text>
-          </TouchableOpacity>
+          <Text style={styles.emptyTitle}>
+            {timeFilter === "all" ? "لا توجد حجوزات" : "لا توجد حجوزات في هذه الفترة"}
+          </Text>
+          <Text style={styles.emptyDesc}>
+            {timeFilter === "all" ? "احجز رحلتك الأولى بين المدن" : "جرب تغيير الفلتر الزمني"}
+          </Text>
+          {timeFilter === "all" ? (
+            <TouchableOpacity style={styles.browseBtn} onPress={() => router.push("/intercity")}>
+              <Text style={styles.browseBtnText}>تصفح الرحلات</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity style={styles.browseBtn} onPress={() => handleTimeFilterChange("all")}>
+              <Text style={styles.browseBtnText}>عرض الكل</Text>
+            </TouchableOpacity>
+          )}
         </View>
       ) : (
         <FlatList
-          data={bookingsQuery.data as any[]}
+          data={paginatedBookings}
           keyExtractor={(item) => item.id.toString()}
           contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#FFD700" />
           }
+          ListFooterComponent={
+            hasMore ? (
+              <TouchableOpacity style={styles.loadMoreBtn} onPress={() => setPage((p) => p + 1)}>
+                <Text style={styles.loadMoreText}>تحميل المزيد ({filteredBookings.length - paginatedBookings.length} متبقي)</Text>
+              </TouchableOpacity>
+            ) : filteredBookings.length > PAGE_SIZE ? (
+              <Text style={styles.allLoadedText}>✅ تم عرض جميع الحجوزات</Text>
+            ) : null
+          }
           renderItem={({ item }) => {
             const trip = item.trip;
             const driver = item.driver;
-            // حالة الحجز الفعلية (قد تختلف عن حالة الرحلة إذا ألغى الكابتن هذا الراكب تحديداً)
             const bookingStatus = item.status as "pending" | "confirmed" | "cancelled" | "completed";
             const tripStatus = (trip?.status || "scheduled") as TripStatus;
-            // إذا كان الحجز ملغى أو الرحلة ملغاة → اعرض ملغى
             const isBookingCancelled = bookingStatus === "cancelled";
             const isTripCancelled = tripStatus === "cancelled";
             const displayStatus: TripStatus = isBookingCancelled || isTripCancelled ? "cancelled" : tripStatus;
-            // هل ألغى الكابتن هذا الراكب تحديداً (item.cancelledBy يبدأ بـ driver:)
             const cancelledByDriverReason = isBookingCancelled && typeof item.cancelledBy === "string" && item.cancelledBy.startsWith("driver:")
               ? item.cancelledBy.replace("driver:", "")
               : null;
-            // هل ألغيت الرحلة بالكامل من قبل السائق
             const tripCancelledByDriver = isTripCancelled && (trip?.cancelledBy === "driver" || trip?.cancelReason);
             const fromCity = trip?.fromCity ?? "—";
             const toCity = trip?.toCity ?? "—";
             const departureTime = trip?.departureTime ?? null;
-            // حالة توجه السائق لهذا الراكب
             const approachStatus = (item as any).driverApproachStatus as string | null;
             const driverHeadingOrArrived = approachStatus === "heading" || approachStatus === "arrived_at_pickup";
-            // يمكن الإلغاء فقط: الحجز غير ملغى، الرحلة غير ملغاة، الرحلة مجدولة، والسائق لم يتوجه بعد
             const canCancel = !isBookingCancelled && !isTripCancelled && tripStatus === "scheduled" && !driverHeadingOrArrived;
 
             return (
               <View style={styles.bookingCard}>
                 {/* Status Badge */}
-                <View
-                  style={[
-                    styles.statusBadge,
-                    { backgroundColor: STATUS_COLORS[displayStatus] + "22", borderColor: STATUS_COLORS[displayStatus] },
-                  ]}
-                >
+                <View style={[styles.statusBadge, { backgroundColor: STATUS_COLORS[displayStatus] + "22", borderColor: STATUS_COLORS[displayStatus] }]}>
                   <Text style={[styles.statusText, { color: STATUS_COLORS[displayStatus] }]}>
                     {STATUS_ICONS[displayStatus]} {STATUS_LABELS[displayStatus]}
                   </Text>
                 </View>
 
                 {/* Route */}
-                <Text style={styles.route}>
-                  {fromCity} {"→"} {toCity}
-                </Text>
+                <Text style={styles.route}>{fromCity} {"→"} {toCity}</Text>
                 <Text style={styles.detail}>🕐 {formatDate(departureTime)}</Text>
                 <Text style={styles.detail}>💺 {item.seatsBooked} مقعد</Text>
                 <Text style={styles.detail}>💰 {parseInt(item.totalPrice ?? "0").toLocaleString()} دينار (كاش)</Text>
@@ -229,7 +318,7 @@ export default function MyIntercityBookingsScreen() {
                   <Text style={styles.detail}>📝 ملاحظتك: {item.passengerNote}</Text>
                 ) : null}
 
-                {/* Captain Info — يظهر دائماً بعد الحجز */}
+                {/* Captain Info */}
                 {driver ? (
                   <View style={styles.captainBox}>
                     <Text style={styles.captainTitle}>👨‍✈️ معلومات السائق</Text>
@@ -246,10 +335,7 @@ export default function MyIntercityBookingsScreen() {
                       <Text style={styles.captainDetail}>🔢 {driver.vehiclePlate}</Text>
                     ) : null}
                     {driver.phone ? (
-                      <TouchableOpacity
-                        style={styles.callBtn}
-                        onPress={() => callDriver(driver.phone)}
-                      >
+                      <TouchableOpacity style={styles.callBtn} onPress={() => callDriver(driver.phone)}>
                         <Text style={styles.callBtnText}>📞 اتصل بالسائق</Text>
                       </TouchableOpacity>
                     ) : null}
@@ -264,17 +350,14 @@ export default function MyIntercityBookingsScreen() {
                   </View>
                 ) : null}
 
-                {/* Cancel reason — shown when booking cancelled by driver for this specific passenger */}
+                {/* Cancel reason */}
                 {cancelledByDriverReason ? (
                   <View style={styles.cancelledByDriverBox}>
                     <Text style={styles.cancelledByDriverTitle}>❌ تم إلغاء حجزك من قبل السائق</Text>
                     <Text style={styles.cancelledByDriverReasonLabel}>سبب الإلغاء:</Text>
                     <Text style={styles.cancelledByDriverReason}>{cancelledByDriverReason}</Text>
                     <Text style={styles.cancelledByDriverNote}>يمكنك تصفح رحلات أخرى وحجز بديلاً.</Text>
-                    <TouchableOpacity
-                      style={styles.findAlternativeBtn}
-                      onPress={() => router.push("/intercity" as any)}
-                    >
+                    <TouchableOpacity style={styles.findAlternativeBtn} onPress={() => router.push("/intercity" as any)}>
                       <Text style={styles.findAlternativeBtnText}>🔍 ابحث عن رحلة بديلة</Text>
                     </TouchableOpacity>
                   </View>
@@ -290,16 +373,13 @@ export default function MyIntercityBookingsScreen() {
                       <Text style={styles.cancelledByDriverReason}>لم يذكر السائق سبباً للإلغاء.</Text>
                     )}
                     <Text style={styles.cancelledByDriverNote}>يمكنك تصفح رحلات أخرى وحجز بديلاً.</Text>
-                    <TouchableOpacity
-                      style={styles.findAlternativeBtn}
-                      onPress={() => router.push("/intercity" as any)}
-                    >
+                    <TouchableOpacity style={styles.findAlternativeBtn} onPress={() => router.push("/intercity" as any)}>
                       <Text style={styles.findAlternativeBtnText}>🔍 ابحث عن رحلة بديلة</Text>
                     </TouchableOpacity>
                   </View>
                 ) : null}
 
-                {/* Chat Button — متاح في كل الحالات عدا completed */}
+                {/* Chat Button */}
                 {!isBookingCancelled && passenger && (
                   <TouchableOpacity
                     style={styles.chatBtn}
@@ -320,7 +400,7 @@ export default function MyIntercityBookingsScreen() {
                   </TouchableOpacity>
                 )}
 
-                {/* Tracking Button — يظهر فقط عند scheduled وليس عند in_progress */}
+                {/* Tracking Button */}
                 {displayStatus === "scheduled" && !isBookingCancelled && driver && (
                   <TouchableOpacity
                     style={styles.trackingBtn}
@@ -364,18 +444,13 @@ export default function MyIntercityBookingsScreen() {
                     </View>
                   )}
                   {displayStatus === "completed" && !item.driverRating ? (
-                    <TouchableOpacity
-                      style={styles.rateBtn}
-                      onPress={() => handleRate(item.id, item.tripId)}
-                    >
+                    <TouchableOpacity style={styles.rateBtn} onPress={() => handleRate(item.id, item.tripId)}>
                       <Text style={styles.rateBtnText}>⭐ قيّم الرحلة</Text>
                     </TouchableOpacity>
                   ) : null}
                   {displayStatus === "completed" && item.driverRating ? (
                     <View style={styles.ratedBadge}>
-                      <Text style={styles.ratedText}>
-                        {"⭐".repeat(item.driverRating)} تم التقييم
-                      </Text>
+                      <Text style={styles.ratedText}>{"⭐".repeat(item.driverRating)} تم التقييم</Text>
                     </View>
                   ) : null}
                 </View>
@@ -437,9 +512,20 @@ const styles = StyleSheet.create({
   backBtn: { padding: 8 },
   backIcon: { color: "#FFD700", fontSize: 22 },
   headerTitle: { color: "#FFFFFF", fontSize: 17, fontWeight: "700" },
+  filtersWrapper: { borderBottomWidth: 1, borderBottomColor: "#2D1B4E" },
+  filtersContainer: { paddingHorizontal: 12, paddingVertical: 10, gap: 8 },
+  filterChip: {
+    paddingHorizontal: 16, paddingVertical: 7, borderRadius: 20,
+    backgroundColor: "#1E1035", borderWidth: 1, borderColor: "#2D1B4E",
+  },
+  filterChipActive: { backgroundColor: "#FFD700", borderColor: "#FFD700" },
+  filterChipText: { color: "#9B8EC4", fontSize: 13, fontWeight: "600" },
+  filterChipTextActive: { color: "#1A0533", fontWeight: "800" },
+  countRow: { paddingHorizontal: 16, paddingVertical: 8 },
+  countText: { color: "#9B8EC4", fontSize: 12 },
   centered: { flex: 1, alignItems: "center", justifyContent: "center", padding: 40 },
   emptyEmoji: { fontSize: 60, marginBottom: 16 },
-  emptyTitle: { color: "#FFFFFF", fontSize: 18, fontWeight: "700", marginBottom: 8 },
+  emptyTitle: { color: "#FFFFFF", fontSize: 18, fontWeight: "700", marginBottom: 8, textAlign: "center" },
   emptyDesc: { color: "#9B8EC4", fontSize: 14, textAlign: "center", marginBottom: 24 },
   browseBtn: { backgroundColor: "#FFD700", borderRadius: 14, paddingHorizontal: 24, paddingVertical: 14 },
   browseBtnText: { color: "#1A0533", fontSize: 15, fontWeight: "800" },
@@ -477,43 +563,18 @@ const styles = StyleSheet.create({
   ratingConfirmText: { color: "#1A0533", fontSize: 15, fontWeight: "800" },
   callBtn: { backgroundColor: "#22C55E22", borderRadius: 10, padding: 10, alignItems: "center", marginTop: 8, borderWidth: 1, borderColor: "#22C55E" },
   callBtnText: { color: "#22C55E", fontSize: 13, fontWeight: "700" },
-  cancelledByDriverBox: {
-    backgroundColor: "#2D0A0A",
-    borderRadius: 12,
-    padding: 14,
-    marginTop: 12,
-    borderWidth: 1,
-    borderColor: "#EF444444",
-  },
+  cancelledByDriverBox: { backgroundColor: "#2D0A0A", borderRadius: 12, padding: 14, marginTop: 12, borderWidth: 1, borderColor: "#EF444444" },
   cancelledByDriverTitle: { color: "#F87171", fontSize: 14, fontWeight: "800", marginBottom: 8 },
   cancelledByDriverReasonLabel: { color: "#FCA5A5", fontSize: 12, fontWeight: "700", marginBottom: 4 },
   cancelledByDriverReason: { color: "#FCA5A5", fontSize: 13, lineHeight: 20, marginBottom: 8 },
   cancelledByDriverNote: { color: "#9B8EC4", fontSize: 11, fontStyle: "italic", marginBottom: 10 },
-  findAlternativeBtn: {
-    backgroundColor: "#1A0533", borderRadius: 10, padding: 12,
-    alignItems: "center", borderWidth: 1, borderColor: "#7C3AED",
-    marginTop: 4,
-  },
+  findAlternativeBtn: { backgroundColor: "#1A0533", borderRadius: 10, padding: 12, alignItems: "center", borderWidth: 1, borderColor: "#7C3AED", marginTop: 4 },
   findAlternativeBtnText: { color: "#A78BFA", fontSize: 13, fontWeight: "700" },
-  trackingBtn: {
-    backgroundColor: "#0D1B2E",
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: "center",
-    borderWidth: 1.5,
-    borderColor: "#5B9BD5",
-    marginBottom: 10,
-  },
+  trackingBtn: { backgroundColor: "#0D1B2E", borderRadius: 12, paddingVertical: 12, alignItems: "center", borderWidth: 1.5, borderColor: "#5B9BD5", marginBottom: 10 },
   trackingBtnText: { color: "#5B9BD5", fontSize: 14, fontWeight: "700" },
-  chatBtn: {
-    backgroundColor: "#1A2B3E",
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: "center",
-    borderWidth: 1.5,
-    borderColor: "#4A90D9",
-    marginBottom: 10,
-    marginTop: 4,
-  },
+  chatBtn: { backgroundColor: "#1A2B3E", borderRadius: 12, paddingVertical: 12, alignItems: "center", borderWidth: 1.5, borderColor: "#4A90D9", marginBottom: 10, marginTop: 4 },
   chatBtnText: { color: "#4A90D9", fontSize: 14, fontWeight: "700" },
+  loadMoreBtn: { backgroundColor: "#1E1035", borderRadius: 14, padding: 14, alignItems: "center", marginTop: 8, borderWidth: 1, borderColor: "#7C3AED" },
+  loadMoreText: { color: "#A78BFA", fontSize: 14, fontWeight: "700" },
+  allLoadedText: { color: "#9B8EC4", fontSize: 12, textAlign: "center", marginTop: 12, marginBottom: 8 },
 });
