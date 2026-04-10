@@ -46,6 +46,16 @@ export default function CaptainIntercityTripsScreen() {
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelTripId, setCancelTripId] = useState<number | null>(null);
   const [cancelReason, setCancelReason] = useState("");
+  const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
+
+  const CANCEL_PRESETS = [
+    { label: "🔧 عطل في السيارة", value: "عطل مفاجئ في السيارة" },
+    { label: "🚨 ظرف طارئ", value: "ظرف طارئ طارأ لا يسمح بالسفر" },
+    { label: "📍 تغيير الخطة", value: "تغيير في خطط السفر" },
+    { label: "🌧️ ظروف جوية", value: "ظروف جوية سيئة تمنع السفر" },
+    { label: "🏥 ظرف صحي", value: "ظرف صحي طارئ" },
+    { label: "✏️ سبب آخر", value: "" },
+  ];
 
   const tripsQuery = trpc.intercity.myTrips.useQuery(
     { driverId: driverId! },
@@ -105,20 +115,32 @@ export default function CaptainIntercityTripsScreen() {
     // فتح modal إدخال سبب الإلغاء
     setCancelTripId(tripId);
     setCancelReason("");
+    setSelectedPreset(null);
     setShowCancelModal(true);
   };
 
   const confirmCancel = () => {
     if (!cancelTripId || !driverId) return;
-    if (!cancelReason.trim()) {
-      Alert.alert("مطلوب", "يرجى كتابة سبب الإلغاء قبل المتابعة.");
+    const finalReason = cancelReason.trim();
+    if (!finalReason) {
+      Alert.alert("مطلوب", "يرجى اختيار سبب الإلغاء أو كتابته قبل المتابعة.");
       return;
     }
     cancelTrip.mutate({
       tripId: cancelTripId,
       driverId,
-      cancelReason: cancelReason.trim(),
+      cancelReason: finalReason,
     });
+  };
+
+  const handlePresetSelect = (preset: { label: string; value: string }) => {
+    setSelectedPreset(preset.label);
+    if (preset.value) {
+      setCancelReason(preset.value);
+    } else {
+      // "سبب آخر" — clear so user types manually
+      setCancelReason("");
+    }
   };
 
   if (!driverId) {
@@ -239,15 +261,36 @@ export default function CaptainIntercityTripsScreen() {
       {/* Cancel Reason Modal */}
       <Modal visible={showCancelModal} transparent animationType="slide" onRequestClose={() => setShowCancelModal(false)}>
         <View style={styles.modalOverlay}>
+          <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: "flex-end" }} keyboardShouldPersistTaps="handled">
           <View style={styles.cancelModal}>
             <Text style={styles.cancelModalTitle}>❌ إلغاء الرحلة</Text>
             <Text style={styles.cancelModalDesc}>
-              سيتم إشعار جميع المسافرين المحجوزين بإلغاء الرحلة.{"\n"}
-              يرجى كتابة سبب الإلغاء:
+              سيتم إشعار جميع المسافرين بإلغاء الرحلة. اختر سبباً أو اكتبه:
             </Text>
+
+            {/* Preset reasons */}
+            <View style={styles.presetsGrid}>
+              {CANCEL_PRESETS.map((preset) => (
+                <TouchableOpacity
+                  key={preset.label}
+                  style={[
+                    styles.presetChip,
+                    selectedPreset === preset.label && styles.presetChipActive,
+                  ]}
+                  onPress={() => handlePresetSelect(preset)}
+                >
+                  <Text style={[
+                    styles.presetChipText,
+                    selectedPreset === preset.label && styles.presetChipTextActive,
+                  ]}>{preset.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* Custom text input — shown always for editing */}
             <TextInput
               style={styles.cancelReasonInput}
-              placeholder="مثال: عطل في السيارة، ظرف طارئ..."
+              placeholder="أضف تفاصيل إضافية أو اكتب سبباً آخر..."
               placeholderTextColor="#6B7280"
               value={cancelReason}
               onChangeText={setCancelReason}
@@ -260,7 +303,7 @@ export default function CaptainIntercityTripsScreen() {
             <View style={styles.cancelModalActions}>
               <TouchableOpacity
                 style={styles.cancelModalDismiss}
-                onPress={() => { setShowCancelModal(false); setCancelReason(""); setCancelTripId(null); }}
+                onPress={() => { setShowCancelModal(false); setCancelReason(""); setCancelTripId(null); setSelectedPreset(null); }}
               >
                 <Text style={styles.cancelModalDismissText}>تراجع</Text>
               </TouchableOpacity>
@@ -277,6 +320,7 @@ export default function CaptainIntercityTripsScreen() {
               </TouchableOpacity>
             </View>
           </View>
+          </ScrollView>
         </View>
       </Modal>
 
@@ -359,6 +403,14 @@ const styles = StyleSheet.create({
     color: "#FFFFFF", fontSize: 14, borderWidth: 1, borderColor: "#4B3B8C",
     minHeight: 90, textAlign: "right",
   },
+  presetsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 14 },
+  presetChip: {
+    backgroundColor: "#2D1B4E", borderRadius: 20, paddingHorizontal: 12, paddingVertical: 8,
+    borderWidth: 1, borderColor: "#4B3B8C",
+  },
+  presetChipActive: { backgroundColor: "#EF444422", borderColor: "#EF4444" },
+  presetChipText: { color: "#C4B5E0", fontSize: 12, fontWeight: "600" },
+  presetChipTextActive: { color: "#F87171", fontWeight: "800" },
   charCount: { color: "#6B7280", fontSize: 11, textAlign: "left", marginTop: 4, marginBottom: 16 },
   cancelModalActions: { flexDirection: "row", gap: 12 },
   cancelModalDismiss: { flex: 1, backgroundColor: "#2D1B4E", borderRadius: 12, padding: 14, alignItems: "center", borderWidth: 1, borderColor: "#4B3B8C" },

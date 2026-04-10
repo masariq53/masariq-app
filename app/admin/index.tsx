@@ -844,7 +844,19 @@ export default function AdminDashboard() {
           const activeTrips = trips.filter(t => t.status === "in_progress").length;
           const scheduledTrips = trips.filter(t => t.status === "scheduled").length;
           const completedTrips = trips.filter(t => t.status === "completed").length;
+          const cancelledTrips = trips.filter(t => t.status === "cancelled").length;
           const totalRevenue = trips.reduce((sum, t) => sum + (t.totalPassengers * Number(t.pricePerSeat)), 0);
+
+          // ─── Cancel Reason Stats
+          const cancelledWithReason = trips.filter(t => t.status === "cancelled" && t.cancelReason);
+          const reasonCounts: Record<string, number> = {};
+          cancelledWithReason.forEach(t => {
+            const reason = t.cancelReason as string;
+            reasonCounts[reason] = (reasonCounts[reason] || 0) + 1;
+          });
+          const topReasons = Object.entries(reasonCounts)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 3);
 
           return (
             <View style={styles.section}>
@@ -861,7 +873,7 @@ export default function AdminDashboard() {
               </View>
 
               {/* Quick Stats Row */}
-              <View style={{ flexDirection: "row", gap: 8, marginBottom: 16 }}>
+              <View style={{ flexDirection: "row", gap: 8, marginBottom: 8 }}>
                 <View style={{ flex: 1, backgroundColor: "#0D0820", borderRadius: 12, padding: 10, alignItems: "center", borderWidth: 1, borderColor: "#2D1B4E" }}>
                   <Text style={{ color: "#FFD700", fontSize: 20, fontWeight: "800" }}>{totalTrips}</Text>
                   <Text style={{ color: "#9B8EC4", fontSize: 10, marginTop: 2 }}>إجمالي</Text>
@@ -878,7 +890,39 @@ export default function AdminDashboard() {
                   <Text style={{ color: "#60A5FA", fontSize: 20, fontWeight: "800" }}>{completedTrips}</Text>
                   <Text style={{ color: "#9B8EC4", fontSize: 10, marginTop: 2 }}>مكتملة</Text>
                 </View>
+                <View style={{ flex: 1, backgroundColor: "#0D0820", borderRadius: 12, padding: 10, alignItems: "center", borderWidth: 1, borderColor: "#EF444444" }}>
+                  <Text style={{ color: "#F87171", fontSize: 20, fontWeight: "800" }}>{cancelledTrips}</Text>
+                  <Text style={{ color: "#9B8EC4", fontSize: 10, marginTop: 2 }}>ملغاة</Text>
+                </View>
               </View>
+
+              {/* Cancellation Stats Card */}
+              {cancelledTrips > 0 && (
+                <View style={{ backgroundColor: "rgba(239,68,68,0.07)", borderRadius: 12, padding: 12, marginBottom: 12, borderWidth: 1, borderColor: "rgba(239,68,68,0.2)" }}>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                    <Text style={{ color: "#F87171", fontSize: 13, fontWeight: "800" }}>❌ إحصائيات الإلغاء</Text>
+                    <Text style={{ color: "#F87171", fontSize: 12 }}>{cancelledTrips} رحلة ملغاة</Text>
+                  </View>
+                  <Text style={{ color: "#9B8EC4", fontSize: 11, marginBottom: 8 }}>
+                    نسبة الإلغاء: {totalTrips > 0 ? ((cancelledTrips / totalTrips) * 100).toFixed(1) : 0}%
+                    {cancelledWithReason.length > 0 ? `  •  ${cancelledWithReason.length} رحلة بسبب موثق` : ""}
+                  </Text>
+                  {topReasons.length > 0 && (
+                    <>
+                      <Text style={{ color: "#9B8EC4", fontSize: 11, fontWeight: "700", marginBottom: 6 }}>أشهر أسباب الإلغاء:</Text>
+                      {topReasons.map(([reason, count], i) => (
+                        <View key={i} style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                          <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: "#EF444422", alignItems: "center", justifyContent: "center" }}>
+                            <Text style={{ color: "#F87171", fontSize: 10, fontWeight: "800" }}>{i + 1}</Text>
+                          </View>
+                          <Text style={{ flex: 1, color: "#FCA5A5", fontSize: 12 }} numberOfLines={1}>{reason}</Text>
+                          <Text style={{ color: "#F87171", fontSize: 12, fontWeight: "700" }}>{count}x</Text>
+                        </View>
+                      ))}
+                    </>
+                  )}
+                </View>
+              )}
 
               {/* Revenue Card */}
               <View style={{ backgroundColor: "rgba(74,222,128,0.08)", borderRadius: 12, padding: 12, marginBottom: 16, borderWidth: 1, borderColor: "rgba(74,222,128,0.25)", flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>

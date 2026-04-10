@@ -261,6 +261,12 @@ export default function MyIntercityBookingsScreen() {
                       <Text style={styles.cancelledByDriverReason}>لم يذكر السائق سبباً للإلغاء.</Text>
                     )}
                     <Text style={styles.cancelledByDriverNote}>يمكنك تصفح رحلات أخرى وحجز بديلاً.</Text>
+                    <TouchableOpacity
+                      style={styles.findAlternativeBtn}
+                      onPress={() => router.push("/intercity" as any)}
+                    >
+                      <Text style={styles.findAlternativeBtnText}>🔍 ابحث عن رحلة بديلة</Text>
+                    </TouchableOpacity>
                   </View>
                 ) : null}
 
@@ -405,5 +411,11 @@ const styles = StyleSheet.create({
   cancelledByDriverTitle: { color: "#F87171", fontSize: 14, fontWeight: "800", marginBottom: 8 },
   cancelledByDriverReasonLabel: { color: "#FCA5A5", fontSize: 12, fontWeight: "700", marginBottom: 4 },
   cancelledByDriverReason: { color: "#FCA5A5", fontSize: 13, lineHeight: 20, marginBottom: 8 },
-  cancelledByDriverNote: { color: "#9B8EC4", fontSize: 11, fontStyle: "italic" },
+  cancelledByDriverNote: { color: "#9B8EC4", fontSize: 11, fontStyle: "italic", marginBottom: 10 },
+  findAlternativeBtn: {
+    backgroundColor: "#1A0533", borderRadius: 10, padding: 12,
+    alignItems: "center", borderWidth: 1, borderColor: "#7C3AED",
+    marginTop: 4,
+  },
+  findAlternativeBtnText: { color: "#A78BFA", fontSize: 13, fontWeight: "700" },
 });
