@@ -24,6 +24,7 @@ import { PassengerProvider, usePassenger } from "@/lib/passenger-context";
 import { DriverProvider, useDriver } from "@/lib/driver-context";
 import { initManusRuntime, subscribeSafeAreaInsets } from "@/lib/_core/manus-runtime";
 import { registerPassengerNotifications } from "@/lib/passenger-notifications";
+import { addNotification } from "@/lib/notification-store";
 
 const DEFAULT_WEB_INSETS: EdgeInsets = { top: 0, right: 0, bottom: 0, left: 0 };
 const DEFAULT_WEB_FRAME: Rect = { x: 0, y: 0, width: 0, height: 0 };
@@ -68,7 +69,9 @@ function PassengerPushTokenRegistrar() {
 function NotificationHandler() {
   const { logout } = useDriver();
   const notificationListener = useRef<Notifications.EventSubscription | null>(null);
+  const responseListener = useRef<Notifications.EventSubscription | null>(null);
   const bookingSound = useAudioPlayer(require("../assets/sounds/new-booking.mp3"));
+  const rideSound = useAudioPlayer(require("../assets/sounds/new-ride.mp3"));
 
   useEffect(() => {
     if (Platform.OS === "web") return;
@@ -79,47 +82,95 @@ function NotificationHandler() {
   useEffect(() => {
     if (Platform.OS === "web") return;
 
-    // Listen for notifications received while app is in foreground
+    // ─── معالجة الإشعارات الواردة أثناء التطبيق مفتوح (foreground) ───
     notificationListener.current = Notifications.addNotificationReceivedListener((notification) => {
       const data = notification.request.content.data as any;
+      const title = notification.request.content.title || "";
+      const body = notification.request.content.body || "";
+      const notifType = data?.type || "unknown";
 
-      // Play sound for new intercity booking
-      if (data?.type === "intercity_booking") {
-        try {
-          bookingSound.seekTo(0);
-          bookingSound.play();
-        } catch (e) {
-          console.warn("[Sound] Failed to play booking sound:", e);
-        }
+      console.log(`[NotifHandler] Received foreground notification: type=${notifType}, title=${title}`);
+
+      // حفظ الإشعار في المخزن المحلي
+      addNotification({ title, body, type: notifType, data: data || {} }).catch(() => {});
+
+      // تشغيل صوت حسب نوع الإشعار
+      if (notifType === "intercity_booking") {
+        try { bookingSound.seekTo(0); bookingSound.play(); } catch (e) { console.warn("[Sound] booking:", e); }
+      } else if (notifType === "driver_heading" || notifType === "driver_arrived_at_pickup") {
+        try { rideSound.seekTo(0); rideSound.play(); } catch (e) { console.warn("[Sound] ride:", e); }
+      } else if (notifType === "chat_message") {
+        try { rideSound.seekTo(0); rideSound.play(); } catch (e) { console.warn("[Sound] chat:", e); }
+      } else if (notifType === "booking_cancelled_by_driver" || notifType === "booking_cancelled") {
+        try { rideSound.seekTo(0); rideSound.play(); } catch (e) { console.warn("[Sound] cancel:", e); }
+      } else if (notifType === "trip_completed") {
+        try { rideSound.seekTo(0); rideSound.play(); } catch (e) { console.warn("[Sound] complete:", e); }
       }
 
-      if (data?.type === "account_blocked") {
+      // معالجة خاصة: حظر/إلغاء حظر الحساب
+      if (notifType === "account_blocked") {
         const reason = data.blockReason || "تم تعطيل حسابك من قِبل الإدارة";
         Alert.alert(
           "🚫 تم تعطيل حسابك",
           `سيتم تسجيل خروجك من وضع الكابتن.\n\nالسبب: ${reason}\n\nللاستفسار تواصل مع الدعم.`,
-          [
-            {
-              text: "حسناً",
-              onPress: async () => {
-                await logout();
-                router.replace("/(tabs)/profile" as any);
-              },
-            },
-          ],
+          [{ text: "حسناً", onPress: async () => { await logout(); router.replace("/(tabs)/profile" as any); } }],
           { cancelable: false }
         );
-      } else if (data?.type === "account_unblocked") {
+      } else if (notifType === "account_unblocked") {
         Alert.alert(
           "✅ تم تفعيل حسابك",
           "تم إعادة تفعيل حسابك كسائق. يمكنك الآن الدخول لوضع الكابتن!",
           [{ text: "دخول وضع الكابتن 🚗", onPress: () => router.push("/(tabs)/profile" as any) }]
         );
       }
+
+      // عرض Alert فوري للإشعارات المهمة (foreground)
+      if (notifType === "driver_heading") {
+        Alert.alert("🚗 السائق في طريقه إليك", body, [{ text: "حسناً" }]);
+      } else if (notifType === "driver_arrived_at_pickup") {
+        Alert.alert("📍 السائق وصل إلى موقعك!", body, [{ text: "حسناً" }]);
+      } else if (notifType === "booking_cancelled_by_driver") {
+        Alert.alert("❌ تم إلغاء حجزك", body, [
+          { text: "عرض الحجوزات", onPress: () => router.push("/intercity/my-bookings" as any) },
+          { text: "حسناً" },
+        ]);
+      } else if (notifType === "trip_completed") {
+        Alert.alert("✅ وصلت إلى وجهتك!", body, [{ text: "حسناً" }]);
+      } else if (notifType === "chat_message") {
+        Alert.alert(title, body, [
+          { text: "عرض الحجوزات", onPress: () => router.push("/intercity/my-bookings" as any) },
+          { text: "حسناً" },
+        ]);
+      } else if (notifType === "intercity_booking") {
+        Alert.alert("🎫 حجز جديد!", body, [
+          { text: "عرض الرحلات", onPress: () => router.push("/captain/intercity-trips" as any) },
+          { text: "حسناً" },
+        ]);
+      }
+    });
+
+    // ─── معالجة الضغط على الإشعار (notification tap) ───
+    responseListener.current = Notifications.addNotificationResponseReceivedListener((response) => {
+      const data = response.notification.request.content.data as any;
+      const notifType = data?.type || "unknown";
+      console.log(`[NotifHandler] Notification tapped: type=${notifType}`);
+
+      if (notifType === "intercity_booking") {
+        router.push("/captain/intercity-trips" as any);
+      } else if (notifType === "driver_heading" || notifType === "driver_arrived_at_pickup") {
+        router.push("/intercity/my-bookings" as any);
+      } else if (notifType === "chat_message") {
+        router.push("/intercity/my-bookings" as any);
+      } else if (notifType === "booking_cancelled_by_driver" || notifType === "booking_cancelled") {
+        router.push("/intercity/my-bookings" as any);
+      } else if (notifType === "trip_completed") {
+        router.push("/intercity/my-bookings" as any);
+      }
     });
 
     return () => {
       notificationListener.current?.remove();
+      responseListener.current?.remove();
     };
   }, [logout]);
 
@@ -221,6 +272,7 @@ export default function RootLayout() {
             <Stack.Screen name="driver/otp" />
             <Stack.Screen name="driver/status" />
             <Stack.Screen name="ride/rating" />
+            <Stack.Screen name="notifications" />
           </Stack>
           <StatusBar style="auto" />
         </QueryClientProvider>

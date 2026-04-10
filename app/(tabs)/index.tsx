@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -8,13 +8,14 @@ import {
   Image,
   Dimensions,
 } from "react-native";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { usePassenger } from "@/lib/passenger-context";
 import { useLocation } from "@/hooks/use-location";
 import { useThemeContext } from "@/lib/theme-provider";
 import { useT } from "@/lib/i18n";
+import { getUnreadCount } from "@/lib/notification-store";
 
 const { width } = Dimensions.get("window");
 
@@ -48,6 +49,14 @@ export default function HomeScreen() {
     { id: "2", name: t.home.mosulUniversity, icon: "🎓", distance: "5.8 " + t.common.km },
     { id: "3", name: t.home.shaarMarket, icon: "🛒", distance: "1.5 " + t.common.km },
   ];
+
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useFocusEffect(
+    useCallback(() => {
+      getUnreadCount().then(setUnreadCount).catch(() => {});
+    }, [])
+  );
 
   const colors = {
     scrollBg: isDark ? "#0D0019" : "#F0EBF8",
@@ -92,9 +101,13 @@ export default function HomeScreen() {
             <Text style={styles.userName}>{passenger?.name || passenger?.phone || t.home.masarUser}</Text>
           </View>
         </View>
-        <TouchableOpacity style={styles.notifBtn}>
+        <TouchableOpacity style={styles.notifBtn} onPress={() => router.push("/notifications" as any)}>
           <Text style={styles.notifIcon}>🔔</Text>
-          <View style={styles.notifBadge} />
+          {unreadCount > 0 && (
+            <View style={styles.notifBadge}>
+              {unreadCount <= 9 && <Text style={styles.notifBadgeText}>{unreadCount}</Text>}
+            </View>
+          )}
         </TouchableOpacity>
       </View>
 
@@ -205,8 +218,12 @@ const styles = StyleSheet.create({
   },
   notifIcon: { fontSize: 20 },
   notifBadge: {
-    position: "absolute", top: 8, right: 8, width: 10, height: 10,
-    borderRadius: 5, backgroundColor: "#EF4444", borderWidth: 2, borderColor: "#1A0533",
+    position: "absolute", top: 6, right: 6, minWidth: 16, height: 16,
+    borderRadius: 8, backgroundColor: "#EF4444", borderWidth: 2, borderColor: "#1A0533",
+    alignItems: "center", justifyContent: "center", paddingHorizontal: 2,
+  },
+  notifBadgeText: {
+    color: "#FFFFFF", fontSize: 9, fontWeight: "800", lineHeight: 12,
   },
   scroll: { flex: 1, borderTopLeftRadius: 28, borderTopRightRadius: 28 },
   searchContainer: {

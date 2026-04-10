@@ -299,3 +299,18 @@
 - [x] تسجيل pushToken تلقائي للراكب عند فتح التطبيق
 - [x] تسجيل pushToken تلقائي للكابتن عند استعادة الجلسة
 - [x] إضافة projectId و Device.isDevice لـ getExpoPushTokenAsync
+## إصلاح نهائي للإشعارات Push - الرحلات بين المدن (2026-04-10 - محاولة جديدة)
+- [x] مقارنة آلية الإشعارات العاملة (داخل المدينة) مع المعطلة (بين المدن)
+- [x] تطبيق نفس الآلية بالضبط من الرحلات داخل المدينة على بين المدن
+- [x] إشعار للكابتن عند حجز الراكب (bookTrip + bookWithGPS + bookTripWithPickup)
+- [x] إشعار للراكب عند توجه الكابتن إليه (driver_heading مع Alert + صوت)
+- [x] إشعار للراكب عند وصول الكابتن لموقعه (driver_arrived_at_pickup مع Alert + صوت)
+- [x] إشعار رسالة شات جديدة (chat_message مع Alert + صوت)
+- [x] إشعار إلغاء حجز من الكابتن (booking_cancelled_by_driver مع Alert)
+- [x] إشعار اكتمال الرحلة (trip_completed مع Alert)
+- [x] إضافة صفحة الإشعارات (أيقونة الجرس تفتح صفحة كاملة)
+- [x] إضافة مخزن إشعارات محلي (notification-store.ts)
+- [x] إضافة عداد الإشعارات غير المقروءة على أيقونة الجرس
+- [x] إضافة addNotificationResponseReceivedListener للتنقل عند الضغط على الإشعار
+- [x] إضافة إشعار Push في bookTripWithPickup (كان مفقوداً)
+- [x] 47 اختبار ناجح (notification-store + notification-handler + masar-api)
