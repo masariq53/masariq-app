@@ -8,12 +8,11 @@ import {
   ActivityIndicator,
   Alert,
   StyleSheet,
-  Platform,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { ScreenContainer } from "@/components/screen-container";
 import { trpc } from "@/lib/trpc";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useDriver } from "@/lib/driver-context";
 
 // قائمة المدن العراقية
 const IRAQI_CITIES = [
@@ -25,7 +24,8 @@ const IRAQI_CITIES = [
 
 export default function IntercityScheduleScreen() {
   const router = useRouter();
-  const [driverId, setDriverId] = useState<number | null>(null);
+  const { driver } = useDriver();
+  const driverId = driver?.id ?? null;
   const [fromCity, setFromCity] = useState("الموصل");
   const [toCity, setToCity] = useState("");
   const [departureDate, setDepartureDate] = useState(""); // YYYY-MM-DD
@@ -37,18 +37,6 @@ export default function IntercityScheduleScreen() {
   const [showFromCities, setShowFromCities] = useState(false);
   const [showToCities, setShowToCities] = useState(false);
   const [loading, setLoading] = useState(false);
-
-  // Load driver ID
-  React.useEffect(() => {
-    AsyncStorage.getItem("driverSession").then((raw) => {
-      if (raw) {
-        try {
-          const session = JSON.parse(raw);
-          setDriverId(session.id);
-        } catch {}
-      }
-    });
-  }, []);
 
   const scheduleTrip = trpc.intercity.scheduleTrip.useMutation({
     onSuccess: () => {

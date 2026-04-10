@@ -35,7 +35,7 @@ export default function MyIntercityBookingsScreen() {
   const [passengerId, setPassengerId] = useState<number | null>(null);
 
   React.useEffect(() => {
-    AsyncStorage.getItem("passengerSession").then((raw) => {
+    AsyncStorage.getItem("@masar_passenger").then((raw) => {
       if (raw) {
         try { setPassengerId(JSON.parse(raw).id); } catch {}
       }

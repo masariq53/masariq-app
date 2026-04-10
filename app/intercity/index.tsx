@@ -48,7 +48,7 @@ export default function IntercityBrowseScreen() {
   const [showBookingModal, setShowBookingModal] = useState(false);
 
   React.useEffect(() => {
-    AsyncStorage.getItem("passengerSession").then((raw) => {
+    AsyncStorage.getItem("@masar_passenger").then((raw) => {
       if (raw) {
         try { setPassenger(JSON.parse(raw)); } catch {}
       }

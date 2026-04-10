@@ -11,7 +11,7 @@ import {
 import { useRouter } from "expo-router";
 import { ScreenContainer } from "@/components/screen-container";
 import { trpc } from "@/lib/trpc";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useDriver } from "@/lib/driver-context";
 
 function formatDate(dateStr: string | Date) {
   const d = new Date(dateStr);
@@ -33,16 +33,9 @@ function statusLabel(status: string) {
 
 export default function CaptainIntercityTripsScreen() {
   const router = useRouter();
-  const [driverId, setDriverId] = useState<number | null>(null);
+  const { driver } = useDriver();
+  const driverId = driver?.id ?? null;
   const [expandedTrip, setExpandedTrip] = useState<number | null>(null);
-
-  React.useEffect(() => {
-    AsyncStorage.getItem("driverSession").then((raw) => {
-      if (raw) {
-        try { setDriverId(JSON.parse(raw).id); } catch {}
-      }
-    });
-  }, []);
 
   const { data: trips, isLoading, refetch } = trpc.intercity.myTrips.useQuery(
     { driverId: driverId! },
