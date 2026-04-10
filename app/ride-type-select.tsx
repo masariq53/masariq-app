@@ -58,11 +58,7 @@ export default function RideTypeSelectScreen() {
   };
 
   const handleIntercityRide = () => {
-    Alert.alert(
-      "قريباً 🚀",
-      "خدمة الأجرة بين المدن ستكون متاحة قريباً.\nسنُعلمك فور إطلاقها!",
-      [{ text: "حسناً", style: "default" }]
-    );
+    router.push("/intercity" as any);
   };
 
   return (
@@ -151,8 +147,8 @@ export default function RideTypeSelectScreen() {
             <View style={[styles.cardGradient, styles.cardGradientIntercity]} />
 
             {/* Badge */}
-            <View style={[styles.badge, styles.badgeSoon]}>
-              <Text style={[styles.badgeText, styles.badgeTextSoon]}>قريباً</Text>
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>متاح الآن</Text>
             </View>
 
             {/* Icon */}
@@ -187,7 +183,7 @@ export default function RideTypeSelectScreen() {
                 </View>
               </View>
               <View style={[styles.arrowBtn, styles.arrowBtnIntercity]}>
-                <Text style={[styles.arrowText, styles.arrowTextIntercity]}>إشعرني عند الإطلاق ←</Text>
+                <Text style={[styles.arrowText, styles.arrowTextIntercity]}>احجز مقعدك ←</Text>
               </View>
             </View>
           </TouchableOpacity>

@@ -52,6 +52,14 @@ import {
   deletePricingZone,
   getPricingHistory,
   seedDefaultPricingZone,
+  createIntercityTrip,
+  getUpcomingIntercityTrips,
+  getDriverIntercityTrips,
+  cancelIntercityTrip,
+  bookIntercityTrip,
+  getPassengerIntercityBookings,
+  cancelIntercityBooking,
+  getTripBookings,
 } from "./db";
 import { storagePut } from "./storage";
 
@@ -1771,7 +1779,98 @@ export const appRouter = router({
         return { success: true, message: input.isBlocked ? "تم تعطيل الحساب" : "تم تفعيل الحساب" };
       }),
   }),
+
+  // ─── Intercity Trips ───────────────────────────────────────────────────────────
+  intercity: router({
+    // السائق: جدولة رحلة جديدة
+    scheduleTrip: publicProcedure
+      .input(z.object({
+        driverId: z.number(),
+        fromCity: z.string().min(1),
+        toCity: z.string().min(1),
+        departureTime: z.string(), // ISO string
+        totalSeats: z.number().min(1).max(20),
+        pricePerSeat: z.number().min(0),
+        meetingPoint: z.string().optional(),
+        notes: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const trip = await createIntercityTrip({
+          driverId: input.driverId,
+          fromCity: input.fromCity,
+          toCity: input.toCity,
+          departureTime: new Date(input.departureTime),
+          totalSeats: input.totalSeats,
+          pricePerSeat: input.pricePerSeat,
+          meetingPoint: input.meetingPoint,
+          notes: input.notes,
+        });
+        return { success: true, trip };
+      }),
+
+    // السائق: رحلاتي
+    myTrips: publicProcedure
+      .input(z.object({ driverId: z.number() }))
+      .query(async ({ input }) => {
+        return getDriverIntercityTrips(input.driverId);
+      }),
+
+    // السائق: إلغاء رحلة
+    cancelTrip: publicProcedure
+      .input(z.object({ tripId: z.number(), driverId: z.number() }))
+      .mutation(async ({ input }) => {
+        await cancelIntercityTrip(input.tripId, input.driverId);
+        return { success: true };
+      }),
+
+    // السائق: عرض الحجوزات على رحلته
+    tripBookings: publicProcedure
+      .input(z.object({ tripId: z.number(), driverId: z.number() }))
+      .query(async ({ input }) => {
+        return getTripBookings(input.tripId, input.driverId);
+      }),
+
+    // المستخدم: عرض الرحلات المتاحة
+    listTrips: publicProcedure
+      .input(z.object({
+        fromCity: z.string().optional(),
+        toCity: z.string().optional(),
+      }))
+      .query(async ({ input }) => {
+        return getUpcomingIntercityTrips(input.fromCity, input.toCity);
+      }),
+
+    // المستخدم: حجز مقعد
+    bookTrip: publicProcedure
+      .input(z.object({
+        tripId: z.number(),
+        passengerId: z.number(),
+        seatsBooked: z.number().min(1).max(10),
+        passengerPhone: z.string(),
+        passengerName: z.string(),
+      }))
+      .mutation(async ({ input }) => {
+        const booking = await bookIntercityTrip(input);
+        return { success: true, booking };
+      }),
+
+    // المستخدم: حجوزاتي
+    myBookings: publicProcedure
+      .input(z.object({ passengerId: z.number() }))
+      .query(async ({ input }) => {
+        return getPassengerIntercityBookings(input.passengerId);
+      }),
+
+    // المستخدم: إلغاء حجز
+    cancelBooking: publicProcedure
+      .input(z.object({ bookingId: z.number(), passengerId: z.number() }))
+      .mutation(async ({ input }) => {
+        await cancelIntercityBooking(input.bookingId, input.passengerId);
+        return { success: true };
+      }),
+  }),
 });
 
 export type AppRouter = typeof appRouter;
+
 

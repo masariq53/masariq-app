@@ -12,6 +12,8 @@ import {
   InsertDriver,
   InsertOtpCode,
   InsertRide,
+  intercityTrips,
+  intercityBookings,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
@@ -1076,4 +1078,220 @@ export async function seedDefaultPricingZone() {
     notes: "المنطقة الافتراضية - الموصل",
     updatedBy: "system",
   });
+}
+
+// ─── Intercity Trips ──────────────────────────────────────────────────────────
+
+/**
+ * Create a new intercity trip (scheduled by driver)
+ */
+export async function createIntercityTrip(data: {
+  driverId: number;
+  fromCity: string;
+  toCity: string;
+  departureTime: Date;
+  totalSeats: number;
+  pricePerSeat: number;
+  meetingPoint?: string;
+  notes?: string;
+}) {
+  const db = await getDb();
+  if (!db) return null;
+  await db.insert(intercityTrips).values({
+    driverId: data.driverId,
+    fromCity: data.fromCity,
+    toCity: data.toCity,
+    departureTime: data.departureTime,
+    totalSeats: data.totalSeats,
+    availableSeats: data.totalSeats,
+    pricePerSeat: data.pricePerSeat.toString(),
+    meetingPoint: data.meetingPoint ?? null,
+    notes: data.notes ?? null,
+    status: "scheduled",
+  });
+  const created = await db
+    .select()
+    .from(intercityTrips)
+    .where(eq(intercityTrips.driverId, data.driverId))
+    .orderBy(desc(intercityTrips.createdAt))
+    .limit(1);
+  return created[0] ?? null;
+}
+
+/**
+ * Get all upcoming intercity trips (for passengers to browse)
+ */
+export async function getUpcomingIntercityTrips(fromCity?: string, toCity?: string) {
+  const db = await getDb();
+  if (!db) return [];
+  const now = new Date();
+  const conditions = [
+    eq(intercityTrips.status, "scheduled"),
+    gt(intercityTrips.departureTime, now),
+    gt(intercityTrips.availableSeats, 0),
+  ] as any[];
+  if (fromCity) conditions.push(eq(intercityTrips.fromCity, fromCity));
+  if (toCity) conditions.push(eq(intercityTrips.toCity, toCity));
+  return db
+    .select()
+    .from(intercityTrips)
+    .where(and(...conditions))
+    .orderBy(intercityTrips.departureTime);
+}
+
+/**
+ * Get trips scheduled by a specific driver
+ */
+export async function getDriverIntercityTrips(driverId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(intercityTrips)
+    .where(eq(intercityTrips.driverId, driverId))
+    .orderBy(desc(intercityTrips.createdAt));
+}
+
+/**
+ * Cancel an intercity trip (by driver)
+ */
+export async function cancelIntercityTrip(tripId: number, driverId: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db
+    .update(intercityTrips)
+    .set({ status: "cancelled" })
+    .where(and(eq(intercityTrips.id, tripId), eq(intercityTrips.driverId, driverId)));
+}
+
+/**
+ * Book a seat on an intercity trip
+ */
+export async function bookIntercityTrip(data: {
+  tripId: number;
+  passengerId: number;
+  seatsBooked: number;
+  passengerPhone: string;
+  passengerName: string;
+}) {
+  const db = await getDb();
+  if (!db) return null;
+
+  // Get trip and check availability
+  const tripResult = await db
+    .select()
+    .from(intercityTrips)
+    .where(eq(intercityTrips.id, data.tripId))
+    .limit(1);
+  const trip = tripResult[0];
+  if (!trip) throw new Error("الرحلة غير موجودة");
+  if (trip.status !== "scheduled") throw new Error("الرحلة غير متاحة للحجز");
+  if (trip.availableSeats < data.seatsBooked) throw new Error("لا توجد مقاعد كافية");
+
+  // Check if passenger already booked this trip
+  const existingBooking = await db
+    .select()
+    .from(intercityBookings)
+    .where(
+      and(
+        eq(intercityBookings.tripId, data.tripId),
+        eq(intercityBookings.passengerId, data.passengerId),
+        eq(intercityBookings.status, "confirmed")
+      )
+    )
+    .limit(1);
+  if (existingBooking.length > 0) throw new Error("لقد حجزت هذه الرحلة مسبقاً");
+
+  const totalPrice = parseFloat(trip.pricePerSeat) * data.seatsBooked;
+
+  // Insert booking
+  await db.insert(intercityBookings).values({
+    tripId: data.tripId,
+    passengerId: data.passengerId,
+    seatsBooked: data.seatsBooked,
+    totalPrice: totalPrice.toString(),
+    status: "confirmed",
+    passengerPhone: data.passengerPhone,
+    passengerName: data.passengerName,
+  });
+
+  // Decrement available seats
+  await db
+    .update(intercityTrips)
+    .set({ availableSeats: trip.availableSeats - data.seatsBooked })
+    .where(eq(intercityTrips.id, data.tripId));
+
+  const booking = await db
+    .select()
+    .from(intercityBookings)
+    .where(
+      and(
+        eq(intercityBookings.tripId, data.tripId),
+        eq(intercityBookings.passengerId, data.passengerId)
+      )
+    )
+    .orderBy(desc(intercityBookings.createdAt))
+    .limit(1);
+  return booking[0] ?? null;
+}
+
+/**
+ * Get bookings for a specific passenger
+ */
+export async function getPassengerIntercityBookings(passengerId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(intercityBookings)
+    .where(eq(intercityBookings.passengerId, passengerId))
+    .orderBy(desc(intercityBookings.createdAt));
+}
+
+/**
+ * Cancel a booking (by passenger)
+ */
+export async function cancelIntercityBooking(bookingId: number, passengerId: number) {
+  const db = await getDb();
+  if (!db) return;
+
+  const bookingResult = await db
+    .select()
+    .from(intercityBookings)
+    .where(and(eq(intercityBookings.id, bookingId), eq(intercityBookings.passengerId, passengerId)))
+    .limit(1);
+  const booking = bookingResult[0];
+  if (!booking) throw new Error("الحجز غير موجود");
+  if (booking.status === "cancelled") throw new Error("الحجز ملغى مسبقاً");
+
+  await db
+    .update(intercityBookings)
+    .set({ status: "cancelled" })
+    .where(eq(intercityBookings.id, bookingId));
+
+  // Restore seats
+  await db
+    .update(intercityTrips)
+    .set({ availableSeats: sql`availableSeats + ${booking.seatsBooked}` })
+    .where(eq(intercityTrips.id, booking.tripId));
+}
+
+/**
+ * Get bookings for a specific trip (for driver to see who booked)
+ */
+export async function getTripBookings(tripId: number, driverId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  // Verify driver owns the trip
+  const tripResult = await db
+    .select()
+    .from(intercityTrips)
+    .where(and(eq(intercityTrips.id, tripId), eq(intercityTrips.driverId, driverId)))
+    .limit(1);
+  if (!tripResult[0]) return [];
+  return db
+    .select()
+    .from(intercityBookings)
+    .where(and(eq(intercityBookings.tripId, tripId), eq(intercityBookings.status, "confirmed")))
+    .orderBy(intercityBookings.createdAt);
 }

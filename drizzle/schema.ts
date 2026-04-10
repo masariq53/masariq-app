@@ -245,3 +245,44 @@ export const pricingHistory = mysqlTable("pricingHistory", {
 
 export type PricingHistory = typeof pricingHistory.$inferSelect;
 export type InsertPricingHistory = typeof pricingHistory.$inferInsert;
+
+/**
+ * Intercity trips - trips scheduled by drivers between cities
+ */
+export const intercityTrips = mysqlTable("intercityTrips", {
+  id: int("id").autoincrement().primaryKey(),
+  driverId: int("driverId").notNull(),
+  fromCity: varchar("fromCity", { length: 100 }).notNull(),
+  toCity: varchar("toCity", { length: 100 }).notNull(),
+  departureTime: timestamp("departureTime").notNull(),
+  totalSeats: int("totalSeats").notNull().default(4),
+  availableSeats: int("availableSeats").notNull().default(4),
+  pricePerSeat: decimal("pricePerSeat", { precision: 10, scale: 2 }).notNull(),
+  meetingPoint: text("meetingPoint"),
+  notes: text("notes"),
+  status: mysqlEnum("status", ["scheduled", "in_progress", "completed", "cancelled"]).default("scheduled").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type IntercityTrip = typeof intercityTrips.$inferSelect;
+export type InsertIntercityTrip = typeof intercityTrips.$inferInsert;
+
+/**
+ * Intercity bookings - passenger seat reservations on intercity trips
+ */
+export const intercityBookings = mysqlTable("intercityBookings", {
+  id: int("id").autoincrement().primaryKey(),
+  tripId: int("tripId").notNull(),
+  passengerId: int("passengerId").notNull(),
+  seatsBooked: int("seatsBooked").notNull().default(1),
+  totalPrice: decimal("totalPrice", { precision: 10, scale: 2 }).notNull(),
+  status: mysqlEnum("status", ["pending", "confirmed", "cancelled"]).default("confirmed").notNull(),
+  passengerPhone: varchar("passengerPhone", { length: 20 }),
+  passengerName: varchar("passengerName", { length: 100 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type IntercityBooking = typeof intercityBookings.$inferSelect;
+export type InsertIntercityBooking = typeof intercityBookings.$inferInsert;

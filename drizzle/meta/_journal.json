@@ -64,6 +64,13 @@
       "when": 1775760559696,
       "tag": "0008_regular_jamie_braddock",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "5",
+      "when": 1775780358262,
+      "tag": "0009_purple_blazing_skull",
+      "breakpoints": true
     }
   ]
 }

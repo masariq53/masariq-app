@@ -518,6 +518,14 @@ export default function CaptainHomeScreen() {
           <Text style={styles.statValue}>📊</Text>
           <Text style={styles.statLabel}>الرحلات</Text>
         </TouchableOpacity>
+        <View style={styles.statDivider} />
+        <TouchableOpacity
+          style={styles.statItem}
+          onPress={() => router.push("/captain/intercity-trips" as any)}
+        >
+          <Text style={styles.statValue}>🛣️</Text>
+          <Text style={styles.statLabel}>بين المدن</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Modal طلب رحلة حقيقي */}
