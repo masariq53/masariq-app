@@ -20,9 +20,10 @@ import * as Notifications from "expo-notifications";
 import { useAudioPlayer, setAudioModeAsync } from "expo-audio";
 
 import { trpc, createTRPCClient } from "@/lib/trpc";
-import { PassengerProvider } from "@/lib/passenger-context";
+import { PassengerProvider, usePassenger } from "@/lib/passenger-context";
 import { DriverProvider, useDriver } from "@/lib/driver-context";
 import { initManusRuntime, subscribeSafeAreaInsets } from "@/lib/_core/manus-runtime";
+import { registerPassengerNotifications } from "@/lib/passenger-notifications";
 
 const DEFAULT_WEB_INSETS: EdgeInsets = { top: 0, right: 0, bottom: 0, left: 0 };
 const DEFAULT_WEB_FRAME: Rect = { x: 0, y: 0, width: 0, height: 0 };
@@ -30,6 +31,35 @@ const DEFAULT_WEB_FRAME: Rect = { x: 0, y: 0, width: 0, height: 0 };
 export const unstable_settings = {
   anchor: "(tabs)",
 };
+
+/**
+ * تسجيل pushToken للراكب تلقائياً عند فتح التطبيق.
+ * Must be inside PassengerProvider and trpc.Provider.
+ */
+function PassengerPushTokenRegistrar() {
+  const { passenger } = usePassenger();
+  const savePushToken = trpc.rides.savePassengerPushToken.useMutation();
+
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+    if (!passenger?.id) return;
+
+    const register = async () => {
+      try {
+        const token = await registerPassengerNotifications();
+        if (token) {
+          savePushToken.mutate({ passengerId: passenger.id, token });
+        }
+      } catch (e) {
+        console.warn("[Push] Failed to register passenger push token on app start:", e);
+      }
+    };
+    register();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [passenger?.id]);
+
+  return null;
+}
 
 /**
  * Handles incoming Push notifications for account block/unblock events.
@@ -155,6 +185,7 @@ export default function RootLayout() {
       <PassengerProvider>
       <trpc.Provider client={trpcClient} queryClient={queryClient}>
         <QueryClientProvider client={queryClient}>
+          <PassengerPushTokenRegistrar />
           {/* Default to hiding native headers so raw route segments don't appear (e.g. "(tabs)", "products/[id]"). */}
           {/* If a screen needs the native header, explicitly enable it and set a human title via Stack.Screen options. */}
           {/* in order for ios apps tab switching to work properly, use presentation: "fullScreenModal" for login page, whenever you decide to use presentation: "modal*/}

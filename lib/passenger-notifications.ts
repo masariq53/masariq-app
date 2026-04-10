@@ -1,4 +1,6 @@
 import * as Notifications from "expo-notifications";
+import * as Device from "expo-device";
+import Constants from "expo-constants";
 import { Platform } from "react-native";
 
 // Handler مشترك مع driver-notifications (يُضبط مرة واحدة)
@@ -10,6 +12,12 @@ import { Platform } from "react-native";
  */
 export async function registerPassengerNotifications(): Promise<string | null> {
   if (Platform.OS === "web") return null;
+
+  // الإشعارات تعمل فقط على الأجهزة الحقيقية
+  if (!Device.isDevice) {
+    console.warn("[Push] Push notifications only work on physical devices");
+    return null;
+  }
 
   if (Platform.OS === "android") {
     await Notifications.setNotificationChannelAsync("passenger-alerts", {
@@ -32,9 +40,16 @@ export async function registerPassengerNotifications(): Promise<string | null> {
   if (finalStatus !== "granted") return null;
 
   try {
-    const tokenData = await Notifications.getExpoPushTokenAsync();
+    const projectId =
+      Constants?.expoConfig?.extra?.eas?.projectId ??
+      Constants?.easConfig?.projectId;
+    const tokenData = await Notifications.getExpoPushTokenAsync(
+      projectId ? { projectId } : undefined
+    );
+    console.log("[Push] Passenger push token registered:", tokenData.data.substring(0, 30) + "...");
     return tokenData.data;
-  } catch {
+  } catch (e) {
+    console.warn("[Push] Failed to get passenger push token:", e);
     return null;
   }
 }

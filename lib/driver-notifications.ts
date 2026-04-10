@@ -1,4 +1,6 @@
 import * as Notifications from "expo-notifications";
+import * as Device from "expo-device";
+import Constants from "expo-constants";
 import { Platform } from "react-native";
 
 // Configure notification handler - show alerts even in foreground
@@ -50,10 +52,23 @@ export async function registerDriverPushToken(): Promise<string | null> {
     return null;
   }
 
+  // الإشعارات تعمل فقط على الأجهزة الحقيقية
+  if (!Device.isDevice) {
+    console.warn("[Push] Push notifications only work on physical devices");
+    return null;
+  }
+
   try {
-    const tokenData = await Notifications.getExpoPushTokenAsync();
+    const projectId =
+      Constants?.expoConfig?.extra?.eas?.projectId ??
+      Constants?.easConfig?.projectId;
+    const tokenData = await Notifications.getExpoPushTokenAsync(
+      projectId ? { projectId } : undefined
+    );
+    console.log("[Push] Driver push token registered:", tokenData.data.substring(0, 30) + "...");
     return tokenData.data;
-  } catch {
+  } catch (e) {
+    console.warn("[Push] Failed to get driver push token:", e);
     return null;
   }
 }

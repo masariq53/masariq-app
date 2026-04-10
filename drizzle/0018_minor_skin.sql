@@ -1,0 +1,1 @@
+ALTER TABLE `passengers` DROP COLUMN `pushToken`;

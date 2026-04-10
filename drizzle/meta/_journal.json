@@ -120,6 +120,20 @@
       "when": 1775837481352,
       "tag": "0016_polite_nightshade",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "5",
+      "when": 1775841114882,
+      "tag": "0017_productive_demogoblin",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "5",
+      "when": 1775844001680,
+      "tag": "0018_minor_skin",
+      "breakpoints": true
     }
   ]
 }
