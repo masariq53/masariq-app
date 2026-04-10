@@ -402,9 +402,9 @@ export default function ProfileScreen() {
               🌐  {t.language.selectLanguage}
             </Text>
             {([
-              { code: "ar" as Language, label: t.language.arabic, flag: "🇮🇶" },
-              { code: "en" as Language, label: t.language.english, flag: "🇬🇧" },
-              { code: "ku" as Language, label: t.language.kurdish, flag: "🏳️" },
+              { code: "ar" as Language, label: t.language.arabic, flag: "🇮🇶", flagImg: null },
+              { code: "ku" as Language, label: t.language.kurdish, flag: null, flagImg: require("../../assets/images/kurdistan-flag.webp") },
+              { code: "en" as Language, label: t.language.english, flag: "🇬🇧", flagImg: null },
             ]).map((lang) => (
               <TouchableOpacity
                 key={lang.code}
@@ -415,7 +415,11 @@ export default function ProfileScreen() {
                 ]}
                 onPress={() => handleLanguageSelect(lang.code)}
               >
-                <Text style={styles.langFlag}>{lang.flag}</Text>
+                {lang.flagImg ? (
+                  <Image source={lang.flagImg} style={styles.langFlagImg} />
+                ) : (
+                  <Text style={styles.langFlag}>{lang.flag}</Text>
+                )}
                 <Text style={[styles.langLabel, { color: isDark ? "#FFFFFF" : "#1A0533" }]}>
                   {lang.label}
                 </Text>
@@ -509,6 +513,7 @@ const styles = StyleSheet.create({
   },
   langOptionActive: { borderColor: "#FFD700", backgroundColor: "rgba(255,215,0,0.08)" },
   langFlag: { fontSize: 24 },
+  langFlagImg: { width: 22, height: 16, borderRadius: 3, resizeMode: "cover" },
   langLabel: { flex: 1, fontSize: 17, fontWeight: "600" },
   langCheck: { color: "#FFD700", fontSize: 20, fontWeight: "800" },
   langCancelBtn: {

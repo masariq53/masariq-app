@@ -238,6 +238,58 @@ export default function AdminDashboard() {
                   </View>
                 </View>
 
+                {/* Intercity Stats */}
+                <View style={styles.section}>
+                  <Text style={styles.sectionTitle}>رحلات بين المدن</Text>
+                  <View style={styles.statsGrid}>
+                    <StatCard
+                      icon="🚨"
+                      label="إجمالي الرحلات"
+                      value={allIntercityTrips?.length ?? 0}
+                      color="#8B5CF6"
+                      onPress={() => setActiveTab("intercity")}
+                    />
+                    <StatCard
+                      icon="✅"
+                      label="مكتملة"
+                      value={allIntercityTrips?.filter((t: any) => t.status === "completed").length ?? 0}
+                      color="#22C55E"
+                      onPress={() => setActiveTab("intercity")}
+                    />
+                    <StatCard
+                      icon="📅"
+                      label="مجدولة"
+                      value={allIntercityTrips?.filter((t: any) => t.status === "scheduled").length ?? 0}
+                      color="#FFD700"
+                      onPress={() => setActiveTab("intercity")}
+                    />
+                    <StatCard
+                      icon="👥"
+                      label="إجمالي الحجوز"
+                      value={allIntercityTrips?.reduce((acc: number, t: any) => acc + (t.totalPassengers ?? 0), 0) ?? 0}
+                      color="#3B82F6"
+                      onPress={() => setActiveTab("intercity")}
+                    />
+                  </View>
+                  {/* Intercity Revenue */}
+                  <View style={[styles.totalRow, { marginTop: 10 }]}>
+                    <View style={[styles.totalCard, { flex: 1 }]}>
+                      <Text style={styles.totalValue}>
+                        {(allIntercityTrips?.filter((t: any) => t.status === "completed")
+                          .reduce((acc: number, t: any) => acc + (t.totalPassengers ?? 0) * parseFloat(t.pricePerSeat ?? "0"), 0) ?? 0
+                        ).toLocaleString()}
+                      </Text>
+                      <Text style={styles.totalLabel}>إجمالي إيرادات بين المدن (د.ع)</Text>
+                    </View>
+                    <View style={[styles.totalCard, { flex: 1 }]}>
+                      <Text style={styles.totalValue}>
+                        {allIntercityTrips?.filter((t: any) => t.status === "in_progress").length ?? 0}
+                      </Text>
+                      <Text style={styles.totalLabel}>رحلات جارية الآن</Text>
+                    </View>
+                  </View>
+                </View>
+
                 {/* Quick Actions */}
                 <View style={styles.section}>
                   <Text style={styles.sectionTitle}>إدارة النظام</Text>

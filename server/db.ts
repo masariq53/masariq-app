@@ -1100,6 +1100,30 @@ export async function createIntercityTrip(data: {
 }) {
   const db = await getDb();
   if (!db) return null;
+
+  // منع تكرار الرحلة بنفس الوجهة والوقت (فارق أقل من 30 دقيقة)
+  const windowMs = 30 * 60 * 1000; // 30 دقيقة
+  const windowStart = new Date(data.departureTime.getTime() - windowMs);
+  const windowEnd = new Date(data.departureTime.getTime() + windowMs);
+  const { gte, lte } = await import("drizzle-orm");
+  const existing = await db
+    .select({ id: intercityTrips.id })
+    .from(intercityTrips)
+    .where(
+      and(
+        eq(intercityTrips.driverId, data.driverId),
+        eq(intercityTrips.fromCity, data.fromCity),
+        eq(intercityTrips.toCity, data.toCity),
+        gte(intercityTrips.departureTime, windowStart),
+        lte(intercityTrips.departureTime, windowEnd),
+        ne(intercityTrips.status, "cancelled"),
+      )
+    )
+    .limit(1);
+  if (existing.length > 0) {
+    throw new Error("لديك رحلة بنفس الوجهة والوقت تقريباً. لا يمكن جدولة رحلتين بنفس المسار خلال 30 دقيقة.");
+  }
+
   await db.insert(intercityTrips).values({
     driverId: data.driverId,
     fromCity: data.fromCity,
@@ -1639,15 +1663,11 @@ export async function getDriverTripPassengers(tripId: number, driverId: number) 
     .where(and(eq(intercityTrips.id, tripId), eq(intercityTrips.driverId, driverId)))
     .limit(1);
   if (!trip[0]) throw new Error("الرحلة غير موجودة أو غير مصرح");
+  // جلب جميع الحجوزات (confirmed + cancelled) مع driverApproachStatus
   const bookings = await db
     .select()
     .from(intercityBookings)
-    .where(
-      and(
-        eq(intercityBookings.tripId, tripId),
-        eq(intercityBookings.status, "confirmed")
-      )
-    )
+    .where(eq(intercityBookings.tripId, tripId))
     .orderBy(intercityBookings.createdAt);
   return bookings;
 }

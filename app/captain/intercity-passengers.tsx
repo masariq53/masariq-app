@@ -1,5 +1,5 @@
 "use client";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import {
   View, Text, TouchableOpacity, FlatList,
   ActivityIndicator, Alert, StyleSheet, Linking,
@@ -7,6 +7,7 @@ import {
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
+import * as Location from "expo-location";
 import { ScreenContainer } from "@/components/screen-container";
 import { trpc } from "@/lib/trpc";
 import { useDriver } from "@/lib/driver-context";
@@ -29,8 +30,8 @@ export default function IntercityPassengersScreen() {
   const { driver } = useDriver();
   const [refreshing, setRefreshing] = useState(false);
 
-  // حالة التوجه لكل راكب (bookingId → status)
-  const [approachStatuses, setApproachStatuses] = useState<Record<number, ApproachStatus>>({});
+  // حالة التوجه لكل راكب (bookingId → status) - override محلي فوق قيمة DB
+  const [approachOverrides, setApproachOverrides] = useState<Record<number, ApproachStatus>>({});
 
   // Cancel passenger modal state
   const [showCancelModal, setShowCancelModal] = useState(false);
@@ -59,6 +60,42 @@ export default function IntercityPassengersScreen() {
   const updateApproach = trpc.intercity.updateApproachStatus.useMutation({
     onError: (err) => Alert.alert("خطأ", err.message),
   });
+
+  const updateDriverLocationMutation = trpc.intercity.updateDriverLocation.useMutation();
+  const locationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [isTrackingLocation, setIsTrackingLocation] = useState(false);
+
+  // بدء إرسال الموقع عند التوجه إلى راكب
+  const startLocationTracking = async () => {
+    if (isTrackingLocation || !driver?.id || !tripId) return;
+    const { status } = await Location.requestForegroundPermissionsAsync();
+    if (status !== "granted") return;
+    setIsTrackingLocation(true);
+    const sendLoc = async () => {
+      try {
+        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+        updateDriverLocationMutation.mutate({
+          tripId: parseInt(tripId),
+          driverId: driver.id,
+          lat: loc.coords.latitude,
+          lng: loc.coords.longitude,
+        });
+      } catch {}
+    };
+    sendLoc();
+    if (!locationIntervalRef.current) {
+      locationIntervalRef.current = setInterval(sendLoc, 8000);
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (locationIntervalRef.current) {
+        clearInterval(locationIntervalRef.current);
+        locationIntervalRef.current = null;
+      }
+    };
+  }, []);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -93,12 +130,14 @@ export default function IntercityPassengersScreen() {
         {
           text: "نعم، أبلغه",
           onPress: () => {
-            setApproachStatuses((prev) => ({ ...prev, [bookingId]: "heading" }));
+            setApproachOverrides((prev) => ({ ...prev, [bookingId]: "heading" }));
             updateApproach.mutate({
               bookingId,
               driverId: driver.id,
               status: "heading",
             });
+            // بدء إرسال الموقع فوراً ليرى الراكب موقع السائق
+            startLocationTracking();
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
           },
         },
@@ -116,7 +155,7 @@ export default function IntercityPassengersScreen() {
         {
           text: "نعم، وصلت",
           onPress: () => {
-            setApproachStatuses((prev) => ({ ...prev, [bookingId]: "arrived_at_pickup" }));
+            setApproachOverrides((prev) => ({ ...prev, [bookingId]: "arrived_at_pickup" }));
             updateApproach.mutate({
               bookingId,
               driverId: driver.id,
@@ -171,12 +210,63 @@ export default function IntercityPassengersScreen() {
     });
   };
 
-  const getApproachStatus = (bookingId: number): ApproachStatus => {
-    return approachStatuses[bookingId] || "idle";
+  // قراءة الحالة: override محلي أولاً، ثم قيمة DB
+  const getApproachStatus = (bookingId: number, dbStatus?: string | null): ApproachStatus => {
+    if (approachOverrides[bookingId]) return approachOverrides[bookingId];
+    if (dbStatus === "heading" || dbStatus === "arrived_at_pickup") return dbStatus as ApproachStatus;
+    return "idle";
+  };
+
+  // حساب المسافة بالكيلومتر بين نقطتين (Haversine)
+  const haversineKm = (lat1: number, lng1: number, lat2: number, lng2: number) => {
+    const R = 6371;
+    const dLat = ((lat2 - lat1) * Math.PI) / 180;
+    const dLng = ((lng2 - lng1) * Math.PI) / 180;
+    const a = Math.sin(dLat / 2) ** 2 +
+      Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  };
+
+  const [captainCoords, setCaptainCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [sortByProximity, setSortByProximity] = useState(false);
+
+  const handleSortByProximity = async () => {
+    if (sortByProximity) {
+      setSortByProximity(false);
+      return;
+    }
+    const { status } = await Location.requestForegroundPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("خطأ", "يجب السماح بالوصول إلى الموقع لتفعيل هذه الميزة");
+      return;
+    }
+    try {
+      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      setCaptainCoords({ lat: loc.coords.latitude, lng: loc.coords.longitude });
+      setSortByProximity(true);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch {
+      Alert.alert("خطأ", "تعذر تحديد موقعك");
+    }
   };
 
   const confirmedPassengers = passengers?.filter((p) => p.status !== "cancelled") || [];
   const cancelledPassengers = passengers?.filter((p) => p.status === "cancelled") || [];
+
+  // ترتيب المسافرين حسب القرب من موقع الكابتن
+  const sortedConfirmedPassengers = sortByProximity && captainCoords
+    ? [...confirmedPassengers].sort((a, b) => {
+        const aLat = parseFloat((a as any).pickupLat ?? "0");
+        const aLng = parseFloat((a as any).pickupLng ?? "0");
+        const bLat = parseFloat((b as any).pickupLat ?? "0");
+        const bLng = parseFloat((b as any).pickupLng ?? "0");
+        if (!aLat || !aLng) return 1;
+        if (!bLat || !bLng) return -1;
+        const distA = haversineKm(captainCoords.lat, captainCoords.lng, aLat, aLng);
+        const distB = haversineKm(captainCoords.lat, captainCoords.lng, bLat, bLng);
+        return distA - distB;
+      })
+    : confirmedPassengers;
 
   return (
     <ScreenContainer>
@@ -189,9 +279,17 @@ export default function IntercityPassengersScreen() {
           <Text style={styles.headerTitle}>قائمة المسافرين</Text>
           {tripRoute ? <Text style={styles.headerRoute}>{tripRoute}</Text> : null}
         </View>
-        <View style={styles.headerStats}>
-          <Text style={styles.headerStatText}>{confirmedPassengers.length}</Text>
-          <Text style={styles.headerStatLabel}>مسافر</Text>
+        <View style={styles.headerRight}>
+          <TouchableOpacity
+            style={[styles.proximityBtn, sortByProximity && styles.proximityBtnActive]}
+            onPress={handleSortByProximity}
+          >
+            <Text style={styles.proximityBtnText}>{sortByProximity ? "📍 ترتيب نشط" : "📍 ترتيب حسب القرب"}</Text>
+          </TouchableOpacity>
+          <View style={styles.headerStats}>
+            <Text style={styles.headerStatText}>{confirmedPassengers.length}</Text>
+            <Text style={styles.headerStatLabel}>مسافر</Text>
+          </View>
         </View>
       </View>
 
@@ -205,13 +303,13 @@ export default function IntercityPassengersScreen() {
         </View>
       ) : (
         <FlatList
-          data={[...confirmedPassengers, ...cancelledPassengers]}
+          data={[...sortedConfirmedPassengers, ...cancelledPassengers]}
           keyExtractor={(item) => item.id.toString()}
           contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#FFD700" />}
           renderItem={({ item, index }) => {
             const isCancelled = item.status === "cancelled";
-            const approachStatus = getApproachStatus(item.id);
+            const approachStatus = getApproachStatus(item.id, (item as any).driverApproachStatus);
             const isHeading = approachStatus === "heading";
             const isArrivedAtPickup = approachStatus === "arrived_at_pickup";
 
@@ -246,6 +344,18 @@ export default function IntercityPassengersScreen() {
                   <Text style={styles.infoText}>{item.seatsBooked} مقعد</Text>
                   <Text style={styles.infoSeparator}>•</Text>
                   <Text style={styles.infoText}>{parseInt(item.totalPrice).toLocaleString()} دينار</Text>
+                  {sortByProximity && captainCoords && (item as any).pickupLat && (item as any).pickupLng && (
+                    <>
+                      <Text style={styles.infoSeparator}>•</Text>
+                      <Text style={[styles.infoText, { color: "#FFD700" }]}>
+                        📍 {haversineKm(
+                          captainCoords.lat, captainCoords.lng,
+                          parseFloat((item as any).pickupLat),
+                          parseFloat((item as any).pickupLng)
+                        ).toFixed(1)} كم
+                      </Text>
+                    </>
+                  )}
                 </View>
 
                 {/* Pickup Address */}
@@ -561,4 +671,11 @@ const styles = StyleSheet.create({
     paddingVertical: 10, alignItems: "center", borderWidth: 1, borderColor: "#4A90D9",
   },
   chatBtnText: { color: "#4A90D9", fontSize: 13, fontWeight: "600" },
+  headerRight: { flexDirection: "row", alignItems: "center", gap: 8 },
+  proximityBtn: {
+    backgroundColor: "#1E0A3C", borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6,
+    borderWidth: 1, borderColor: "#4B3B8C",
+  },
+  proximityBtnActive: { backgroundColor: "#FFD70022", borderColor: "#FFD700" },
+  proximityBtnText: { color: "#C4B5E0", fontSize: 11, fontWeight: "600" },
 });
