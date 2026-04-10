@@ -301,14 +301,16 @@ export default function IntercityPassengersScreen() {
                   ) : null}
                 </View>
 
-                {/* Cancel */}
-                <TouchableOpacity
-                  style={styles.cancelBtn}
-                  onPress={() => handleCancelPassenger(item.id, item.passengerName || "المسافر")}
-                  disabled={cancelPassenger.isPending}
-                >
-                  <Text style={styles.cancelBtnText}>إلغاء الحجز</Text>
-                </TouchableOpacity>
+                {/* Cancel - only if not picked up yet */}
+                {(item.pickupStatus === "waiting" || !item.pickupStatus) && (
+                  <TouchableOpacity
+                    style={styles.cancelBtn}
+                    onPress={() => handleCancelPassenger(item.id, item.passengerName || "المسافر")}
+                    disabled={cancelPassenger.isPending}
+                  >
+                    <Text style={styles.cancelBtnText}>إلغاء الحجز</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             );
           }}

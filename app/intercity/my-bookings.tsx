@@ -180,7 +180,7 @@ export default function MyIntercityBookingsScreen() {
             const fromCity = trip?.fromCity ?? "—";
             const toCity = trip?.toCity ?? "—";
             const departureTime = trip?.departureTime ?? null;
-            const canCancel = status === "scheduled";
+            const canCancel = status === "scheduled" && item.pickupStatus !== "picked_up" && item.pickupStatus !== "arrived";
 
             return (
               <View style={styles.bookingCard}>
@@ -264,7 +264,7 @@ export default function MyIntercityBookingsScreen() {
                       <Text style={{ color: "#22C55E", fontWeight: "bold" }}>🚗 الرحلة جارية</Text>
                     </View>
                   )}
-                  {status === "completed" && !item.passengerRating ? (
+                  {(status === "completed" || item.pickupStatus === "arrived") && !item.driverRating ? (
                     <TouchableOpacity
                       style={styles.rateBtn}
                       onPress={() => handleRate(item.id, item.tripId)}
@@ -272,10 +272,10 @@ export default function MyIntercityBookingsScreen() {
                       <Text style={styles.rateBtnText}>⭐ قيّم الرحلة</Text>
                     </TouchableOpacity>
                   ) : null}
-                  {status === "completed" && item.passengerRating ? (
+                  {(status === "completed" || item.pickupStatus === "arrived") && item.driverRating ? (
                     <View style={styles.ratedBadge}>
                       <Text style={styles.ratedText}>
-                        {"⭐".repeat(item.passengerRating)} تم التقييم
+                        {"⭐".repeat(item.driverRating)} تم التقييم
                       </Text>
                     </View>
                   ) : null}

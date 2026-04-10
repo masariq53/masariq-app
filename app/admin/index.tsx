@@ -1109,6 +1109,14 @@ export default function AdminDashboard() {
                                 <Text style={{ color: "#4ADE80", fontWeight: "800", fontSize: 13 }}>{parseInt(b.totalPrice ?? "0").toLocaleString()}</Text>
                                 <Text style={{ color: "#9B8EC4", fontSize: 10 }}>دينار</Text>
                                 <Text style={{ color: "#FFD700", fontSize: 11, marginTop: 4 }}>💺 {b.seatsBooked} مقعد</Text>
+                                {b.driverRating ? (
+                                  <Text style={{ color: "#FFD700", fontSize: 11, marginTop: 4 }}>⭐ تقييم السائق: {b.driverRating}/5</Text>
+                                ) : (
+                                  <Text style={{ color: "#6B7280", fontSize: 10, marginTop: 4 }}>لم يُقيّم بعد</Text>
+                                )}
+                                <Text style={{ color: b.pickupStatus === "arrived" ? "#4ADE80" : b.pickupStatus === "picked_up" ? "#60A5FA" : "#9B8EC4", fontSize: 10, marginTop: 2 }}>
+                                  {b.pickupStatus === "arrived" ? "✅ وصل" : b.pickupStatus === "picked_up" ? "🚗 تم الالتقاط" : "⏳ في الانتظار"}
+                                </Text>
                               </View>
                             </View>
                           </View>

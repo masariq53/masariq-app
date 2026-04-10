@@ -277,7 +277,7 @@ export const intercityBookings = mysqlTable("intercityBookings", {
   passengerId: int("passengerId").notNull(),
   seatsBooked: int("seatsBooked").notNull().default(1),
   totalPrice: decimal("totalPrice", { precision: 10, scale: 2 }).notNull(),
-  status: mysqlEnum("status", ["pending", "confirmed", "cancelled"]).default("confirmed").notNull(),
+  status: mysqlEnum("status", ["pending", "confirmed", "cancelled", "completed"]).default("confirmed").notNull(),
   passengerPhone: varchar("passengerPhone", { length: 20 }),
   passengerName: varchar("passengerName", { length: 100 }),
   pickupAddress: text("pickupAddress"),

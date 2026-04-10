@@ -1,0 +1,1 @@
+ALTER TABLE `intercityBookings` MODIFY COLUMN `status` enum('pending','confirmed','cancelled','completed') NOT NULL DEFAULT 'confirmed';

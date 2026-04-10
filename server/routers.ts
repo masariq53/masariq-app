@@ -1895,7 +1895,35 @@ export const appRouter = router({
     cancelBooking: publicProcedure
       .input(z.object({ bookingId: z.number(), passengerId: z.number() }))
       .mutation(async ({ input }) => {
-        await cancelIntercityBooking(input.bookingId, input.passengerId);
+        const result = await cancelIntercityBooking(input.bookingId, input.passengerId);
+        // إرسال إشعار للكابتن
+        try {
+          if (result?.booking?.tripId) {
+            const db = await getDb();
+            if (db) {
+              const { intercityTrips: tripsTable } = await import("../drizzle/schema");
+              const { eq: eqFn } = await import("drizzle-orm");
+              const [trip] = await db.select({ driverId: tripsTable.driverId, fromCity: tripsTable.fromCity, toCity: tripsTable.toCity }).from(tripsTable).where(eqFn(tripsTable.id, result.booking.tripId)).limit(1);
+              if (trip?.driverId) {
+                const driverToken = await getDriverPushToken(trip.driverId);
+                if (driverToken && driverToken.startsWith("ExponentPushToken[")) {
+                  fetch("https://exp.host/--/api/v2/push/send", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", "Accept": "application/json" },
+                    body: JSON.stringify({
+                      to: driverToken,
+                      sound: "default",
+                      title: "❌ إلغاء حجز",
+                      body: `ألغى المسافر ${result.booking.passengerName || ''} حجزه في رحلة ${trip.fromCity} → ${trip.toCity}`,
+                      data: { type: "booking_cancelled", tripId: result.booking.tripId },
+                      priority: "high",
+                    }),
+                  }).catch((err) => console.warn("[Push] Failed to notify driver of booking cancellation:", err));
+                }
+              }
+            }
+          }
+        } catch (e) { console.warn("[Push] Error sending cancellation notification:", e); }
         return { success: true };
       }),
     // السائق: تحديث حالة الرحلة (انطلاق / اكتمال)
@@ -2007,13 +2035,71 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => {
         await updatePassengerPickupStatus(input.bookingId, input.driverId, input.pickupStatus);
+        // عند وصول المسافر: تحديث حالة الحجز إلى completed وإرسال إشعار
+        if (input.pickupStatus === "arrived") {
+          try {
+            const db = await getDb();
+            if (db) {
+              const { intercityBookings: bookingsTable, intercityTrips: tripsTable } = await import("../drizzle/schema");
+              const { eq: eqFn } = await import("drizzle-orm");
+              // تحديث حالة الحجز إلى completed
+              const [booking] = await db.select().from(bookingsTable).where(eqFn(bookingsTable.id, input.bookingId)).limit(1);
+              if (booking) {
+                await db.update(bookingsTable).set({ status: "completed" } as any).where(eqFn(bookingsTable.id, input.bookingId));
+                // إرسال إشعار للمسافر
+                const [trip] = await db.select({ fromCity: tripsTable.fromCity, toCity: tripsTable.toCity }).from(tripsTable).where(eqFn(tripsTable.id, booking.tripId)).limit(1);
+                const passengerToken = await getPassengerPushToken(booking.passengerId);
+                if (passengerToken && passengerToken.startsWith("ExponentPushToken[")) {
+                  fetch("https://exp.host/--/api/v2/push/send", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", "Accept": "application/json" },
+                    body: JSON.stringify({
+                      to: passengerToken,
+                      sound: "default",
+                      title: "✅ وصلت إلى وجهتك!",
+                      body: `تمت رحلتك بنجاح من ${trip?.fromCity || ''} إلى ${trip?.toCity || ''}. شكراً لاختيارك مسار!`,
+                      data: { type: "trip_completed", bookingId: input.bookingId },
+                      priority: "high",
+                    }),
+                  }).catch((err) => console.warn("[Push] Failed to notify passenger of arrival:", err));
+                }
+              }
+            }
+          } catch (e) { console.warn("[Push] Error on arrived status update:", e); }
+        }
         return { success: true };
       }),
     // الكابتن: إلغاء حجز راكب معين
     cancelPassenger: publicProcedure
       .input(z.object({ bookingId: z.number(), driverId: z.number() }))
       .mutation(async ({ input }) => {
-        await cancelPassengerByDriver(input.bookingId, input.driverId);
+        const result = await cancelPassengerByDriver(input.bookingId, input.driverId);
+        // إرسال إشعار للمسافر
+        try {
+          if (result?.booking?.passengerId) {
+            const db = await getDb();
+            if (db) {
+              const { intercityTrips: tripsTable } = await import("../drizzle/schema");
+              const { eq: eqFn } = await import("drizzle-orm");
+              const [trip] = await db.select({ fromCity: tripsTable.fromCity, toCity: tripsTable.toCity }).from(tripsTable).where(eqFn(tripsTable.id, result.booking.tripId)).limit(1);
+              const passengerToken = await getPassengerPushToken(result.booking.passengerId);
+              if (passengerToken && passengerToken.startsWith("ExponentPushToken[")) {
+                fetch("https://exp.host/--/api/v2/push/send", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", "Accept": "application/json" },
+                  body: JSON.stringify({
+                    to: passengerToken,
+                    sound: "default",
+                    title: "❌ تم إلغاء حجزك",
+                    body: `ألغى السائق حجزك في رحلة ${trip?.fromCity || ''} → ${trip?.toCity || ''}`,
+                    data: { type: "booking_cancelled_by_driver", tripId: result.booking.tripId },
+                    priority: "high",
+                  }),
+                }).catch((err) => console.warn("[Push] Failed to notify passenger of cancellation:", err));
+              }
+            }
+          }
+        } catch (e) { console.warn("[Push] Error sending passenger cancellation notification:", e); }
         return { success: true };
       }),
   }),

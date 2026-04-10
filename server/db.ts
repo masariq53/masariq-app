@@ -1263,6 +1263,10 @@ export async function cancelIntercityBooking(bookingId: number, passengerId: num
   const booking = bookingResult[0];
   if (!booking) throw new Error("الحجز غير موجود");
   if (booking.status === "cancelled") throw new Error("الحجز ملغى مسبقاً");
+  // منع الإلغاء بعد الالتقاط
+  if (booking.pickupStatus === "picked_up" || booking.pickupStatus === "arrived") {
+    throw new Error("لا يمكن إلغاء الحجز بعد التقاط المسافر");
+  }
 
   await db
     .update(intercityBookings)
@@ -1274,6 +1278,9 @@ export async function cancelIntercityBooking(bookingId: number, passengerId: num
     .update(intercityTrips)
     .set({ availableSeats: sql`availableSeats + ${booking.seatsBooked}` })
     .where(eq(intercityTrips.id, booking.tripId));
+
+  // إرجاع بيانات الحجز لإرسال الإشعار
+  return { booking };
 }
 
 /**
@@ -1593,6 +1600,10 @@ export async function cancelPassengerByDriver(bookingId: number, driverId: numbe
     .where(eq(intercityBookings.id, bookingId))
     .limit(1);
   if (!booking[0]) throw new Error("الحجز غير موجود");
+  // منع الإلغاء بعد الالتقاط
+  if (booking[0].pickupStatus === "picked_up" || booking[0].pickupStatus === "arrived") {
+    throw new Error("لا يمكن إلغاء حجز مسافر تم التقاطه بالفعل");
+  }
   const trip = await db
     .select()
     .from(intercityTrips)
@@ -1607,7 +1618,7 @@ export async function cancelPassengerByDriver(bookingId: number, driverId: numbe
     .update(intercityTrips)
     .set({ availableSeats: trip[0].availableSeats + booking[0].seatsBooked })
     .where(eq(intercityTrips.id, booking[0].tripId));
-  return { success: true };
+  return { booking: booking[0] };
 }
 
 /**
