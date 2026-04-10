@@ -71,30 +71,37 @@ export default function CaptainHomeScreen() {
     { driverId: driver?.id ?? 0, limit: 200 },
     { enabled: !!driver?.id, refetchInterval: 30000 }
   );
+  // دخل رحلات بين المدن لليوم الحالي
+  const intercityEarningsQuery = trpc.intercity.todayEarnings.useQuery(
+    { driverId: driver?.id ?? 0 },
+    { enabled: !!driver?.id, refetchInterval: 30000 }
+  );
   const todayEarnings = useMemo(() => {
-    if (!todayQuery.data?.trips) return 0;
     const now = new Date();
-    return todayQuery.data.trips
-      .filter((t) => {
-        if (t.status !== "completed") return false;
-        const d = new Date(t.createdAt);
-        return d.getFullYear() === now.getFullYear() &&
-          d.getMonth() === now.getMonth() &&
-          d.getDate() === now.getDate();
-      })
-      .reduce((sum, t) => sum + parseFloat(t.fare), 0);
-  }, [todayQuery.data]);
+    // دخل رحلات المدينة
+    const cityEarnings = (todayQuery.data?.trips ?? []).filter((t) => {
+      if (t.status !== "completed") return false;
+      const d = new Date(t.createdAt);
+      return d.getFullYear() === now.getFullYear() &&
+        d.getMonth() === now.getMonth() &&
+        d.getDate() === now.getDate();
+    }).reduce((sum, t) => sum + parseFloat(t.fare), 0);
+    // دخل رحلات بين المدن
+    const intercityEarnings = intercityEarningsQuery.data?.todayEarnings ?? 0;
+    return cityEarnings + intercityEarnings;
+  }, [todayQuery.data, intercityEarningsQuery.data]);
   const todayTrips = useMemo(() => {
-    if (!todayQuery.data?.trips) return 0;
     const now = new Date();
-    return todayQuery.data.trips.filter((t) => {
+    const cityTrips = (todayQuery.data?.trips ?? []).filter((t) => {
       if (t.status !== "completed") return false;
       const d = new Date(t.createdAt);
       return d.getFullYear() === now.getFullYear() &&
         d.getMonth() === now.getMonth() &&
         d.getDate() === now.getDate();
     }).length;
-  }, [todayQuery.data]);
+    const intercityTrips = intercityEarningsQuery.data?.todayTrips ?? 0;
+    return cityTrips + intercityTrips;
+  }, [todayQuery.data, intercityEarningsQuery.data]);
   const rating = parseFloat(driver?.rating ?? "4.9");
   const mapRef = useRef<MapView>(null);
 

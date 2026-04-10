@@ -176,11 +176,23 @@ export default function MyIntercityBookingsScreen() {
           renderItem={({ item }) => {
             const trip = item.trip;
             const driver = item.driver;
-            const status = (trip?.status || item.tripStatus || "scheduled") as TripStatus;
+            // حالة الحجز الفعلية (قد تختلف عن حالة الرحلة إذا ألغى الكابتن هذا الراكب تحديداً)
+            const bookingStatus = item.status as "pending" | "confirmed" | "cancelled" | "completed";
+            const tripStatus = (trip?.status || "scheduled") as TripStatus;
+            // إذا كان الحجز ملغى أو الرحلة ملغاة → اعرض ملغى
+            const isBookingCancelled = bookingStatus === "cancelled";
+            const isTripCancelled = tripStatus === "cancelled";
+            const displayStatus: TripStatus = isBookingCancelled || isTripCancelled ? "cancelled" : tripStatus;
+            // هل ألغى الكابتن هذا الراكب تحديداً (item.cancelledBy يبدأ بـ driver:)
+            const cancelledByDriverReason = isBookingCancelled && typeof item.cancelledBy === "string" && item.cancelledBy.startsWith("driver:")
+              ? item.cancelledBy.replace("driver:", "")
+              : null;
+            // هل ألغيت الرحلة بالكامل من قبل السائق
+            const tripCancelledByDriver = isTripCancelled && (trip?.cancelledBy === "driver" || trip?.cancelReason);
             const fromCity = trip?.fromCity ?? "—";
             const toCity = trip?.toCity ?? "—";
             const departureTime = trip?.departureTime ?? null;
-            const canCancel = status === "scheduled" && item.pickupStatus !== "picked_up" && item.pickupStatus !== "arrived";
+            const canCancel = !isBookingCancelled && !isTripCancelled && tripStatus === "scheduled";
 
             return (
               <View style={styles.bookingCard}>
@@ -188,11 +200,11 @@ export default function MyIntercityBookingsScreen() {
                 <View
                   style={[
                     styles.statusBadge,
-                    { backgroundColor: STATUS_COLORS[status] + "22", borderColor: STATUS_COLORS[status] },
+                    { backgroundColor: STATUS_COLORS[displayStatus] + "22", borderColor: STATUS_COLORS[displayStatus] },
                   ]}
                 >
-                  <Text style={[styles.statusText, { color: STATUS_COLORS[status] }]}>
-                    {STATUS_ICONS[status]} {STATUS_LABELS[status]}
+                  <Text style={[styles.statusText, { color: STATUS_COLORS[displayStatus] }]}>
+                    {STATUS_ICONS[displayStatus]} {STATUS_LABELS[displayStatus]}
                   </Text>
                 </View>
 
@@ -248,8 +260,21 @@ export default function MyIntercityBookingsScreen() {
                   </View>
                 ) : null}
 
-                {/* Cancel reason — shown when trip cancelled by driver */}
-                {status === "cancelled" && (trip?.cancelledBy === "driver" || item.status === "cancelled") ? (
+                {/* Cancel reason — shown when booking cancelled by driver for this specific passenger */}
+                {cancelledByDriverReason ? (
+                  <View style={styles.cancelledByDriverBox}>
+                    <Text style={styles.cancelledByDriverTitle}>❌ تم إلغاء حجزك من قبل السائق</Text>
+                    <Text style={styles.cancelledByDriverReasonLabel}>سبب الإلغاء:</Text>
+                    <Text style={styles.cancelledByDriverReason}>{cancelledByDriverReason}</Text>
+                    <Text style={styles.cancelledByDriverNote}>يمكنك تصفح رحلات أخرى وحجز بديلاً.</Text>
+                    <TouchableOpacity
+                      style={styles.findAlternativeBtn}
+                      onPress={() => router.push("/intercity" as any)}
+                    >
+                      <Text style={styles.findAlternativeBtnText}>🔍 ابحث عن رحلة بديلة</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : tripCancelledByDriver ? (
                   <View style={styles.cancelledByDriverBox}>
                     <Text style={styles.cancelledByDriverTitle}>❌ تم إلغاء هذه الرحلة من قبل السائق</Text>
                     {trip?.cancelReason ? (
@@ -275,18 +300,18 @@ export default function MyIntercityBookingsScreen() {
                   {canCancel && (
                     <TouchableOpacity
                       style={styles.cancelBtn}
-                      onPress={() => handleCancel(item.id, status)}
+                      onPress={() => handleCancel(item.id, tripStatus)}
                       disabled={cancelBooking.isPending}
                     >
                       <Text style={styles.cancelBtnText}>إلغاء الحجز</Text>
                     </TouchableOpacity>
                   )}
-                  {status === "in_progress" && (
+                  {displayStatus === "in_progress" && (
                     <View style={[styles.statusBadge, { backgroundColor: "#22C55E22", borderColor: "#22C55E" }]}>
                       <Text style={{ color: "#22C55E", fontWeight: "bold" }}>🚗 الرحلة جارية</Text>
                     </View>
                   )}
-                  {(status === "completed" || item.pickupStatus === "arrived") && !item.driverRating ? (
+                  {displayStatus === "completed" && !item.driverRating ? (
                     <TouchableOpacity
                       style={styles.rateBtn}
                       onPress={() => handleRate(item.id, item.tripId)}
@@ -294,7 +319,7 @@ export default function MyIntercityBookingsScreen() {
                       <Text style={styles.rateBtnText}>⭐ قيّم الرحلة</Text>
                     </TouchableOpacity>
                   ) : null}
-                  {(status === "completed" || item.pickupStatus === "arrived") && item.driverRating ? (
+                  {displayStatus === "completed" && item.driverRating ? (
                     <View style={styles.ratedBadge}>
                       <Text style={styles.ratedText}>
                         {"⭐".repeat(item.driverRating)} تم التقييم

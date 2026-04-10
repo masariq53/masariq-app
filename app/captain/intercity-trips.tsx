@@ -161,9 +161,14 @@ export default function CaptainIntercityTripsScreen() {
           <Text style={styles.backIcon}>←</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>رحلاتي بين المدن</Text>
-        <TouchableOpacity style={styles.addBtn} onPress={() => router.push("/captain/intercity-schedule")}>
-          <Text style={styles.addBtnText}>+ جديدة</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          <TouchableOpacity style={[styles.addBtn, { backgroundColor: "#2D1B4E" }]} onPress={() => router.push("/captain/intercity-history" as any)}>
+            <Text style={[styles.addBtnText, { color: "#C4B5E0" }]}>📋 السجل</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.addBtn} onPress={() => router.push("/captain/intercity-schedule")}>
+            <Text style={styles.addBtnText}>+ جديدة</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {tripsQuery.isLoading ? (

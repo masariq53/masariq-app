@@ -55,6 +55,7 @@ import {
   createIntercityTrip,
   getUpcomingIntercityTrips,
   getDriverIntercityTrips,
+  getDriverIntercityTodayEarnings,
   cancelIntercityTrip,
   bookIntercityTrip,
   getPassengerIntercityBookings,
@@ -1839,6 +1840,11 @@ export const appRouter = router({
       }),
 
     // السائق: رحلاتي
+    todayEarnings: publicProcedure
+      .input(z.object({ driverId: z.number() }))
+      .query(async ({ input }) => {
+        return getDriverIntercityTodayEarnings(input.driverId);
+      }),
     myTrips: publicProcedure
       .input(z.object({ driverId: z.number() }))
       .query(async ({ input }) => {
@@ -1970,6 +1976,39 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => {
         await updateIntercityTripStatus(input.tripId, input.driverId, input.status);
+        // إرسال إشعارات لجميع مسافري الرحلة
+        try {
+          const db = await getDb();
+          if (db) {
+            const { intercityTrips: tripsTable, intercityBookings: bookingsTable } = await import("../drizzle/schema");
+            const { eq: eqFn, and: andFn, ne: neFn } = await import("drizzle-orm");
+            const [trip] = await db.select({ fromCity: tripsTable.fromCity, toCity: tripsTable.toCity })
+              .from(tripsTable).where(eqFn(tripsTable.id, input.tripId)).limit(1);
+            const bookings = await db.select({ passengerId: bookingsTable.passengerId })
+              .from(bookingsTable)
+              .where(andFn(eqFn(bookingsTable.tripId, input.tripId), neFn(bookingsTable.status, "cancelled")));
+            const route = `${trip?.fromCity || ''} → ${trip?.toCity || ''}`;
+            const notifTitle = input.status === "in_progress" ? "🚗 انطلقت الرحلة" : "✅ وصلت الرحلة";
+            const notifBody = input.status === "in_progress"
+              ? `رحلة ${route} بدأت الآن`
+              : `رحلة ${route} وصلت بنجاح`;
+            for (const booking of bookings) {
+              const token = await getPassengerPushToken(booking.passengerId);
+              if (token && token.startsWith("ExponentPushToken[")) {
+                fetch("https://exp.host/--/api/v2/push/send", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", "Accept": "application/json" },
+                  body: JSON.stringify({
+                    to: token, sound: "default",
+                    title: notifTitle, body: notifBody,
+                    data: { type: `trip_${input.status}`, tripId: input.tripId },
+                    priority: "high",
+                  }),
+                }).catch(() => {});
+              }
+            }
+          }
+        } catch (e) { console.warn("[Push] Error sending trip status notification:", e); }
         return { success: true };
       }),
     // تقييم الرحلة
@@ -2106,32 +2145,28 @@ export const appRouter = router({
       }),
     // الكابتن: إلغاء حجز راكب معين
     cancelPassenger: publicProcedure
-      .input(z.object({ bookingId: z.number(), driverId: z.number() }))
+      .input(z.object({ bookingId: z.number(), driverId: z.number(), reason: z.string().optional() }))
       .mutation(async ({ input }) => {
-        const result = await cancelPassengerByDriver(input.bookingId, input.driverId);
+        const result = await cancelPassengerByDriver(input.bookingId, input.driverId, input.reason);
         // إرسال إشعار للمسافر
         try {
           if (result?.booking?.passengerId) {
-            const db = await getDb();
-            if (db) {
-              const { intercityTrips: tripsTable } = await import("../drizzle/schema");
-              const { eq: eqFn } = await import("drizzle-orm");
-              const [trip] = await db.select({ fromCity: tripsTable.fromCity, toCity: tripsTable.toCity }).from(tripsTable).where(eqFn(tripsTable.id, result.booking.tripId)).limit(1);
-              const passengerToken = await getPassengerPushToken(result.booking.passengerId);
-              if (passengerToken && passengerToken.startsWith("ExponentPushToken[")) {
-                fetch("https://exp.host/--/api/v2/push/send", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json", "Accept": "application/json" },
-                  body: JSON.stringify({
-                    to: passengerToken,
-                    sound: "default",
-                    title: "❌ تم إلغاء حجزك",
-                    body: `ألغى السائق حجزك في رحلة ${trip?.fromCity || ''} → ${trip?.toCity || ''}`,
-                    data: { type: "booking_cancelled_by_driver", tripId: result.booking.tripId },
-                    priority: "high",
-                  }),
-                }).catch((err) => console.warn("[Push] Failed to notify passenger of cancellation:", err));
-              }
+            const tripInfo = result.trip;
+            const passengerToken = await getPassengerPushToken(result.booking.passengerId);
+            if (passengerToken && passengerToken.startsWith("ExponentPushToken[")) {
+              const reasonText = input.reason ? ` — سبب: ${input.reason}` : '';
+              fetch("https://exp.host/--/api/v2/push/send", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Accept": "application/json" },
+                body: JSON.stringify({
+                  to: passengerToken,
+                  sound: "default",
+                  title: "❌ تم إلغاء حجزك",
+                  body: `ألغى السائق حجزك في رحلة ${tripInfo?.fromCity || ''} → ${tripInfo?.toCity || ''}${reasonText}`,
+                  data: { type: "booking_cancelled_by_driver", tripId: result.booking.tripId, reason: input.reason },
+                  priority: "high",
+                }),
+              }).catch((err) => console.warn("[Push] Failed to notify passenger of cancellation:", err));
             }
           }
         } catch (e) { console.warn("[Push] Error sending passenger cancellation notification:", e); }

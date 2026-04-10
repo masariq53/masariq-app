@@ -1153,6 +1153,40 @@ export async function getDriverIntercityTrips(driverId: number) {
 }
 
 /**
+ * Get driver's today intercity earnings (completed trips today)
+ */
+export async function getDriverIntercityTodayEarnings(driverId: number) {
+  const db = await getDb();
+  if (!db) return { todayEarnings: 0, todayTrips: 0 };
+  const now = new Date();
+  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+  const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+  // جلب الرحلات المكتملة اليوم
+  const trips = await db
+    .select()
+    .from(intercityTrips)
+    .where(and(
+      eq(intercityTrips.driverId, driverId),
+      eq(intercityTrips.status, "completed")
+    ));
+  const todayTrips = trips.filter((t) => {
+    const d = new Date(t.createdAt as any);
+    return d >= startOfDay && d <= endOfDay;
+  });
+  // حساب الدخل: عدد المقاعد المحجوزة × سعر المقعد لكل رحلة
+  let todayEarnings = 0;
+  for (const trip of todayTrips) {
+    const bookings = await db
+      .select({ seatsBooked: intercityBookings.seatsBooked })
+      .from(intercityBookings)
+      .where(and(eq(intercityBookings.tripId, trip.id), ne(intercityBookings.status, "cancelled")));
+    const seats = bookings.reduce((sum, b) => sum + b.seatsBooked, 0);
+    todayEarnings += seats * parseFloat(trip.pricePerSeat as any);
+  }
+  return { todayEarnings, todayTrips: todayTrips.length };
+}
+
+/**
  * Cancel an intercity trip (by driver)
  */
 export async function cancelIntercityTrip(tripId: number, driverId: number, cancelReason?: string) {
@@ -1613,7 +1647,7 @@ export async function getDriverTripPassengers(tripId: number, driverId: number) 
 /**
  * Cancel a specific passenger booking by driver
  */
-export async function cancelPassengerByDriver(bookingId: number, driverId: number) {
+export async function cancelPassengerByDriver(bookingId: number, driverId: number, reason?: string) {
   const db = await getDb();
   if (!db) return null;
   const booking = await db
@@ -1632,15 +1666,18 @@ export async function cancelPassengerByDriver(bookingId: number, driverId: numbe
     .where(eq(intercityTrips.id, booking[0].tripId))
     .limit(1);
   if (!trip[0] || trip[0].driverId !== driverId) throw new Error("غير مصرح");
+  // حفظ سبب الإلغاء في حقل cancelledBy
+  const updateData: Record<string, unknown> = { status: "cancelled" };
+  if (reason) updateData.cancelledBy = `driver:${reason}`;
   await db
     .update(intercityBookings)
-    .set({ status: "cancelled" })
+    .set(updateData as any)
     .where(eq(intercityBookings.id, bookingId));
   await db
     .update(intercityTrips)
     .set({ availableSeats: trip[0].availableSeats + booking[0].seatsBooked })
     .where(eq(intercityTrips.id, booking[0].tripId));
-  return { booking: booking[0] };
+  return { booking: booking[0], reason, trip: trip[0] };
 }
 
 /**
