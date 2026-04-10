@@ -4,6 +4,8 @@ import {
   ActivityIndicator, Alert, StyleSheet, Modal, ScrollView, RefreshControl, TextInput,
 } from "react-native";
 import { useRouter } from "expo-router";
+import { useEffect, useRef } from "react";
+import * as Location from "expo-location";
 import { ScreenContainer } from "@/components/screen-container";
 import { trpc } from "@/lib/trpc";
 import { useDriver } from "@/lib/driver-context";
@@ -82,6 +84,41 @@ export default function CaptainIntercityTripsScreen() {
     },
     onError: (err) => Alert.alert("خطأ", err.message),
   });
+
+  // تحديث موقع السائق تلقائياً كل 10 ثوانٍ عندما تكون هناك رحلة جارية
+  const updateDriverLocationMutation = trpc.intercity.updateDriverLocation.useMutation();
+  const locationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const activeTrip = tripsQuery.data?.find((t: any) => t.status === "in_progress");
+
+  useEffect(() => {
+    if (!activeTrip || !driverId) return;
+
+    const startTracking = async () => {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") return;
+
+      const sendLocation = async () => {
+        try {
+          const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+          updateDriverLocationMutation.mutate({
+            tripId: activeTrip.id,
+            driverId,
+            lat: loc.coords.latitude,
+            lng: loc.coords.longitude,
+          });
+        } catch {}
+      };
+
+      sendLocation();
+      locationIntervalRef.current = setInterval(sendLocation, 10000);
+    };
+
+    startTracking();
+    return () => {
+      if (locationIntervalRef.current) clearInterval(locationIntervalRef.current);
+    };
+  }, [activeTrip?.id, driverId]);
 
   const handleRefresh = async () => {
     setRefreshing(true);

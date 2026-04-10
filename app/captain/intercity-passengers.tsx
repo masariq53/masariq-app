@@ -1,4 +1,5 @@
-import React, { useState, useCallback } from "react";
+"use client";
+import { useState, useCallback } from "react";
 import {
   View, Text, TouchableOpacity, FlatList,
   ActivityIndicator, Alert, StyleSheet, Linking,
@@ -19,11 +20,17 @@ const CANCEL_PRESETS = [
   { label: "✏️ سبب آخر" },
 ];
 
+// حالة التوجه لكل راكب
+type ApproachStatus = "idle" | "heading" | "arrived_at_pickup";
+
 export default function IntercityPassengersScreen() {
   const router = useRouter();
   const { tripId, tripRoute } = useLocalSearchParams<{ tripId: string; tripRoute: string }>();
   const { driver } = useDriver();
   const [refreshing, setRefreshing] = useState(false);
+
+  // حالة التوجه لكل راكب (bookingId → status)
+  const [approachStatuses, setApproachStatuses] = useState<Record<number, ApproachStatus>>({});
 
   // Cancel passenger modal state
   const [showCancelModal, setShowCancelModal] = useState(false);
@@ -34,7 +41,7 @@ export default function IntercityPassengersScreen() {
 
   const { data: passengers, isLoading, refetch } = trpc.intercity.tripPassengers.useQuery(
     { tripId: parseInt(tripId || "0"), driverId: driver?.id || 0 },
-    { enabled: !!driver?.id && !!tripId, refetchInterval: 10000 }
+    { enabled: !!driver?.id && !!tripId, refetchInterval: 8000 }
   );
 
   const cancelPassenger = trpc.intercity.cancelPassenger.useMutation({
@@ -46,6 +53,10 @@ export default function IntercityPassengersScreen() {
       setSelectedPreset(null);
       refetch();
     },
+    onError: (err) => Alert.alert("خطأ", err.message),
+  });
+
+  const updateApproach = trpc.intercity.updateApproachStatus.useMutation({
     onError: (err) => Alert.alert("خطأ", err.message),
   });
 
@@ -70,6 +81,63 @@ export default function IntercityPassengersScreen() {
     Linking.openURL(url).catch(() => {
       Linking.openURL(`https://maps.google.com/?q=${lat},${lng}`);
     });
+  };
+
+  const handleHeadingToPassenger = (bookingId: number, passengerName: string) => {
+    if (!driver?.id) return;
+    Alert.alert(
+      "🧭 التوجه إلى الراكب",
+      `هل تريد إشعار ${passengerName} بأنك في طريقك إليه؟`,
+      [
+        { text: "تراجع", style: "cancel" },
+        {
+          text: "نعم، أبلغه",
+          onPress: () => {
+            setApproachStatuses((prev) => ({ ...prev, [bookingId]: "heading" }));
+            updateApproach.mutate({
+              bookingId,
+              driverId: driver.id,
+              status: "heading",
+            });
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          },
+        },
+      ]
+    );
+  };
+
+  const handleArrivedAtPickup = (bookingId: number, passengerName: string, phone: string) => {
+    if (!driver?.id) return;
+    Alert.alert(
+      "📍 وصلت إلى موقع الراكب",
+      `هل وصلت إلى موقع ${passengerName}؟ سيظهر لك رقمه بعد التأكيد.`,
+      [
+        { text: "تراجع", style: "cancel" },
+        {
+          text: "نعم، وصلت",
+          onPress: () => {
+            setApproachStatuses((prev) => ({ ...prev, [bookingId]: "arrived_at_pickup" }));
+            updateApproach.mutate({
+              bookingId,
+              driverId: driver.id,
+              status: "arrived_at_pickup",
+            });
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            // عرض رقم الراكب فوراً
+            setTimeout(() => {
+              Alert.alert(
+                "📞 رقم الراكب",
+                `${passengerName}\n${phone}`,
+                [
+                  { text: "اتصال الآن", onPress: () => handleCall(phone) },
+                  { text: "إغلاق", style: "cancel" },
+                ]
+              );
+            }, 500);
+          },
+        },
+      ]
+    );
   };
 
   const openCancelModal = (bookingId: number, name: string) => {
@@ -103,7 +171,12 @@ export default function IntercityPassengersScreen() {
     });
   };
 
-  const confirmedCount = passengers?.length || 0;
+  const getApproachStatus = (bookingId: number): ApproachStatus => {
+    return approachStatuses[bookingId] || "idle";
+  };
+
+  const confirmedPassengers = passengers?.filter((p) => p.status !== "cancelled") || [];
+  const cancelledPassengers = passengers?.filter((p) => p.status === "cancelled") || [];
 
   return (
     <ScreenContainer>
@@ -117,7 +190,7 @@ export default function IntercityPassengersScreen() {
           {tripRoute ? <Text style={styles.headerRoute}>{tripRoute}</Text> : null}
         </View>
         <View style={styles.headerStats}>
-          <Text style={styles.headerStatText}>{confirmedCount}</Text>
+          <Text style={styles.headerStatText}>{confirmedPassengers.length}</Text>
           <Text style={styles.headerStatLabel}>مسافر</Text>
         </View>
       </View>
@@ -132,79 +205,143 @@ export default function IntercityPassengersScreen() {
         </View>
       ) : (
         <FlatList
-          data={passengers}
+          data={[...confirmedPassengers, ...cancelledPassengers]}
           keyExtractor={(item) => item.id.toString()}
           contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#FFD700" />}
-          renderItem={({ item, index }) => (
-            <View style={styles.passengerCard}>
-              {/* Card Header */}
-              <View style={styles.cardHeader}>
-                <View style={styles.passengerIndex}>
-                  <Text style={styles.passengerIndexText}>{index + 1}</Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.passengerName}>{item.passengerName || "مسافر"}</Text>
-                  <Text style={styles.passengerPhone}>{item.passengerPhone}</Text>
-                </View>
-                <View style={styles.statusBadge}>
-                  <Text style={styles.statusText}>✅ مؤكد</Text>
-                </View>
-              </View>
+          renderItem={({ item, index }) => {
+            const isCancelled = item.status === "cancelled";
+            const approachStatus = getApproachStatus(item.id);
+            const isHeading = approachStatus === "heading";
+            const isArrivedAtPickup = approachStatus === "arrived_at_pickup";
 
-              {/* Seats & Price */}
-              <View style={styles.infoRow}>
-                <Text style={styles.infoIcon}>💺</Text>
-                <Text style={styles.infoText}>{item.seatsBooked} مقعد</Text>
-                <Text style={styles.infoSeparator}>•</Text>
-                <Text style={styles.infoText}>{parseInt(item.totalPrice).toLocaleString()} دينار</Text>
-              </View>
-
-              {/* Pickup Address */}
-              {item.pickupAddress ? (
-                <View style={styles.addressRow}>
-                  <Text style={styles.infoIcon}>📍</Text>
-                  <Text style={styles.addressText}>{item.pickupAddress}</Text>
+            return (
+              <View style={[styles.passengerCard, isCancelled && styles.cancelledCard]}>
+                {/* Card Header */}
+                <View style={styles.cardHeader}>
+                  <View style={[styles.passengerIndex, isCancelled && { backgroundColor: "#4D1B1B" }]}>
+                    <Text style={[styles.passengerIndexText, isCancelled && { color: "#FF6B6B" }]}>
+                      {isCancelled ? "✕" : index + 1}
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.passengerName}>{item.passengerName || "مسافر"}</Text>
+                    {/* رقم الهاتف يظهر فقط بعد الوصول */}
+                    {isArrivedAtPickup ? (
+                      <Text style={styles.passengerPhone}>{item.passengerPhone}</Text>
+                    ) : (
+                      <Text style={styles.phoneHidden}>🔒 يظهر عند الوصول</Text>
+                    )}
+                  </View>
+                  <View style={[styles.statusBadge, isCancelled && styles.cancelledBadge]}>
+                    <Text style={[styles.statusText, isCancelled && styles.cancelledStatusText]}>
+                      {isCancelled ? "❌ ملغي" : isArrivedAtPickup ? "📍 وصلت" : isHeading ? "🧭 في الطريق" : "✅ مؤكد"}
+                    </Text>
+                  </View>
                 </View>
-              ) : null}
 
-              {/* Passenger Note */}
-              {item.passengerNote ? (
-                <View style={styles.noteBox}>
-                  <Text style={styles.noteLabel}>💬 ملاحظة المسافر:</Text>
-                  <Text style={styles.noteText}>{item.passengerNote}</Text>
+                {/* Seats & Price */}
+                <View style={styles.infoRow}>
+                  <Text style={styles.infoIcon}>💺</Text>
+                  <Text style={styles.infoText}>{item.seatsBooked} مقعد</Text>
+                  <Text style={styles.infoSeparator}>•</Text>
+                  <Text style={styles.infoText}>{parseInt(item.totalPrice).toLocaleString()} دينار</Text>
                 </View>
-              ) : null}
 
-              {/* Actions */}
-              <View style={styles.actionsRow}>
-                <TouchableOpacity
-                  style={styles.callBtn}
-                  onPress={() => handleCall(item.passengerPhone || "")}
-                >
-                  <Text style={styles.callBtnText}>📞 اتصال</Text>
-                </TouchableOpacity>
-
-                {item.pickupLat && item.pickupLng ? (
-                  <TouchableOpacity
-                    style={styles.mapBtn}
-                    onPress={() => handleOpenMap(item.pickupLat!, item.pickupLng!, item.passengerName || "مسافر")}
-                  >
-                    <Text style={styles.mapBtnText}>🗺️ الخريطة</Text>
-                  </TouchableOpacity>
+                {/* Pickup Address */}
+                {item.pickupAddress ? (
+                  <View style={styles.addressRow}>
+                    <Text style={styles.infoIcon}>📍</Text>
+                    <Text style={styles.addressText}>{item.pickupAddress}</Text>
+                  </View>
                 ) : null}
-              </View>
 
-              {/* Cancel */}
-              <TouchableOpacity
-                style={styles.cancelBtn}
-                onPress={() => openCancelModal(item.id, item.passengerName || "المسافر")}
-                disabled={cancelPassenger.isPending}
-              >
-                <Text style={styles.cancelBtnText}>إلغاء حجز هذا الراكب</Text>
-              </TouchableOpacity>
-            </View>
-          )}
+                {/* Passenger Note */}
+                {item.passengerNote ? (
+                  <View style={styles.noteBox}>
+                    <Text style={styles.noteLabel}>💬 ملاحظة المسافر:</Text>
+                    <Text style={styles.noteText}>{item.passengerNote}</Text>
+                  </View>
+                ) : null}
+
+                {/* Cancellation reason if cancelled */}
+                {isCancelled && item.cancelReason ? (
+                  <View style={styles.cancelReasonBox}>
+                    <Text style={styles.cancelReasonLabel}>سبب الإلغاء:</Text>
+                    <Text style={styles.cancelReasonText}>{item.cancelReason}</Text>
+                  </View>
+                ) : null}
+
+                {/* Actions - only for active passengers */}
+                {!isCancelled && (
+                  <>
+                    {/* Approach Status Buttons */}
+                    <View style={styles.approachRow}>
+                      {/* زر التوجه */}
+                      {!isHeading && !isArrivedAtPickup && (
+                        <TouchableOpacity
+                          style={styles.headingBtn}
+                          onPress={() => handleHeadingToPassenger(item.id, item.passengerName || "الراكب")}
+                          disabled={updateApproach.isPending}
+                        >
+                          <Text style={styles.headingBtnText}>🧭 التوجه إليه</Text>
+                        </TouchableOpacity>
+                      )}
+
+                      {/* زر وصلت - يظهر فقط بعد التوجه */}
+                      {isHeading && !isArrivedAtPickup && (
+                        <TouchableOpacity
+                          style={styles.arrivedBtn}
+                          onPress={() => handleArrivedAtPickup(item.id, item.passengerName || "الراكب", item.passengerPhone || "")}
+                          disabled={updateApproach.isPending}
+                        >
+                          <Text style={styles.arrivedBtnText}>📍 وصلت إلى موقعه</Text>
+                        </TouchableOpacity>
+                      )}
+
+                      {/* حالة الوصول */}
+                      {isArrivedAtPickup && (
+                        <View style={styles.arrivedConfirmed}>
+                          <Text style={styles.arrivedConfirmedText}>✅ وصلت — الرقم مكشوف</Text>
+                        </View>
+                      )}
+                    </View>
+
+                    {/* Secondary Actions */}
+                    <View style={styles.actionsRow}>
+                      {/* الاتصال يظهر فقط بعد الوصول */}
+                      {isArrivedAtPickup && (
+                        <TouchableOpacity
+                          style={styles.callBtn}
+                          onPress={() => handleCall(item.passengerPhone || "")}
+                        >
+                          <Text style={styles.callBtnText}>📞 اتصال</Text>
+                        </TouchableOpacity>
+                      )}
+
+                      {item.pickupLat && item.pickupLng ? (
+                        <TouchableOpacity
+                          style={[styles.mapBtn, !isArrivedAtPickup && { flex: 1 }]}
+                          onPress={() => handleOpenMap(item.pickupLat!, item.pickupLng!, item.passengerName || "مسافر")}
+                        >
+                          <Text style={styles.mapBtnText}>🗺️ موقع الراكب</Text>
+                        </TouchableOpacity>
+                      ) : null}
+                    </View>
+
+                    {/* Cancel */}
+                    <TouchableOpacity
+                      style={styles.cancelBtn}
+                      onPress={() => openCancelModal(item.id, item.passengerName || "المسافر")}
+                      disabled={cancelPassenger.isPending}
+                    >
+                      <Text style={styles.cancelBtnText}>إلغاء حجز هذا الراكب</Text>
+                    </TouchableOpacity>
+                  </>
+                )}
+              </View>
+            );
+          }}
         />
       )}
 
@@ -304,6 +441,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#2D1B4E",
   },
+  cancelledCard: {
+    backgroundColor: "#1A0808",
+    borderColor: "#4D1B1B",
+    opacity: 0.75,
+  },
   cardHeader: { flexDirection: "row", alignItems: "center", marginBottom: 10, gap: 10 },
   passengerIndex: {
     width: 32, height: 32, borderRadius: 16,
@@ -312,8 +454,11 @@ const styles = StyleSheet.create({
   passengerIndexText: { color: "#1A0533", fontSize: 14, fontWeight: "bold" },
   passengerName: { color: "#E0D0FF", fontSize: 15, fontWeight: "bold" },
   passengerPhone: { color: "#9B8EC4", fontSize: 13, marginTop: 2 },
+  phoneHidden: { color: "#4B3B8C", fontSize: 12, marginTop: 2, fontStyle: "italic" },
   statusBadge: { backgroundColor: "#0D2B1A", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
   statusText: { color: "#2ECC71", fontSize: 12, fontWeight: "600" },
+  cancelledBadge: { backgroundColor: "#2B0D0D" },
+  cancelledStatusText: { color: "#FF6B6B" },
   infoRow: { flexDirection: "row", alignItems: "center", marginBottom: 6, gap: 6 },
   infoIcon: { fontSize: 14 },
   infoText: { color: "#C0A8E8", fontSize: 13 },
@@ -323,6 +468,29 @@ const styles = StyleSheet.create({
   noteBox: { backgroundColor: "#2D1B4E", borderRadius: 8, padding: 10, marginBottom: 10 },
   noteLabel: { color: "#FFD700", fontSize: 12, fontWeight: "bold", marginBottom: 4 },
   noteText: { color: "#C0A8E8", fontSize: 13 },
+  cancelReasonBox: { backgroundColor: "#2B0D0D", borderRadius: 8, padding: 10, marginBottom: 6 },
+  cancelReasonLabel: { color: "#FF6B6B", fontSize: 12, fontWeight: "bold", marginBottom: 4 },
+  cancelReasonText: { color: "#FFAAAA", fontSize: 13 },
+  // Approach buttons
+  approachRow: { marginBottom: 8 },
+  headingBtn: {
+    backgroundColor: "#1A2B4E", borderRadius: 12,
+    paddingVertical: 12, alignItems: "center",
+    borderWidth: 1.5, borderColor: "#5B9BD5",
+  },
+  headingBtnText: { color: "#5B9BD5", fontSize: 14, fontWeight: "700" },
+  arrivedBtn: {
+    backgroundColor: "#1A3B2E", borderRadius: 12,
+    paddingVertical: 12, alignItems: "center",
+    borderWidth: 1.5, borderColor: "#2ECC71",
+  },
+  arrivedBtnText: { color: "#2ECC71", fontSize: 14, fontWeight: "700" },
+  arrivedConfirmed: {
+    backgroundColor: "#0D2B1A", borderRadius: 12,
+    paddingVertical: 10, alignItems: "center",
+    borderWidth: 1, borderColor: "#2ECC71",
+  },
+  arrivedConfirmedText: { color: "#2ECC71", fontSize: 13, fontWeight: "600" },
   actionsRow: { flexDirection: "row", gap: 8, marginBottom: 8 },
   callBtn: {
     flex: 1, backgroundColor: "#0D2B1A", borderRadius: 10,

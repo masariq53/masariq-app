@@ -287,6 +287,10 @@ export const intercityBookings = mysqlTable("intercityBookings", {
   pickupLng: decimal("pickupLng", { precision: 10, scale: 7 }),
   passengerNote: text("passengerNote"),
   pickupStatus: mysqlEnum("pickupStatus", ["waiting", "picked_up", "arrived"]).default("waiting"),
+  // حالة توجه الكابتن نحو الراكب المعين
+  driverApproachStatus: mysqlEnum("driverApproachStatus", ["idle", "heading", "arrived_at_pickup"]).default("idle"),
+  cancelledBy: varchar("cancelledBy", { length: 100 }),
+  cancelReason: text("cancelReason"),
   passengerRating: int("passengerRating"),
   driverRating: int("driverRating"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -294,3 +298,14 @@ export const intercityBookings = mysqlTable("intercityBookings", {
 });
 export type IntercityBooking = typeof intercityBookings.$inferSelect;
 export type InsertIntercityBooking = typeof intercityBookings.$inferInsert;
+
+// جدول تخزين موقع السائق لحظياً لكل رحلة
+export const intercityDriverLocations = mysqlTable("intercityDriverLocations", {
+  id: int("id").autoincrement().primaryKey(),
+  tripId: int("tripId").notNull(),
+  driverId: int("driverId").notNull(),
+  lat: decimal("lat", { precision: 10, scale: 7 }).notNull(),
+  lng: decimal("lng", { precision: 10, scale: 7 }).notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type IntercityDriverLocation = typeof intercityDriverLocations.$inferSelect;

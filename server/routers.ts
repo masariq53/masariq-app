@@ -73,6 +73,10 @@ import {
   getAllIntercityTripsAdmin,
   adminCancelIntercityTrip,
   getAdminTripPassengers,
+  updateDriverApproachStatus,
+  updateDriverLiveLocation,
+  getDriverLiveLocation,
+  getPassengerBookingStatus,
 } from "./db";
 import { storagePut } from "./storage";
 
@@ -2142,6 +2146,70 @@ export const appRouter = router({
           } catch (e) { console.warn("[Push] Error on arrived status update:", e); }
         }
         return { success: true };
+      }),
+    // الكابتن: تحديث حالة التوجه نحو راكب معين
+    updateApproachStatus: publicProcedure
+      .input(z.object({
+        bookingId: z.number(),
+        driverId: z.number(),
+        status: z.enum(["idle", "heading", "arrived_at_pickup"]),
+      }))
+      .mutation(async ({ input }) => {
+        const result = await updateDriverApproachStatus(input.bookingId, input.driverId, input.status);
+        if (!result) return { success: false };
+        // إرسال إشعار للمسافر
+        try {
+          const passengerToken = await getPassengerPushToken(result.booking.passengerId);
+          if (passengerToken && passengerToken.startsWith("ExponentPushToken[")) {
+            const isHeading = input.status === "heading";
+            const isArrived = input.status === "arrived_at_pickup";
+            if (isHeading || isArrived) {
+              fetch("https://exp.host/--/api/v2/push/send", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Accept": "application/json" },
+                body: JSON.stringify({
+                  to: passengerToken,
+                  sound: "default",
+                  title: isHeading ? "🚗 السائق في طريقه إليك" : "📍 السائق وصل إلى موقعك!",
+                  body: isHeading
+                    ? `السائق يتجه نحوك في رحلة ${result.trip.fromCity} → ${result.trip.toCity}. كن مستعداً!`
+                    : `السائق وصل إلى موقعك في رحلة ${result.trip.fromCity} → ${result.trip.toCity}. توجه إليه الآن.`,
+                  data: {
+                    type: isHeading ? "driver_heading" : "driver_arrived_at_pickup",
+                    bookingId: input.bookingId,
+                    tripId: result.booking.tripId,
+                  },
+                  priority: "high",
+                }),
+              }).catch((err) => console.warn("[Push] Failed to notify passenger of approach:", err));
+            }
+          }
+        } catch (e) { console.warn("[Push] Error sending approach notification:", e); }
+        return { success: true };
+      }),
+    // الكابتن: تحديث موقعه الجغرافي لحظياً
+    updateDriverLocation: publicProcedure
+      .input(z.object({
+        tripId: z.number(),
+        driverId: z.number(),
+        lat: z.number(),
+        lng: z.number(),
+      }))
+      .mutation(async ({ input }) => {
+        await updateDriverLiveLocation(input.tripId, input.driverId, input.lat, input.lng);
+        return { success: true };
+      }),
+    // المسافر: جلب موقع السائق لحظياً
+    getDriverLocation: publicProcedure
+      .input(z.object({ tripId: z.number() }))
+      .query(async ({ input }) => {
+        return getDriverLiveLocation(input.tripId);
+      }),
+    // المسافر: جلب حالة حجزه (driverApproachStatus)
+    getBookingStatus: publicProcedure
+      .input(z.object({ bookingId: z.number(), passengerId: z.number() }))
+      .query(async ({ input }) => {
+        return getPassengerBookingStatus(input.bookingId, input.passengerId);
       }),
     // الكابتن: إلغاء حجز راكب معين
     cancelPassenger: publicProcedure

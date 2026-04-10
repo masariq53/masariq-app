@@ -295,6 +295,31 @@ export default function MyIntercityBookingsScreen() {
                   </View>
                 ) : null}
 
+                {/* Tracking Button — يظهر عندما الكابتن في الطريق أو وصل */}
+                {(displayStatus === "scheduled" || displayStatus === "in_progress") && !isBookingCancelled && driver && (
+                  <TouchableOpacity
+                    style={styles.trackingBtn}
+                    onPress={() =>
+                      router.push({
+                        pathname: "/intercity/tracking",
+                        params: {
+                          bookingId: item.id.toString(),
+                          tripId: item.tripId.toString(),
+                          driverId: driver.id?.toString() || "",
+                          driverName: driver.name || "",
+                          driverPhone: driver.phone || "",
+                          carModel: driver.vehicleModel || "",
+                          carPlate: driver.vehiclePlate || "",
+                          fromCity,
+                          toCity,
+                        },
+                      } as any)
+                    }
+                  >
+                    <Text style={styles.trackingBtnText}>🗺️ تتبع موقع السائق</Text>
+                  </TouchableOpacity>
+                )}
+
                 {/* Actions */}
                 <View style={styles.actionsRow}>
                   {canCancel && (
@@ -443,4 +468,14 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   findAlternativeBtnText: { color: "#A78BFA", fontSize: 13, fontWeight: "700" },
+  trackingBtn: {
+    backgroundColor: "#0D1B2E",
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: "center",
+    borderWidth: 1.5,
+    borderColor: "#5B9BD5",
+    marginBottom: 10,
+  },
+  trackingBtnText: { color: "#5B9BD5", fontSize: 14, fontWeight: "700" },
 });

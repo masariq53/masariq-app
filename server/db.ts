@@ -14,6 +14,7 @@ import {
   InsertRide,
   intercityTrips,
   intercityBookings,
+  intercityDriverLocations,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
@@ -1744,4 +1745,94 @@ export async function adminCancelIntercityTrip(tripId: number) {
     .update(intercityTrips)
     .set({ status: "cancelled" })
     .where(eq(intercityTrips.id, tripId));
+}
+
+/**
+ * Update driver approach status toward a specific passenger
+ * heading = الكابتن في طريقه للراكب
+ * arrived_at_pickup = الكابتن وصل لموقع الراكب
+ */
+export async function updateDriverApproachStatus(
+  bookingId: number,
+  driverId: number,
+  status: "idle" | "heading" | "arrived_at_pickup"
+) {
+  const db = await getDb();
+  if (!db) return null;
+  // التحقق من أن الكابتن يملك هذا الحجز
+  const [booking] = await db
+    .select()
+    .from(intercityBookings)
+    .where(eq(intercityBookings.id, bookingId))
+    .limit(1);
+  if (!booking) throw new Error("الحجز غير موجود");
+  // التحقق من أن السائق يملك الرحلة
+  const [trip] = await db
+    .select()
+    .from(intercityTrips)
+    .where(and(eq(intercityTrips.id, booking.tripId), eq(intercityTrips.driverId, driverId)))
+    .limit(1);
+  if (!trip) throw new Error("غير مصرح");
+  await db
+    .update(intercityBookings)
+    .set({ driverApproachStatus: status } as any)
+    .where(eq(intercityBookings.id, bookingId));
+  return { booking, trip };
+}
+
+/**
+ * Update driver live location for a trip (upsert)
+ */
+export async function updateDriverLiveLocation(
+  tripId: number,
+  driverId: number,
+  lat: number,
+  lng: number
+) {
+  const db = await getDb();
+  if (!db) return;
+  // upsert: إذا موجود يحدّث، وإلا يُنشئ
+  const existing = await db
+    .select()
+    .from(intercityDriverLocations)
+    .where(and(eq(intercityDriverLocations.tripId, tripId), eq(intercityDriverLocations.driverId, driverId)))
+    .limit(1);
+  if (existing[0]) {
+    await db
+      .update(intercityDriverLocations)
+      .set({ lat: lat.toString(), lng: lng.toString() } as any)
+      .where(and(eq(intercityDriverLocations.tripId, tripId), eq(intercityDriverLocations.driverId, driverId)));
+  } else {
+    await db
+      .insert(intercityDriverLocations)
+      .values({ tripId, driverId, lat: lat.toString() as any, lng: lng.toString() as any });
+  }
+}
+
+/**
+ * Get driver live location for a trip (for passenger tracking)
+ */
+export async function getDriverLiveLocation(tripId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const [loc] = await db
+    .select()
+    .from(intercityDriverLocations)
+    .where(eq(intercityDriverLocations.tripId, tripId))
+    .limit(1);
+  return loc ?? null;
+}
+
+/**
+ * Get booking approach status for a passenger (to show tracking state)
+ */
+export async function getPassengerBookingStatus(bookingId: number, passengerId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const [booking] = await db
+    .select()
+    .from(intercityBookings)
+    .where(and(eq(intercityBookings.id, bookingId), eq(intercityBookings.passengerId, passengerId)))
+    .limit(1);
+  return booking ?? null;
 }
