@@ -64,6 +64,10 @@ import {
   rateIntercityTrip,
   bookIntercityTripWithPickup,
   getPassengerIntercityBookingsWithTrip,
+  bookIntercityWithGPS,
+  updatePassengerPickupStatus,
+  getDriverTripPassengers,
+  cancelPassengerByDriver,
 } from "./db";
 import { storagePut } from "./storage";
 
@@ -1916,6 +1920,47 @@ export const appRouter = router({
       .input(z.object({ passengerId: z.number() }))
       .query(async ({ input }) => {
         return getPassengerIntercityBookingsWithTrip(input.passengerId);
+      }),
+    // المستخدم: حجز مع GPS إلزامي وملاحظة
+    bookWithGPS: publicProcedure
+      .input(z.object({
+        tripId: z.number(),
+        passengerId: z.number(),
+        seatsBooked: z.number().min(1).max(10),
+        passengerPhone: z.string(),
+        passengerName: z.string(),
+        pickupAddress: z.string().min(1),
+        pickupLat: z.number(),
+        pickupLng: z.number(),
+        passengerNote: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const booking = await bookIntercityWithGPS(input);
+        return { success: true, booking };
+      }),
+    // الكابتن: قائمة مسافرين رحلة معينة
+    tripPassengers: publicProcedure
+      .input(z.object({ tripId: z.number(), driverId: z.number() }))
+      .query(async ({ input }) => {
+        return getDriverTripPassengers(input.tripId, input.driverId);
+      }),
+    // الكابتن: تحديث حالة راكب (في الانتظار / تم الالتقاط / وصل)
+    updatePickupStatus: publicProcedure
+      .input(z.object({
+        bookingId: z.number(),
+        driverId: z.number(),
+        pickupStatus: z.enum(["waiting", "picked_up", "arrived"]),
+      }))
+      .mutation(async ({ input }) => {
+        await updatePassengerPickupStatus(input.bookingId, input.driverId, input.pickupStatus);
+        return { success: true };
+      }),
+    // الكابتن: إلغاء حجز راكب معين
+    cancelPassenger: publicProcedure
+      .input(z.object({ bookingId: z.number(), driverId: z.number() }))
+      .mutation(async ({ input }) => {
+        await cancelPassengerByDriver(input.bookingId, input.driverId);
+        return { success: true };
       }),
   }),
 });

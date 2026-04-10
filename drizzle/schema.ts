@@ -283,6 +283,8 @@ export const intercityBookings = mysqlTable("intercityBookings", {
   pickupAddress: text("pickupAddress"),
   pickupLat: decimal("pickupLat", { precision: 10, scale: 7 }),
   pickupLng: decimal("pickupLng", { precision: 10, scale: 7 }),
+  passengerNote: text("passengerNote"),
+  pickupStatus: mysqlEnum("pickupStatus", ["waiting", "picked_up", "arrived"]).default("waiting"),
   passengerRating: int("passengerRating"),
   driverRating: int("driverRating"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),

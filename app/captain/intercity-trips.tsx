@@ -153,7 +153,7 @@ export default function CaptainIntercityTripsScreen() {
                 {item.notes ? <Text style={styles.notes}>📝 {item.notes}</Text> : null}
 
                 {/* Bookings Button */}
-                <TouchableOpacity style={styles.bookingsBtn} onPress={() => openBookings(item.id)}>
+                <TouchableOpacity style={styles.bookingsBtn} onPress={() => router.push({ pathname: "/captain/intercity-passengers", params: { tripId: item.id.toString(), tripRoute: `${item.fromCity} ← ${item.toCity}` } })}>
                   <Text style={styles.bookingsBtnText}>👥 قائمة المسافرين ({bookedSeats} حجز)</Text>
                 </TouchableOpacity>
 
