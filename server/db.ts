@@ -1320,9 +1320,14 @@ export async function cancelIntercityBooking(bookingId: number, passengerId: num
   const booking = bookingResult[0];
   if (!booking) throw new Error("الحجز غير موجود");
   if (booking.status === "cancelled") throw new Error("الحجز ملغى مسبقاً");
-  // منع الإلغاء بعد الالتقاط
+  // منع الإلغاء بعد الالتقاط أو عندما يتوجه السائق أو وصل
   if (booking.pickupStatus === "picked_up" || booking.pickupStatus === "arrived") {
     throw new Error("لا يمكن إلغاء الحجز بعد التقاط المسافر");
+  }
+  // منع الإلغاء عندما يتوجه السائق أو وصل إلى موقع الراكب
+  const approachStatus = (booking as any).driverApproachStatus as string | null;
+  if (approachStatus === "heading" || approachStatus === "arrived_at_pickup") {
+    throw new Error("لا يمكن إلغاء الحجز بعد توجه السائق إليك");
   }
 
   await db

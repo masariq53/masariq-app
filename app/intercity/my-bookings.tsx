@@ -192,7 +192,11 @@ export default function MyIntercityBookingsScreen() {
             const fromCity = trip?.fromCity ?? "—";
             const toCity = trip?.toCity ?? "—";
             const departureTime = trip?.departureTime ?? null;
-            const canCancel = !isBookingCancelled && !isTripCancelled && tripStatus === "scheduled";
+            // حالة توجه السائق لهذا الراكب
+            const approachStatus = (item as any).driverApproachStatus as string | null;
+            const driverHeadingOrArrived = approachStatus === "heading" || approachStatus === "arrived_at_pickup";
+            // يمكن الإلغاء فقط: الحجز غير ملغى، الرحلة غير ملغاة، الرحلة مجدولة، والسائق لم يتوجه بعد
+            const canCancel = !isBookingCancelled && !isTripCancelled && tripStatus === "scheduled" && !driverHeadingOrArrived;
 
             return (
               <View style={styles.bookingCard}>

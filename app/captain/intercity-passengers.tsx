@@ -329,14 +329,16 @@ export default function IntercityPassengersScreen() {
                       ) : null}
                     </View>
 
-                    {/* Cancel */}
-                    <TouchableOpacity
-                      style={styles.cancelBtn}
-                      onPress={() => openCancelModal(item.id, item.passengerName || "المسافر")}
-                      disabled={cancelPassenger.isPending}
-                    >
-                      <Text style={styles.cancelBtnText}>إلغاء حجز هذا الراكب</Text>
-                    </TouchableOpacity>
+                    {/* Cancel — يختفي بعد وصول السائق للراكب */}
+                    {!isArrivedAtPickup && (
+                      <TouchableOpacity
+                        style={styles.cancelBtn}
+                        onPress={() => openCancelModal(item.id, item.passengerName || "المسافر")}
+                        disabled={cancelPassenger.isPending}
+                      >
+                        <Text style={styles.cancelBtnText}>إلغاء حجز هذا الراكب</Text>
+                      </TouchableOpacity>
+                    )}
                   </>
                 )}
               </View>

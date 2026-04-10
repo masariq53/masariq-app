@@ -1,21 +1,20 @@
-"use client";
-import { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   View, Text, TouchableOpacity, StyleSheet,
-  ActivityIndicator, Linking, Alert, Dimensions, Platform,
+  ActivityIndicator, Linking, Alert, Platform, Animated,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import MapView, { Marker, PROVIDER_DEFAULT } from "react-native-maps";
+import MapView, { Marker, PROVIDER_DEFAULT, AnimatedRegion } from "react-native-maps";
 import { ScreenContainer } from "@/components/screen-container";
 import { trpc } from "@/lib/trpc";
 import { usePassenger } from "@/lib/passenger-context";
+import { useAudioPlayer, setAudioModeAsync } from "expo-audio";
 
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
-
-// حالات رحلة المسافر
 type ApproachStatus = "idle" | "heading" | "arrived_at_pickup";
 
-const STATUS_CONFIG: Record<ApproachStatus, { emoji: string; title: string; subtitle: string; color: string; bg: string }> = {
+const STATUS_CONFIG: Record<ApproachStatus, {
+  emoji: string; title: string; subtitle: string; color: string; bg: string;
+}> = {
   idle: {
     emoji: "🕐",
     title: "في انتظار السائق",
@@ -39,25 +38,70 @@ const STATUS_CONFIG: Record<ApproachStatus, { emoji: string; title: string; subt
   },
 };
 
+// حساب المسافة بالكيلومتر بين نقطتين (Haversine)
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number) {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+// تقدير وقت الوصول بالدقائق (سرعة متوسطة 30 كم/ساعة في المدينة)
+function estimateMinutes(distKm: number) {
+  const avgSpeedKmh = 30;
+  return Math.max(1, Math.round((distKm / avgSpeedKmh) * 60));
+}
+
 export default function IntercityTrackingScreen() {
   const router = useRouter();
-  const { bookingId, tripId, driverId, driverName, driverPhone, carModel, carPlate, fromCity, toCity } =
-    useLocalSearchParams<{
-      bookingId: string;
-      tripId: string;
-      driverId: string;
-      driverName: string;
-      driverPhone: string;
-      carModel: string;
-      carPlate: string;
-      fromCity: string;
-      toCity: string;
-    }>();
+  const {
+    bookingId, tripId, driverId, driverName, driverPhone,
+    carModel, carPlate, fromCity, toCity,
+    passengerLat, passengerLng,
+  } = useLocalSearchParams<{
+    bookingId: string; tripId: string; driverId: string;
+    driverName: string; driverPhone: string;
+    carModel: string; carPlate: string;
+    fromCity: string; toCity: string;
+    passengerLat: string; passengerLng: string;
+  }>();
+
   const { passenger } = usePassenger();
   const mapRef = useRef<MapView>(null);
 
   const [approachStatus, setApproachStatus] = useState<ApproachStatus>("idle");
+  const [prevApproachStatus, setPrevApproachStatus] = useState<ApproachStatus>("idle");
   const [driverCoords, setDriverCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [etaMinutes, setEtaMinutes] = useState<number | null>(null);
+  const [soundPlayed, setSoundPlayed] = useState(false);
+
+  // Animated marker position
+  const markerCoords = useRef(
+    new AnimatedRegion({
+      latitude: 36.3359,
+      longitude: 43.1189,
+      latitudeDelta: 0,
+      longitudeDelta: 0,
+    })
+  ).current;
+
+  // Audio player للإشعار الصوتي
+  const arrivedPlayer = useAudioPlayer(
+    require("@/assets/sounds/new-ride.mp3")
+  );
+
+  // تفعيل الصوت في الوضع الصامت
+  useEffect(() => {
+    setAudioModeAsync({ playsInSilentMode: true }).catch(() => {});
+    return () => {
+      arrivedPlayer.release();
+    };
+  }, []);
 
   // جلب موقع السائق كل 5 ثوانٍ
   const locationQuery = trpc.intercity.getDriverLocation.useQuery(
@@ -71,46 +115,95 @@ export default function IntercityTrackingScreen() {
     { enabled: !!bookingId && !!passenger?.id, refetchInterval: 5000 }
   );
 
-  // تحديث حالة التوجه عند تغيير بيانات الحجز
+  // تحديث حالة التوجه وتشغيل الصوت عند الوصول
   useEffect(() => {
     if (bookingStatusQuery.data) {
       const status = (bookingStatusQuery.data as any).driverApproachStatus as ApproachStatus;
       if (status && status !== approachStatus) {
+        setPrevApproachStatus(approachStatus);
         setApproachStatus(status);
+
+        // تشغيل الصوت عند وصول السائق
+        if (status === "arrived_at_pickup" && !soundPlayed) {
+          setSoundPlayed(true);
+          try {
+            arrivedPlayer.seekTo(0);
+            arrivedPlayer.play();
+          } catch {}
+        }
       }
     }
   }, [bookingStatusQuery.data]);
 
-  // تحديث موقع السائق على الخريطة
+  // تحديث موقع السائق بـ animation سلسة
   useEffect(() => {
     if (locationQuery.data) {
       const loc = locationQuery.data as any;
       if (loc?.lat && loc?.lng) {
-        const newCoords = { lat: parseFloat(loc.lat), lng: parseFloat(loc.lng) };
-        setDriverCoords(newCoords);
-        // تحريك الخريطة لموقع السائق
-        mapRef.current?.animateToRegion({
-          latitude: newCoords.lat,
-          longitude: newCoords.lng,
-          latitudeDelta: 0.01,
-          longitudeDelta: 0.01,
-        }, 800);
+        const newLat = parseFloat(loc.lat);
+        const newLng = parseFloat(loc.lng);
+
+        // حركة سلسة للـ marker
+        markerCoords.timing({
+          latitude: newLat,
+          longitude: newLng,
+          latitudeDelta: 0,
+          longitudeDelta: 0,
+          toValue: 0,
+          duration: 1200,
+          useNativeDriver: false,
+        }).start();
+
+        setDriverCoords({ lat: newLat, lng: newLng });
+
+        // حساب وقت الوصول التقديري
+        if (passengerLat && passengerLng) {
+          const pLat = parseFloat(passengerLat);
+          const pLng = parseFloat(passengerLng);
+          if (!isNaN(pLat) && !isNaN(pLng)) {
+            const distKm = haversineKm(newLat, newLng, pLat, pLng);
+            setEtaMinutes(estimateMinutes(distKm));
+          }
+        }
+
+        // تحريك الكاميرا لتشمل السائق والمستخدم
+        if (passengerLat && passengerLng) {
+          const pLat = parseFloat(passengerLat);
+          const pLng = parseFloat(passengerLng);
+          if (!isNaN(pLat) && !isNaN(pLng)) {
+            const minLat = Math.min(newLat, pLat);
+            const maxLat = Math.max(newLat, pLat);
+            const minLng = Math.min(newLng, pLng);
+            const maxLng = Math.max(newLng, pLng);
+            const padding = 0.005;
+            mapRef.current?.animateToRegion({
+              latitude: (minLat + maxLat) / 2,
+              longitude: (minLng + maxLng) / 2,
+              latitudeDelta: Math.max(maxLat - minLat + padding, 0.01),
+              longitudeDelta: Math.max(maxLng - minLng + padding, 0.01),
+            }, 1000);
+          }
+        } else {
+          mapRef.current?.animateToRegion({
+            latitude: newLat,
+            longitude: newLng,
+            latitudeDelta: 0.01,
+            longitudeDelta: 0.01,
+          }, 1000);
+        }
       }
     }
   }, [locationQuery.data]);
 
   const handleCallDriver = () => {
     if (!driverPhone) return;
-    const url = `tel:${driverPhone}`;
-    Linking.canOpenURL(url).then((can) => {
-      if (can) Linking.openURL(url);
-      else Alert.alert("خطأ", "لا يمكن إجراء المكالمة");
-    });
+    Linking.openURL(`tel:${driverPhone}`).catch(() =>
+      Alert.alert("خطأ", "لا يمكن إجراء المكالمة")
+    );
   };
 
   const statusConfig = STATUS_CONFIG[approachStatus];
 
-  // الموقع الافتراضي (الموصل)
   const defaultRegion = {
     latitude: 36.3359,
     longitude: 43.1189,
@@ -118,18 +211,26 @@ export default function IntercityTrackingScreen() {
     longitudeDelta: 0.05,
   };
 
+  const steps: ApproachStatus[] = ["idle", "heading", "arrived_at_pickup"];
+  const currentStepIdx = steps.indexOf(approachStatus);
+  const stepLabels = ["انتظار", "في الطريق", "وصل"];
+
   return (
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backIcon}>{"<"}</Text>
+          <Text style={styles.backIcon}>{"‹"}</Text>
         </TouchableOpacity>
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>تتبع رحلتك</Text>
           <Text style={styles.headerRoute}>{fromCity} → {toCity}</Text>
         </View>
-        <View style={styles.headerRight} />
+        <View style={styles.headerRight}>
+          {bookingStatusQuery.isFetching && (
+            <ActivityIndicator color="#FFD700" size="small" />
+          )}
+        </View>
       </View>
 
       {/* Map */}
@@ -143,17 +244,28 @@ export default function IntercityTrackingScreen() {
           showsMyLocationButton={false}
         >
           {driverCoords && (
-            <Marker
-              coordinate={{ latitude: driverCoords.lat, longitude: driverCoords.lng }}
+            <Marker.Animated
+              coordinate={markerCoords as any}
               title={`🚗 ${driverName || "السائق"}`}
               description={`${carModel || ""} — ${carPlate || ""}`}
             >
-              <View style={styles.driverMarker}>
+              <View style={[
+                styles.driverMarker,
+                approachStatus === "arrived_at_pickup" && styles.driverMarkerArrived,
+              ]}>
                 <Text style={styles.driverMarkerEmoji}>🚗</Text>
               </View>
-            </Marker>
+            </Marker.Animated>
           )}
         </MapView>
+
+        {/* ETA Badge */}
+        {etaMinutes !== null && approachStatus === "heading" && (
+          <View style={styles.etaBadge}>
+            <Text style={styles.etaTime}>{etaMinutes}</Text>
+            <Text style={styles.etaUnit}>دقيقة</Text>
+          </View>
+        )}
 
         {/* No location overlay */}
         {!driverCoords && (
@@ -165,35 +277,46 @@ export default function IntercityTrackingScreen() {
       </View>
 
       {/* Status Card */}
-      <View style={[styles.statusCard, { backgroundColor: statusConfig.bg, borderColor: statusConfig.color + "44" }]}>
+      <View style={[styles.statusCard, {
+        backgroundColor: statusConfig.bg,
+        borderColor: statusConfig.color + "55",
+      }]}>
         <View style={styles.statusRow}>
           <Text style={styles.statusEmoji}>{statusConfig.emoji}</Text>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.statusTitle, { color: statusConfig.color }]}>{statusConfig.title}</Text>
+            <Text style={[styles.statusTitle, { color: statusConfig.color }]}>
+              {statusConfig.title}
+            </Text>
             <Text style={styles.statusSubtitle}>{statusConfig.subtitle}</Text>
           </View>
-          {bookingStatusQuery.isFetching && (
-            <ActivityIndicator color={statusConfig.color} size="small" />
-          )}
         </View>
 
         {/* Progress Steps */}
         <View style={styles.progressRow}>
-          {(["idle", "heading", "arrived_at_pickup"] as ApproachStatus[]).map((step, idx) => {
-            const steps = ["idle", "heading", "arrived_at_pickup"] as ApproachStatus[];
-            const currentIdx = steps.indexOf(approachStatus);
-            const isActive = idx <= currentIdx;
-            const labels = ["انتظار", "في الطريق", "وصل"];
+          {steps.map((step, idx) => {
+            const isActive = idx <= currentStepIdx;
+            const isConnected = idx < currentStepIdx;
             return (
-              <View key={step} style={styles.progressStep}>
-                <View style={[styles.progressDot, isActive && { backgroundColor: statusConfig.color }]} />
-                <Text style={[styles.progressLabel, isActive && { color: statusConfig.color }]}>
-                  {labels[idx]}
-                </Text>
-                {idx < 2 && (
-                  <View style={[styles.progressLine, isActive && idx < currentIdx && { backgroundColor: statusConfig.color }]} />
+              <React.Fragment key={step}>
+                <View style={styles.progressStep}>
+                  <View style={[
+                    styles.progressDot,
+                    isActive && { backgroundColor: statusConfig.color, transform: [{ scale: 1.2 }] },
+                  ]} />
+                  <Text style={[
+                    styles.progressLabel,
+                    isActive && { color: statusConfig.color, fontWeight: "700" },
+                  ]}>
+                    {stepLabels[idx]}
+                  </Text>
+                </View>
+                {idx < steps.length - 1 && (
+                  <View style={[
+                    styles.progressConnector,
+                    isConnected && { backgroundColor: statusConfig.color },
+                  ]} />
                 )}
-              </View>
+              </React.Fragment>
             );
           })}
         </View>
@@ -201,32 +324,35 @@ export default function IntercityTrackingScreen() {
 
       {/* Driver Info Card */}
       <View style={styles.driverCard}>
-        <View style={styles.driverAvatarContainer}>
-          <View style={styles.driverAvatar}>
-            <Text style={styles.driverAvatarText}>
-              {(driverName || "S").charAt(0).toUpperCase()}
-            </Text>
-          </View>
+        <View style={styles.driverAvatar}>
+          <Text style={styles.driverAvatarText}>
+            {(driverName || "S").charAt(0).toUpperCase()}
+          </Text>
         </View>
         <View style={styles.driverInfo}>
           <Text style={styles.driverName}>{driverName || "السائق"}</Text>
-          <Text style={styles.driverCar}>{carModel || "السيارة"} • {carPlate || ""}</Text>
+          <Text style={styles.driverCar}>
+            {carModel || "السيارة"}{carPlate ? ` • ${carPlate}` : ""}
+          </Text>
+          {etaMinutes !== null && approachStatus === "heading" && (
+            <Text style={styles.etaInline}>⏱ وقت الوصول التقديري: {etaMinutes} دقيقة</Text>
+          )}
+          {approachStatus === "arrived_at_pickup" && (
+            <Text style={styles.arrivedInline}>✅ وصل إلى موقعك</Text>
+          )}
         </View>
         <TouchableOpacity style={styles.callBtn} onPress={handleCallDriver}>
           <Text style={styles.callBtnText}>📞</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Refresh button */}
-      <TouchableOpacity
-        style={styles.refreshBtn}
-        onPress={() => {
-          locationQuery.refetch();
-          bookingStatusQuery.refetch();
-        }}
-      >
-        <Text style={styles.refreshBtnText}>🔄 تحديث الموقع</Text>
-      </TouchableOpacity>
+      {/* Arrived Alert Banner */}
+      {approachStatus === "arrived_at_pickup" && (
+        <View style={styles.arrivedBanner}>
+          <Text style={styles.arrivedBannerEmoji}>🎉</Text>
+          <Text style={styles.arrivedBannerText}>السائق وصل! توجه إليه الآن</Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -243,14 +369,14 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "#2D1B4E",
   },
-  backBtn: { padding: 8, width: 40 },
-  backIcon: { color: "#FFD700", fontSize: 20, fontWeight: "bold" },
+  backBtn: { padding: 8, width: 40, alignItems: "center" },
+  backIcon: { color: "#FFD700", fontSize: 28, fontWeight: "300", lineHeight: 28 },
   headerCenter: { flex: 1, alignItems: "center" },
   headerTitle: { color: "#FFD700", fontSize: 16, fontWeight: "bold" },
   headerRoute: { color: "#9B8EC4", fontSize: 12, marginTop: 2 },
-  headerRight: { width: 40 },
+  headerRight: { width: 40, alignItems: "center" },
   mapContainer: {
-    height: 260,
+    height: 240,
     backgroundColor: "#1A0533",
   },
   map: { flex: 1 },
@@ -263,47 +389,75 @@ const styles = StyleSheet.create({
   },
   noLocationText: { color: "#9B8EC4", fontSize: 13 },
   driverMarker: {
-    width: 44, height: 44,
-    borderRadius: 22,
+    width: 46, height: 46,
+    borderRadius: 23,
     backgroundColor: "#1A0533",
-    borderWidth: 2,
+    borderWidth: 2.5,
     borderColor: "#FFD700",
     alignItems: "center",
     justifyContent: "center",
+    shadowColor: "#FFD700",
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.6,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  driverMarkerArrived: {
+    borderColor: "#2ECC71",
+    shadowColor: "#2ECC71",
   },
   driverMarkerEmoji: { fontSize: 22 },
+  // ETA Badge on map
+  etaBadge: {
+    position: "absolute",
+    top: 12,
+    right: 12,
+    backgroundColor: "#1A0533EE",
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: "#5B9BD5",
+    alignItems: "center",
+  },
+  etaTime: { color: "#5B9BD5", fontSize: 22, fontWeight: "900" },
+  etaUnit: { color: "#9B8EC4", fontSize: 11, marginTop: -2 },
   // Status Card
   statusCard: {
-    margin: 16,
+    margin: 12,
     borderRadius: 16,
     padding: 16,
     borderWidth: 1,
   },
   statusRow: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 16 },
-  statusEmoji: { fontSize: 36 },
-  statusTitle: { fontSize: 16, fontWeight: "800", marginBottom: 4 },
-  statusSubtitle: { color: "#9B8EC4", fontSize: 13, lineHeight: 18 },
+  statusEmoji: { fontSize: 34 },
+  statusTitle: { fontSize: 15, fontWeight: "800", marginBottom: 3 },
+  statusSubtitle: { color: "#9B8EC4", fontSize: 12, lineHeight: 17 },
   // Progress
-  progressRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  progressStep: { alignItems: "center", flex: 1 },
+  progressRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 4,
+  },
+  progressStep: { alignItems: "center", gap: 4 },
   progressDot: {
     width: 12, height: 12, borderRadius: 6,
-    backgroundColor: "#2D1B4E", marginBottom: 4,
+    backgroundColor: "#2D1B4E",
   },
   progressLabel: { color: "#4B3B8C", fontSize: 11, fontWeight: "600" },
-  progressLine: {
-    position: "absolute",
-    top: 6,
-    left: "50%",
-    width: "100%",
+  progressConnector: {
+    flex: 1,
     height: 2,
     backgroundColor: "#2D1B4E",
+    marginBottom: 16,
+    marginHorizontal: 4,
   },
   // Driver Card
   driverCard: {
     flexDirection: "row",
     alignItems: "center",
-    marginHorizontal: 16,
+    marginHorizontal: 12,
     backgroundColor: "#1E0A3C",
     borderRadius: 16,
     padding: 14,
@@ -311,31 +465,36 @@ const styles = StyleSheet.create({
     borderColor: "#2D1B4E",
     gap: 12,
   },
-  driverAvatarContainer: {},
   driverAvatar: {
-    width: 48, height: 48, borderRadius: 24,
+    width: 50, height: 50, borderRadius: 25,
     backgroundColor: "#FFD700", alignItems: "center", justifyContent: "center",
   },
-  driverAvatarText: { color: "#1A0533", fontSize: 20, fontWeight: "bold" },
+  driverAvatarText: { color: "#1A0533", fontSize: 22, fontWeight: "bold" },
   driverInfo: { flex: 1 },
   driverName: { color: "#E0D0FF", fontSize: 15, fontWeight: "bold" },
   driverCar: { color: "#9B8EC4", fontSize: 13, marginTop: 2 },
+  etaInline: { color: "#5B9BD5", fontSize: 12, marginTop: 4, fontWeight: "600" },
+  arrivedInline: { color: "#2ECC71", fontSize: 12, marginTop: 4, fontWeight: "700" },
   callBtn: {
-    width: 44, height: 44, borderRadius: 22,
+    width: 46, height: 46, borderRadius: 23,
     backgroundColor: "#0D2B1A", alignItems: "center", justifyContent: "center",
-    borderWidth: 1, borderColor: "#2ECC71",
+    borderWidth: 1.5, borderColor: "#2ECC71",
   },
   callBtnText: { fontSize: 20 },
-  // Refresh
-  refreshBtn: {
-    marginHorizontal: 16,
-    marginTop: 12,
-    backgroundColor: "#2D1B4E",
-    borderRadius: 12,
-    paddingVertical: 12,
+  // Arrived Banner
+  arrivedBanner: {
+    flexDirection: "row",
     alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#4B3B8C",
+    justifyContent: "center",
+    gap: 10,
+    marginHorizontal: 12,
+    marginTop: 10,
+    backgroundColor: "#0D2B1A",
+    borderRadius: 14,
+    paddingVertical: 14,
+    borderWidth: 1.5,
+    borderColor: "#2ECC71",
   },
-  refreshBtnText: { color: "#C4B5E0", fontSize: 14, fontWeight: "600" },
+  arrivedBannerEmoji: { fontSize: 24 },
+  arrivedBannerText: { color: "#2ECC71", fontSize: 15, fontWeight: "800" },
 });
