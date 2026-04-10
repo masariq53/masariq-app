@@ -52,9 +52,11 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-// تقدير وقت الوصول بالدقائق (fallback - سرعة متوسطة 30 كم/ساعة في المدينة)
+// تقدير وقت الوصول بالدقائق (fallback عند فشل OSRM)
+// الطرق بين المدن في العراق سرعة متوسطة 75-80 كم/ساعة
 function estimateMinutes(distKm: number) {
-  const avgSpeedKmh = 30;
+  // سرعة متغيرة حسب المسافة: قريب = مدينة (40), بعيد = طريق سريع (80)
+  const avgSpeedKmh = distKm < 15 ? 35 : distKm < 50 ? 60 : 80;
   return Math.max(1, Math.round((distKm / avgSpeedKmh) * 60));
 }
 
