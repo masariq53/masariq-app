@@ -299,6 +299,27 @@ export default function MyIntercityBookingsScreen() {
                   </View>
                 ) : null}
 
+                {/* Chat Button — متاح في كل الحالات عدا completed */}
+                {!isBookingCancelled && passenger && (
+                  <TouchableOpacity
+                    style={styles.chatBtn}
+                    onPress={() =>
+                      router.push({
+                        pathname: "/intercity/chat",
+                        params: {
+                          bookingId: item.id.toString(),
+                          tripId: item.tripId.toString(),
+                          passengerId: passenger.id.toString(),
+                          driverName: driver?.name || "السائق",
+                          tripStatus: displayStatus,
+                        },
+                      } as any)
+                    }
+                  >
+                    <Text style={styles.chatBtnText}>💬 رسائل السائق</Text>
+                  </TouchableOpacity>
+                )}
+
                 {/* Tracking Button — يظهر عندما الكابتن في الطريق أو وصل */}
                 {(displayStatus === "scheduled" || displayStatus === "in_progress") && !isBookingCancelled && driver && (
                   <TouchableOpacity
@@ -482,4 +503,15 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   trackingBtnText: { color: "#5B9BD5", fontSize: 14, fontWeight: "700" },
+  chatBtn: {
+    backgroundColor: "#1A2B3E",
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: "center",
+    borderWidth: 1.5,
+    borderColor: "#4A90D9",
+    marginBottom: 10,
+    marginTop: 4,
+  },
+  chatBtnText: { color: "#4A90D9", fontSize: 14, fontWeight: "700" },
 });

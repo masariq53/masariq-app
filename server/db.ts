@@ -15,6 +15,8 @@ import {
   intercityTrips,
   intercityBookings,
   intercityDriverLocations,
+  intercityMessages,
+  IntercityMessage,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
@@ -1840,4 +1842,101 @@ export async function getPassengerBookingStatus(bookingId: number, passengerId: 
     .where(and(eq(intercityBookings.id, bookingId), eq(intercityBookings.passengerId, passengerId)))
     .limit(1);
   return booking ?? null;
+}
+
+// ─── Intercity Chat Functions ─────────────────────────────────────────────────
+
+/**
+ * Send a chat message for an intercity booking
+ */
+export async function sendIntercityMessage(data: {
+  bookingId: number;
+  tripId: number;
+  senderType: "passenger" | "driver";
+  senderId: number;
+  message: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("DB not available");
+  const [result] = await db.insert(intercityMessages).values({
+    bookingId: data.bookingId,
+    tripId: data.tripId,
+    senderType: data.senderType,
+    senderId: data.senderId,
+    message: data.message,
+    isRead: false,
+  });
+  const insertId = (result as any).insertId as number;
+  const [msg] = await db
+    .select()
+    .from(intercityMessages)
+    .where(eq(intercityMessages.id, insertId))
+    .limit(1);
+  return msg;
+}
+
+/**
+ * Get all messages for a booking, ordered by time
+ */
+export async function getIntercityMessages(bookingId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(intercityMessages)
+    .where(eq(intercityMessages.bookingId, bookingId))
+    .orderBy(intercityMessages.createdAt);
+}
+
+/**
+ * Mark all messages in a booking as read for a specific receiver type
+ */
+export async function markIntercityMessagesRead(bookingId: number, readerType: "passenger" | "driver") {
+  const db = await getDb();
+  if (!db) return;
+  // Mark messages sent by the OTHER party as read
+  const senderType = readerType === "passenger" ? "driver" : "passenger";
+  await db
+    .update(intercityMessages)
+    .set({ isRead: true })
+    .where(
+      and(
+        eq(intercityMessages.bookingId, bookingId),
+        eq(intercityMessages.senderType, senderType),
+        eq(intercityMessages.isRead, false)
+      )
+    );
+}
+
+/**
+ * Count unread messages for a booking (messages sent by the other party)
+ */
+export async function countUnreadIntercityMessages(bookingId: number, readerType: "passenger" | "driver") {
+  const db = await getDb();
+  if (!db) return 0;
+  const senderType = readerType === "passenger" ? "driver" : "passenger";
+  const [row] = await db
+    .select({ count: sql<number>`COUNT(*)` })
+    .from(intercityMessages)
+    .where(
+      and(
+        eq(intercityMessages.bookingId, bookingId),
+        eq(intercityMessages.senderType, senderType),
+        eq(intercityMessages.isRead, false)
+      )
+    );
+  return row?.count ?? 0;
+}
+
+/**
+ * Get all messages for a trip (admin view) - grouped by booking
+ */
+export async function getIntercityTripMessages(tripId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(intercityMessages)
+    .where(eq(intercityMessages.tripId, tripId))
+    .orderBy(intercityMessages.bookingId, intercityMessages.createdAt);
 }

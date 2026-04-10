@@ -309,3 +309,20 @@ export const intercityDriverLocations = mysqlTable("intercityDriverLocations", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 export type IntercityDriverLocation = typeof intercityDriverLocations.$inferSelect;
+
+// ─── Intercity Chat Messages ──────────────────────────────────────────────────
+/**
+ * Chat messages between captain and passenger for intercity bookings
+ */
+export const intercityMessages = mysqlTable("intercityMessages", {
+  id: int("id").autoincrement().primaryKey(),
+  bookingId: int("bookingId").notNull(),   // الحجز المرتبط بالمحادثة
+  tripId: int("tripId").notNull(),          // الرحلة المرتبطة
+  senderType: mysqlEnum("senderType", ["passenger", "driver"]).notNull(),
+  senderId: int("senderId").notNull(),      // passenger.id أو driver.id
+  message: text("message").notNull(),
+  isRead: boolean("isRead").default(false).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type IntercityMessage = typeof intercityMessages.$inferSelect;
+export type InsertIntercityMessage = typeof intercityMessages.$inferInsert;

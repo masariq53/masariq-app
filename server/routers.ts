@@ -77,6 +77,11 @@ import {
   updateDriverLiveLocation,
   getDriverLiveLocation,
   getPassengerBookingStatus,
+  sendIntercityMessage,
+  getIntercityMessages,
+  markIntercityMessagesRead,
+  countUnreadIntercityMessages,
+  getIntercityTripMessages,
 } from "./db";
 import { storagePut } from "./storage";
 
@@ -2211,6 +2216,105 @@ export const appRouter = router({
       .query(async ({ input }) => {
         return getPassengerBookingStatus(input.bookingId, input.passengerId);
       }),
+    // ─── Chat Endpoints ───────────────────────────────────────────────────────
+    // إرسال رسالة شات
+    sendMessage: publicProcedure
+      .input(z.object({
+        bookingId: z.number(),
+        tripId: z.number(),
+        senderType: z.enum(["passenger", "driver"]),
+        senderId: z.number(),
+        message: z.string().min(1).max(1000),
+      }))
+      .mutation(async ({ input }) => {
+        const msg = await sendIntercityMessage(input);
+        // إرسال Push للطرف الآخر
+        try {
+          if (input.senderType === "driver") {
+            // الكابتن أرسل → أشعر المسافر
+            const [booking] = await (await getDb())!
+              .select().from((await import("../drizzle/schema")).intercityBookings)
+              .where((await import("drizzle-orm")).eq((await import("../drizzle/schema")).intercityBookings.id, input.bookingId))
+              .limit(1);
+            if (booking?.passengerId) {
+              const token = await getPassengerPushToken(booking.passengerId);
+              if (token?.startsWith("ExponentPushToken[")) {
+                fetch("https://exp.host/--/api/v2/push/send", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    to: token, sound: "default",
+                    title: "💬 رسالة جديدة من السائق",
+                    body: input.message.length > 60 ? input.message.slice(0, 60) + "..." : input.message,
+                    data: { type: "chat_message", bookingId: input.bookingId },
+                    priority: "high",
+                  }),
+                }).catch(() => {});
+              }
+            }
+          } else {
+            // المسافر أرسل → أشعر الكابتن
+            const [booking] = await (await getDb())!
+              .select().from((await import("../drizzle/schema")).intercityBookings)
+              .where((await import("drizzle-orm")).eq((await import("../drizzle/schema")).intercityBookings.id, input.bookingId))
+              .limit(1);
+            if (booking?.tripId) {
+              const [trip] = await (await getDb())!
+                .select().from((await import("../drizzle/schema")).intercityTrips)
+                .where((await import("drizzle-orm")).eq((await import("../drizzle/schema")).intercityTrips.id, booking.tripId))
+                .limit(1);
+              if (trip?.driverId) {
+                const token = await getDriverPushToken(trip.driverId);
+                if (token?.startsWith("ExponentPushToken[")) {
+                  fetch("https://exp.host/--/api/v2/push/send", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      to: token, sound: "default",
+                      title: "💬 رسالة جديدة من مسافر",
+                      body: input.message.length > 60 ? input.message.slice(0, 60) + "..." : input.message,
+                      data: { type: "chat_message", bookingId: input.bookingId },
+                      priority: "high",
+                    }),
+                  }).catch(() => {});
+                }
+              }
+            }
+          }
+        } catch (e) { console.warn("[Chat Push] Error:", e); }
+        return msg;
+      }),
+
+    // جلب رسائل حجز معين
+    getMessages: publicProcedure
+      .input(z.object({ bookingId: z.number() }))
+      .query(async ({ input }) => {
+        return getIntercityMessages(input.bookingId);
+      }),
+
+    // تحديد الرسائل كمقروءة
+    markRead: publicProcedure
+      .input(z.object({ bookingId: z.number(), readerType: z.enum(["passenger", "driver"]) }))
+      .mutation(async ({ input }) => {
+        await markIntercityMessagesRead(input.bookingId, input.readerType);
+        return { success: true };
+      }),
+
+    // عدد الرسائل غير المقروءة
+    unreadCount: publicProcedure
+      .input(z.object({ bookingId: z.number(), readerType: z.enum(["passenger", "driver"]) }))
+      .query(async ({ input }) => {
+        const count = await countUnreadIntercityMessages(input.bookingId, input.readerType);
+        return { count };
+      }),
+
+    // جلب كل رسائل رحلة معينة (للأدمن)
+    getTripMessages: publicProcedure
+      .input(z.object({ tripId: z.number() }))
+      .query(async ({ input }) => {
+        return getIntercityTripMessages(input.tripId);
+      }),
+
     // الكابتن: إلغاء حجز راكب معين
     cancelPassenger: publicProcedure
       .input(z.object({ bookingId: z.number(), driverId: z.number(), reason: z.string().optional() }))

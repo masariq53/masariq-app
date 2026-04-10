@@ -109,7 +109,7 @@ export default function AdminDashboard() {
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [blockReasonInput, setBlockReasonInput] = useState("");
 
-  // ─── Intercity Trips ───────────────────────────────────────────────────────────
+  // ──  // ─── Intercity Trips ─────────────────────────────────────────────
   const [intercityStatusFilter, setIntercityStatusFilter] = useState<"all" | "scheduled" | "in_progress" | "completed" | "cancelled">("all");
   const [intercityCityFilter, setIntercityCityFilter] = useState("");
   const [intercityDriverFilter, setIntercityDriverFilter] = useState("");
@@ -117,10 +117,20 @@ export default function AdminDashboard() {
   const [intercityShowFilters, setIntercityShowFilters] = useState(false);
   const [selectedPassengersTripId, setSelectedPassengersTripId] = useState<number | null>(null);
   const [showPassengersModal, setShowPassengersModal] = useState(false);
+  // شات: المحادثة المختارة
+  const [chatBookingId, setChatBookingId] = useState<number | null>(null);
+  const [showChatModal, setShowChatModal] = useState(false);
+  const [chatPassengerName, setChatPassengerName] = useState("");
+  const [chatDriverName, setChatDriverName] = useState("");
+  const [passengersModalTab, setPassengersModalTab] = useState<"passengers" | "chat">("passengers");
   const { data: allIntercityTrips, isLoading: intercityLoading, refetch: refetchIntercity } = trpc.admin.intercityTrips.useQuery({ limit: 200 });
   const { data: tripPassengersData, isLoading: passengersModalLoading } = trpc.admin.intercityTripPassengers.useQuery(
     { tripId: selectedPassengersTripId! },
     { enabled: !!selectedPassengersTripId && showPassengersModal }
+  );
+  const { data: chatMessages, isLoading: chatMessagesLoading } = trpc.intercity.getMessages.useQuery(
+    { bookingId: chatBookingId! },
+    { enabled: !!chatBookingId && showChatModal, refetchInterval: 5000 }
   );
   const cancelIntercityTripMutation = trpc.admin.cancelIntercityTrip.useMutation({
     onSuccess: () => refetchIntercity(),
@@ -1121,51 +1131,134 @@ export default function AdminDashboard() {
               {/* Passengers Modal */}
               <Modal visible={showPassengersModal} transparent animationType="slide">
                 <View style={{ flex: 1, backgroundColor: "#000000BB", justifyContent: "flex-end" }}>
-                  <View style={{ backgroundColor: "#1A0533", borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 40, maxHeight: "80%" }}>
-                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-                      <Text style={{ color: "#FFD700", fontSize: 18, fontWeight: "700" }}>👥 قائمة المسافرين</Text>
-                      <TouchableOpacity onPress={() => { setShowPassengersModal(false); setSelectedPassengersTripId(null); }}>
+                  <View style={{ backgroundColor: "#1A0533", borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 40, maxHeight: "85%" }}>
+                    {/* Header */}
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                      <Text style={{ color: "#FFD700", fontSize: 18, fontWeight: "700" }}>👥 بيانات الرحلة</Text>
+                      <TouchableOpacity onPress={() => { setShowPassengersModal(false); setSelectedPassengersTripId(null); setPassengersModalTab("passengers"); }}>
                         <Text style={{ color: "#9B8EC4", fontSize: 20, padding: 4 }}>✕</Text>
                       </TouchableOpacity>
                     </View>
-                    {passengersModalLoading ? (
-                      <ActivityIndicator color="#FFD700" style={{ margin: 20 }} />
-                    ) : !tripPassengersData?.length ? (
-                      <View style={{ alignItems: "center", paddingVertical: 30 }}>
-                        <Text style={{ fontSize: 36, marginBottom: 8 }}>👤</Text>
-                        <Text style={{ color: "#9B8EC4", fontSize: 14 }}>لا يوجد مسافرون على هذه الرحلة</Text>
-                      </View>
-                    ) : (
-                      <ScrollView showsVerticalScrollIndicator={false}>
-                        {(tripPassengersData as any[]).map((b, i) => (
-                          <View key={b.id} style={{ backgroundColor: "#2D1B4E", borderRadius: 12, padding: 12, marginBottom: 8 }}>
-                            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                              <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: "#6C3FC5", justifyContent: "center", alignItems: "center" }}>
-                                <Text style={{ color: "#FFD700", fontWeight: "800", fontSize: 14 }}>{i + 1}</Text>
+
+                    {/* Tabs */}
+                    <View style={{ flexDirection: "row", gap: 8, marginBottom: 14 }}>
+                      <TouchableOpacity
+                        style={{ flex: 1, paddingVertical: 8, borderRadius: 10, alignItems: "center", backgroundColor: passengersModalTab === "passengers" ? "#6C3FC5" : "#2D1B4E" }}
+                        onPress={() => setPassengersModalTab("passengers")}
+                      >
+                        <Text style={{ color: passengersModalTab === "passengers" ? "#FFD700" : "#9B8EC4", fontWeight: "700", fontSize: 13 }}>👥 المسافرون</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={{ flex: 1, paddingVertical: 8, borderRadius: 10, alignItems: "center", backgroundColor: passengersModalTab === "chat" ? "#6C3FC5" : "#2D1B4E" }}
+                        onPress={() => setPassengersModalTab("chat")}
+                      >
+                        <Text style={{ color: passengersModalTab === "chat" ? "#FFD700" : "#9B8EC4", fontWeight: "700", fontSize: 13 }}>💬 المحادثات</Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    {/* Passengers Tab */}
+                    {passengersModalTab === "passengers" && (
+                      passengersModalLoading ? (
+                        <ActivityIndicator color="#FFD700" style={{ margin: 20 }} />
+                      ) : !tripPassengersData?.length ? (
+                        <View style={{ alignItems: "center", paddingVertical: 30 }}>
+                          <Text style={{ fontSize: 36, marginBottom: 8 }}>👤</Text>
+                          <Text style={{ color: "#9B8EC4", fontSize: 14 }}>لا يوجد مسافرون على هذه الرحلة</Text>
+                        </View>
+                      ) : (
+                        <ScrollView showsVerticalScrollIndicator={false}>
+                          {(tripPassengersData as any[]).map((b, i) => (
+                            <View key={b.id} style={{ backgroundColor: "#2D1B4E", borderRadius: 12, padding: 12, marginBottom: 8 }}>
+                              <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                                <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: "#6C3FC5", justifyContent: "center", alignItems: "center" }}>
+                                  <Text style={{ color: "#FFD700", fontWeight: "800", fontSize: 14 }}>{i + 1}</Text>
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                  <Text style={{ color: "#FFFFFF", fontWeight: "700", fontSize: 14 }}>{b.passengerName || "مسافر"}</Text>
+                                  <Text style={{ color: "#9B8EC4", fontSize: 12, marginTop: 2 }}>📞 {b.passengerPhone}</Text>
+                                  {b.pickupAddress && <Text style={{ color: "#60A5FA", fontSize: 12, marginTop: 2 }}>📍 {b.pickupAddress}</Text>}
+                                  {b.passengerNote && <Text style={{ color: "#9B8EC4", fontSize: 11, marginTop: 2, fontStyle: "italic" }}>📝 {b.passengerNote}</Text>}
+                                </View>
+                                <View style={{ alignItems: "flex-end" }}>
+                                  <Text style={{ color: "#4ADE80", fontWeight: "800", fontSize: 13 }}>{parseInt(b.totalPrice ?? "0").toLocaleString()}</Text>
+                                  <Text style={{ color: "#9B8EC4", fontSize: 10 }}>دينار</Text>
+                                  <Text style={{ color: "#FFD700", fontSize: 11, marginTop: 4 }}>💺 {b.seatsBooked} مقعد</Text>
+                                  {b.driverRating ? (
+                                    <Text style={{ color: "#FFD700", fontSize: 11, marginTop: 4 }}>⭐ {b.driverRating}/5</Text>
+                                  ) : (
+                                    <Text style={{ color: "#6B7280", fontSize: 10, marginTop: 4 }}>لم يُقيّم</Text>
+                                  )}
+                                </View>
                               </View>
-                              <View style={{ flex: 1 }}>
-                                <Text style={{ color: "#FFFFFF", fontWeight: "700", fontSize: 14 }}>{b.passengerName || "مسافر"}</Text>
-                                <Text style={{ color: "#9B8EC4", fontSize: 12, marginTop: 2 }}>📞 {b.passengerPhone}</Text>
-                                {b.pickupAddress && <Text style={{ color: "#60A5FA", fontSize: 12, marginTop: 2 }}>📍 {b.pickupAddress}</Text>}
-                                {b.passengerNote && <Text style={{ color: "#9B8EC4", fontSize: 11, marginTop: 2, fontStyle: "italic" }}>📝 {b.passengerNote}</Text>}
-                              </View>
-                              <View style={{ alignItems: "flex-end" }}>
-                                <Text style={{ color: "#4ADE80", fontWeight: "800", fontSize: 13 }}>{parseInt(b.totalPrice ?? "0").toLocaleString()}</Text>
-                                <Text style={{ color: "#9B8EC4", fontSize: 10 }}>دينار</Text>
-                                <Text style={{ color: "#FFD700", fontSize: 11, marginTop: 4 }}>💺 {b.seatsBooked} مقعد</Text>
-                                {b.driverRating ? (
-                                  <Text style={{ color: "#FFD700", fontSize: 11, marginTop: 4 }}>⭐ تقييم السائق: {b.driverRating}/5</Text>
-                                ) : (
-                                  <Text style={{ color: "#6B7280", fontSize: 10, marginTop: 4 }}>لم يُقيّم بعد</Text>
-                                )}
-                                <Text style={{ color: b.pickupStatus === "arrived" ? "#4ADE80" : b.pickupStatus === "picked_up" ? "#60A5FA" : "#9B8EC4", fontSize: 10, marginTop: 2 }}>
-                                  {b.pickupStatus === "arrived" ? "✅ وصل" : b.pickupStatus === "picked_up" ? "🚗 تم الالتقاط" : "⏳ في الانتظار"}
-                                </Text>
-                              </View>
+                              {/* زر عرض المحادثة */}
+                              <TouchableOpacity
+                                style={{ marginTop: 8, backgroundColor: "#1A2B3E", borderRadius: 8, paddingVertical: 8, alignItems: "center", borderWidth: 1, borderColor: "#4A90D9" }}
+                                onPress={() => {
+                                  setChatBookingId(b.id);
+                                  setChatPassengerName(b.passengerName || "مسافر");
+                                  setPassengersModalTab("chat");
+                                }}
+                              >
+                                <Text style={{ color: "#4A90D9", fontSize: 12, fontWeight: "700" }}>💬 عرض محادثة هذا الراكب</Text>
+                              </TouchableOpacity>
                             </View>
+                          ))}
+                        </ScrollView>
+                      )
+                    )}
+
+                    {/* Chat Tab */}
+                    {passengersModalTab === "chat" && (
+                      <View style={{ flex: 1 }}>
+                        {!chatBookingId ? (
+                          <View style={{ alignItems: "center", paddingVertical: 30 }}>
+                            <Text style={{ fontSize: 36, marginBottom: 8 }}>💬</Text>
+                            <Text style={{ color: "#9B8EC4", fontSize: 14 }}>اختر راكباً من تبويب المسافرين لعرض محادثته</Text>
                           </View>
-                        ))}
-                      </ScrollView>
+                        ) : (
+                          <View style={{ flex: 1 }}>
+                            {/* Chat header */}
+                            <View style={{ backgroundColor: "#2D1B4E", borderRadius: 10, padding: 10, marginBottom: 10, flexDirection: "row", alignItems: "center", gap: 8 }}>
+                              <Text style={{ fontSize: 20 }}>💬</Text>
+                              <View style={{ flex: 1 }}>
+                                <Text style={{ color: "#FFD700", fontWeight: "700", fontSize: 13 }}>محادثة: {chatPassengerName}</Text>
+                                <Text style={{ color: "#9B8EC4", fontSize: 11 }}>حجز #{chatBookingId}</Text>
+                              </View>
+                              <TouchableOpacity onPress={() => { setChatBookingId(null); setPassengersModalTab("passengers"); }}>
+                                <Text style={{ color: "#9B8EC4", fontSize: 16 }}>← رجوع</Text>
+                              </TouchableOpacity>
+                            </View>
+
+                            {chatMessagesLoading ? (
+                              <ActivityIndicator color="#FFD700" style={{ margin: 20 }} />
+                            ) : !chatMessages?.length ? (
+                              <View style={{ alignItems: "center", paddingVertical: 30 }}>
+                                <Text style={{ fontSize: 32, marginBottom: 8 }}>📤</Text>
+                                <Text style={{ color: "#9B8EC4", fontSize: 14 }}>لا توجد رسائل في هذه المحادثة</Text>
+                              </View>
+                            ) : (
+                              <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 350 }}>
+                                {(chatMessages as any[]).map((msg) => {
+                                  const isDriver = msg.senderType === "driver";
+                                  const d = new Date(msg.createdAt);
+                                  const timeStr = isNaN(d.getTime()) ? "" : d.toLocaleTimeString("ar-IQ", { hour: "2-digit", minute: "2-digit" });
+                                  return (
+                                    <View key={msg.id} style={{ marginBottom: 8, alignItems: isDriver ? "flex-start" : "flex-end" }}>
+                                      <View style={{ backgroundColor: isDriver ? "#1A2B4E" : "#2D1B4E", borderRadius: 12, padding: 10, maxWidth: "80%" }}>
+                                        <Text style={{ color: isDriver ? "#60A5FA" : "#FFD700", fontSize: 11, fontWeight: "700", marginBottom: 4 }}>
+                                          {isDriver ? "🚗 السائق" : "👤 الراكب"}
+                                        </Text>
+                                        <Text style={{ color: "#FFFFFF", fontSize: 13, lineHeight: 18 }}>{msg.message}</Text>
+                                        <Text style={{ color: "#6B7280", fontSize: 10, marginTop: 4, textAlign: "right" }}>{timeStr}</Text>
+                                      </View>
+                                    </View>
+                                  );
+                                })}
+                              </ScrollView>
+                            )}
+                          </View>
+                        )}
+                      </View>
                     )}
                   </View>
                 </View>

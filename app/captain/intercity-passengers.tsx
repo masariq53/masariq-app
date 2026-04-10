@@ -25,7 +25,7 @@ type ApproachStatus = "idle" | "heading" | "arrived_at_pickup";
 
 export default function IntercityPassengersScreen() {
   const router = useRouter();
-  const { tripId, tripRoute } = useLocalSearchParams<{ tripId: string; tripRoute: string }>();
+  const { tripId, tripRoute, tripStatus } = useLocalSearchParams<{ tripId: string; tripRoute: string; tripStatus: string }>();
   const { driver } = useDriver();
   const [refreshing, setRefreshing] = useState(false);
 
@@ -327,6 +327,23 @@ export default function IntercityPassengersScreen() {
                           <Text style={styles.mapBtnText}>🗺️ موقع الراكب</Text>
                         </TouchableOpacity>
                       ) : null}
+
+                      {/* زر الشات */}
+                      <TouchableOpacity
+                        style={styles.chatBtn}
+                        onPress={() => router.push({
+                          pathname: "/captain/intercity-chat",
+                          params: {
+                            bookingId: item.id.toString(),
+                            tripId: tripId || "0",
+                            driverId: driver?.id?.toString() || "0",
+                            passengerName: item.passengerName || "المسافر",
+                            tripStatus: tripStatus || "scheduled",
+                          },
+                        })}
+                      >
+                        <Text style={styles.chatBtnText}>💬 شات</Text>
+                      </TouchableOpacity>
                     </View>
 
                     {/* Cancel — يختفي بعد وصول السائق للراكب */}
@@ -539,4 +556,9 @@ const styles = StyleSheet.create({
   cancelModalDismissText: { color: "#C4B5E0", fontSize: 14, fontWeight: "700" },
   cancelModalConfirm: { flex: 1, backgroundColor: "#EF4444", borderRadius: 12, padding: 14, alignItems: "center" },
   cancelModalConfirmText: { color: "#FFFFFF", fontSize: 14, fontWeight: "800" },
+  chatBtn: {
+    flex: 1, backgroundColor: "#1A2B3E", borderRadius: 10,
+    paddingVertical: 10, alignItems: "center", borderWidth: 1, borderColor: "#4A90D9",
+  },
+  chatBtnText: { color: "#4A90D9", fontSize: 13, fontWeight: "600" },
 });
