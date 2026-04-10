@@ -280,9 +280,13 @@ export const intercityBookings = mysqlTable("intercityBookings", {
   status: mysqlEnum("status", ["pending", "confirmed", "cancelled"]).default("confirmed").notNull(),
   passengerPhone: varchar("passengerPhone", { length: 20 }),
   passengerName: varchar("passengerName", { length: 100 }),
+  pickupAddress: text("pickupAddress"),
+  pickupLat: decimal("pickupLat", { precision: 10, scale: 7 }),
+  pickupLng: decimal("pickupLng", { precision: 10, scale: 7 }),
+  passengerRating: int("passengerRating"),
+  driverRating: int("driverRating"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
-
 export type IntercityBooking = typeof intercityBookings.$inferSelect;
 export type InsertIntercityBooking = typeof intercityBookings.$inferInsert;

@@ -60,6 +60,10 @@ import {
   getPassengerIntercityBookings,
   cancelIntercityBooking,
   getTripBookings,
+  updateIntercityTripStatus,
+  rateIntercityTrip,
+  bookIntercityTripWithPickup,
+  getPassengerIntercityBookingsWithTrip,
 } from "./db";
 import { storagePut } from "./storage";
 
@@ -1868,9 +1872,53 @@ export const appRouter = router({
         await cancelIntercityBooking(input.bookingId, input.passengerId);
         return { success: true };
       }),
+    // السائق: تحديث حالة الرحلة (انطلاق / اكتمال)
+    updateTripStatus: publicProcedure
+      .input(z.object({
+        tripId: z.number(),
+        driverId: z.number(),
+        status: z.enum(["in_progress", "completed"]),
+      }))
+      .mutation(async ({ input }) => {
+        await updateIntercityTripStatus(input.tripId, input.driverId, input.status);
+        return { success: true };
+      }),
+    // تقييم الرحلة
+    rateTrip: publicProcedure
+      .input(z.object({
+        bookingId: z.number(),
+        raterId: z.number(),
+        raterType: z.enum(["passenger", "driver"]),
+        rating: z.number().min(1).max(5),
+      }))
+      .mutation(async ({ input }) => {
+        await rateIntercityTrip(input);
+        return { success: true };
+      }),
+    // المستخدم: حجز مع عنوان الاستلام
+    bookTripWithPickup: publicProcedure
+      .input(z.object({
+        tripId: z.number(),
+        passengerId: z.number(),
+        seatsBooked: z.number().min(1).max(10),
+        passengerPhone: z.string(),
+        passengerName: z.string(),
+        pickupAddress: z.string().optional(),
+        pickupLat: z.number().optional(),
+        pickupLng: z.number().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const booking = await bookIntercityTripWithPickup(input);
+        return { success: true, booking };
+      }),
+    // المستخدم: حجوزاتي مع تفاصيل الرحلة والسائق
+    myBookingsEnriched: publicProcedure
+      .input(z.object({ passengerId: z.number() }))
+      .query(async ({ input }) => {
+        return getPassengerIntercityBookingsWithTrip(input.passengerId);
+      }),
   }),
 });
-
 export type AppRouter = typeof appRouter;
 
 

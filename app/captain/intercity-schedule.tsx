@@ -8,6 +8,8 @@ import {
   ActivityIndicator,
   Alert,
   StyleSheet,
+  Platform,
+  Modal,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { ScreenContainer } from "@/components/screen-container";
@@ -22,21 +24,169 @@ const IRAQI_CITIES = [
   "سامراء", "بعقوبة", "الكوت", "دهوك", "زاخو",
 ];
 
+// ─── Date Picker Component ────────────────────────────────────────────────────
+function DateTimePicker({
+  value,
+  onChange,
+}: {
+  value: Date;
+  onChange: (d: Date) => void;
+}) {
+  const [showModal, setShowModal] = useState(false);
+  const [tempDate, setTempDate] = useState(value);
+
+  // Build year/month/day/hour/minute lists
+  const now = new Date();
+  const years = Array.from({ length: 2 }, (_, i) => now.getFullYear() + i);
+  const months = Array.from({ length: 12 }, (_, i) => i + 1);
+  const days = Array.from(
+    { length: new Date(tempDate.getFullYear(), tempDate.getMonth() + 1, 0).getDate() },
+    (_, i) => i + 1
+  );
+  const hours = Array.from({ length: 24 }, (_, i) => i);
+  const minutes = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55];
+
+  const formatDisplay = (d: Date) =>
+    d.toLocaleDateString("ar-IQ", {
+      weekday: "short", year: "numeric", month: "long", day: "numeric",
+    }) + "  " + d.toLocaleTimeString("ar-IQ", { hour: "2-digit", minute: "2-digit" });
+
+  const confirm = () => {
+    onChange(tempDate);
+    setShowModal(false);
+  };
+
+  const setField = (field: string, val: number) => {
+    const d = new Date(tempDate);
+    if (field === "year") d.setFullYear(val);
+    if (field === "month") d.setMonth(val - 1);
+    if (field === "day") d.setDate(val);
+    if (field === "hour") d.setHours(val);
+    if (field === "minute") d.setMinutes(val);
+    setTempDate(d);
+  };
+
+  return (
+    <>
+      <TouchableOpacity style={styles.dateBtn} onPress={() => { setTempDate(value); setShowModal(true); }}>
+        <Text style={styles.dateBtnIcon}>📅</Text>
+        <Text style={styles.dateBtnText}>{formatDisplay(value)}</Text>
+        <Text style={styles.dateBtnChevron}>▼</Text>
+      </TouchableOpacity>
+
+      <Modal visible={showModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.pickerModal}>
+            <Text style={styles.pickerTitle}>اختر التاريخ والوقت</Text>
+
+            {/* Date Row */}
+            <View style={styles.pickerRow}>
+              {/* Year */}
+              <View style={styles.pickerCol}>
+                <Text style={styles.pickerColLabel}>السنة</Text>
+                <ScrollView style={styles.pickerScroll} showsVerticalScrollIndicator={false}>
+                  {years.map(y => (
+                    <TouchableOpacity key={y} style={[styles.pickerItem, tempDate.getFullYear() === y && styles.pickerItemActive]}
+                      onPress={() => setField("year", y)}>
+                      <Text style={[styles.pickerItemText, tempDate.getFullYear() === y && styles.pickerItemTextActive]}>{y}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+              {/* Month */}
+              <View style={styles.pickerCol}>
+                <Text style={styles.pickerColLabel}>الشهر</Text>
+                <ScrollView style={styles.pickerScroll} showsVerticalScrollIndicator={false}>
+                  {months.map(m => (
+                    <TouchableOpacity key={m} style={[styles.pickerItem, (tempDate.getMonth() + 1) === m && styles.pickerItemActive]}
+                      onPress={() => setField("month", m)}>
+                      <Text style={[styles.pickerItemText, (tempDate.getMonth() + 1) === m && styles.pickerItemTextActive]}>
+                        {new Date(2000, m - 1).toLocaleString("ar", { month: "short" })}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+              {/* Day */}
+              <View style={styles.pickerCol}>
+                <Text style={styles.pickerColLabel}>اليوم</Text>
+                <ScrollView style={styles.pickerScroll} showsVerticalScrollIndicator={false}>
+                  {days.map(d => (
+                    <TouchableOpacity key={d} style={[styles.pickerItem, tempDate.getDate() === d && styles.pickerItemActive]}
+                      onPress={() => setField("day", d)}>
+                      <Text style={[styles.pickerItemText, tempDate.getDate() === d && styles.pickerItemTextActive]}>{d}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+              {/* Hour */}
+              <View style={styles.pickerCol}>
+                <Text style={styles.pickerColLabel}>الساعة</Text>
+                <ScrollView style={styles.pickerScroll} showsVerticalScrollIndicator={false}>
+                  {hours.map(h => (
+                    <TouchableOpacity key={h} style={[styles.pickerItem, tempDate.getHours() === h && styles.pickerItemActive]}
+                      onPress={() => setField("hour", h)}>
+                      <Text style={[styles.pickerItemText, tempDate.getHours() === h && styles.pickerItemTextActive]}>
+                        {String(h).padStart(2, "0")}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+              {/* Minute */}
+              <View style={styles.pickerCol}>
+                <Text style={styles.pickerColLabel}>الدقيقة</Text>
+                <ScrollView style={styles.pickerScroll} showsVerticalScrollIndicator={false}>
+                  {minutes.map(m => (
+                    <TouchableOpacity key={m} style={[styles.pickerItem, tempDate.getMinutes() === m && styles.pickerItemActive]}
+                      onPress={() => setField("minute", m)}>
+                      <Text style={[styles.pickerItemText, tempDate.getMinutes() === m && styles.pickerItemTextActive]}>
+                        {String(m).padStart(2, "0")}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            </View>
+
+            {/* Preview */}
+            <Text style={styles.pickerPreview}>{formatDisplay(tempDate)}</Text>
+
+            <View style={styles.pickerBtns}>
+              <TouchableOpacity style={styles.pickerCancelBtn} onPress={() => setShowModal(false)}>
+                <Text style={styles.pickerCancelText}>إلغاء</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.pickerConfirmBtn} onPress={confirm}>
+                <Text style={styles.pickerConfirmText}>تأكيد ✓</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </>
+  );
+}
+
+// ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function IntercityScheduleScreen() {
   const router = useRouter();
   const { driver } = useDriver();
   const driverId = driver?.id ?? null;
+
   const [fromCity, setFromCity] = useState("الموصل");
   const [toCity, setToCity] = useState("");
-  const [departureDate, setDepartureDate] = useState(""); // YYYY-MM-DD
-  const [departureTime, setDepartureTime] = useState(""); // HH:MM
+  const [departureDate, setDepartureDate] = useState<Date>(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    d.setHours(8, 0, 0, 0);
+    return d;
+  });
   const [totalSeats, setTotalSeats] = useState("4");
   const [pricePerSeat, setPricePerSeat] = useState("");
   const [meetingPoint, setMeetingPoint] = useState("");
   const [notes, setNotes] = useState("");
   const [showFromCities, setShowFromCities] = useState(false);
   const [showToCities, setShowToCities] = useState(false);
-  const [loading, setLoading] = useState(false);
 
   const scheduleTrip = trpc.intercity.scheduleTrip.useMutation({
     onSuccess: () => {
@@ -45,51 +195,28 @@ export default function IntercityScheduleScreen() {
         { text: "إغلاق", onPress: () => router.back() },
       ]);
     },
-    onError: (err) => {
-      Alert.alert("خطأ", err.message);
-    },
+    onError: (err) => Alert.alert("خطأ", err.message),
   });
 
-  const handleSubmit = async () => {
-    if (!driverId) {
-      Alert.alert("خطأ", "يجب تسجيل الدخول كسائق أولاً");
-      return;
-    }
-    if (!fromCity || !toCity) {
-      Alert.alert("خطأ", "يرجى اختيار مدينة المغادرة والوجهة");
-      return;
-    }
-    if (fromCity === toCity) {
-      Alert.alert("خطأ", "مدينة المغادرة والوجهة لا يمكن أن تكونا نفس المدينة");
-      return;
-    }
-    if (!departureDate || !departureTime) {
-      Alert.alert("خطأ", "يرجى تحديد تاريخ ووقت المغادرة");
-      return;
-    }
+  const handleSubmit = () => {
+    if (!driverId) { Alert.alert("خطأ", "يجب تسجيل الدخول كسائق أولاً"); return; }
+    if (!fromCity || !toCity) { Alert.alert("خطأ", "يرجى اختيار مدينة المغادرة والوجهة"); return; }
+    if (fromCity === toCity) { Alert.alert("خطأ", "مدينة المغادرة والوجهة لا يمكن أن تكونا نفس المدينة"); return; }
     if (!pricePerSeat || isNaN(Number(pricePerSeat)) || Number(pricePerSeat) <= 0) {
-      Alert.alert("خطأ", "يرجى إدخال سعر صحيح للمقعد");
-      return;
+      Alert.alert("خطأ", "يرجى إدخال سعر صحيح للمقعد"); return;
     }
+    if (departureDate <= new Date()) { Alert.alert("خطأ", "وقت المغادرة يجب أن يكون في المستقبل"); return; }
 
-    const departureISO = new Date(`${departureDate}T${departureTime}:00`).toISOString();
-    if (new Date(departureISO) <= new Date()) {
-      Alert.alert("خطأ", "وقت المغادرة يجب أن يكون في المستقبل");
-      return;
-    }
-
-    setLoading(true);
     scheduleTrip.mutate({
       driverId,
       fromCity,
       toCity,
-      departureTime: departureISO,
+      departureTime: departureDate.toISOString(),
       totalSeats: parseInt(totalSeats) || 4,
       pricePerSeat: parseInt(pricePerSeat),
       meetingPoint: meetingPoint || undefined,
       notes: notes || undefined,
     });
-    setLoading(false);
   };
 
   return (
@@ -118,14 +245,10 @@ export default function IntercityScheduleScreen() {
             <View style={styles.cityDropdown}>
               <ScrollView style={{ maxHeight: 200 }} nestedScrollEnabled>
                 {IRAQI_CITIES.filter(c => c !== toCity).map(city => (
-                  <TouchableOpacity
-                    key={city}
+                  <TouchableOpacity key={city}
                     style={[styles.cityOption, fromCity === city && styles.cityOptionActive]}
-                    onPress={() => { setFromCity(city); setShowFromCities(false); }}
-                  >
-                    <Text style={[styles.cityOptionText, fromCity === city && styles.cityOptionTextActive]}>
-                      {city}
-                    </Text>
+                    onPress={() => { setFromCity(city); setShowFromCities(false); }}>
+                    <Text style={[styles.cityOptionText, fromCity === city && styles.cityOptionTextActive]}>{city}</Text>
                   </TouchableOpacity>
                 ))}
               </ScrollView>
@@ -149,14 +272,10 @@ export default function IntercityScheduleScreen() {
             <View style={styles.cityDropdown}>
               <ScrollView style={{ maxHeight: 200 }} nestedScrollEnabled>
                 {IRAQI_CITIES.filter(c => c !== fromCity).map(city => (
-                  <TouchableOpacity
-                    key={city}
+                  <TouchableOpacity key={city}
                     style={[styles.cityOption, toCity === city && styles.cityOptionActive]}
-                    onPress={() => { setToCity(city); setShowToCities(false); }}
-                  >
-                    <Text style={[styles.cityOptionText, toCity === city && styles.cityOptionTextActive]}>
-                      {city}
-                    </Text>
+                    onPress={() => { setToCity(city); setShowToCities(false); }}>
+                    <Text style={[styles.cityOptionText, toCity === city && styles.cityOptionTextActive]}>{city}</Text>
                   </TouchableOpacity>
                 ))}
               </ScrollView>
@@ -164,35 +283,10 @@ export default function IntercityScheduleScreen() {
           )}
         </View>
 
-        {/* Date & Time */}
+        {/* Date & Time — Visual Picker */}
         <View style={styles.card}>
           <Text style={styles.label}>📅 تاريخ ووقت المغادرة</Text>
-          <View style={styles.row}>
-            <View style={{ flex: 1, marginLeft: 8 }}>
-              <Text style={styles.subLabel}>التاريخ (YYYY-MM-DD)</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="2025-12-31"
-                placeholderTextColor="#6B7280"
-                value={departureDate}
-                onChangeText={setDepartureDate}
-                keyboardType="numbers-and-punctuation"
-                returnKeyType="next"
-              />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.subLabel}>الوقت (HH:MM)</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="08:00"
-                placeholderTextColor="#6B7280"
-                value={departureTime}
-                onChangeText={setDepartureTime}
-                keyboardType="numbers-and-punctuation"
-                returnKeyType="next"
-              />
-            </View>
-          </View>
+          <DateTimePicker value={departureDate} onChange={setDepartureDate} />
         </View>
 
         {/* Seats & Price */}
@@ -203,11 +297,9 @@ export default function IntercityScheduleScreen() {
               <Text style={styles.subLabel}>عدد المقاعد</Text>
               <View style={styles.seatsRow}>
                 {["1","2","3","4","5","6","7"].map(n => (
-                  <TouchableOpacity
-                    key={n}
+                  <TouchableOpacity key={n}
                     style={[styles.seatChip, totalSeats === n && styles.seatChipActive]}
-                    onPress={() => setTotalSeats(n)}
-                  >
+                    onPress={() => setTotalSeats(n)}>
                     <Text style={[styles.seatChipText, totalSeats === n && styles.seatChipTextActive]}>{n}</Text>
                   </TouchableOpacity>
                 ))}
@@ -243,10 +335,10 @@ export default function IntercityScheduleScreen() {
 
         {/* Notes */}
         <View style={styles.card}>
-          <Text style={styles.label}>📝 ملاحظات (اختياري)</Text>
+          <Text style={styles.label}>📝 ملاحظات للمسافرين (اختياري)</Text>
           <TextInput
             style={[styles.input, { height: 80, textAlignVertical: "top" }]}
-            placeholder="أي معلومات إضافية للمسافرين..."
+            placeholder="أي معلومات إضافية للمسافرين مثل: لا يُسمح بالتدخين، يوجد مكيف..."
             placeholderTextColor="#6B7280"
             value={notes}
             onChangeText={setNotes}
@@ -256,25 +348,26 @@ export default function IntercityScheduleScreen() {
         </View>
 
         {/* Summary */}
-        {fromCity && toCity && pricePerSeat && (
+        {fromCity && toCity && pricePerSeat ? (
           <View style={styles.summaryCard}>
             <Text style={styles.summaryTitle}>ملخص الرحلة</Text>
             <Text style={styles.summaryRow}>🛣️ {fromCity} ← {toCity}</Text>
-            {departureDate && departureTime && (
-              <Text style={styles.summaryRow}>🕐 {departureDate} الساعة {departureTime}</Text>
-            )}
+            <Text style={styles.summaryRow}>
+              🕐 {departureDate.toLocaleDateString("ar-IQ", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+              {"  "}{departureDate.toLocaleTimeString("ar-IQ", { hour: "2-digit", minute: "2-digit" })}
+            </Text>
             <Text style={styles.summaryRow}>💺 {totalSeats} مقاعد × {parseInt(pricePerSeat || "0").toLocaleString()} دينار</Text>
             <Text style={styles.summaryTotal}>
               إجمالي محتمل: {(parseInt(totalSeats) * parseInt(pricePerSeat || "0")).toLocaleString()} دينار
             </Text>
           </View>
-        )}
+        ) : null}
 
         {/* Submit */}
         <TouchableOpacity
-          style={[styles.submitBtn, (scheduleTrip.isPending || loading) && styles.submitBtnDisabled]}
+          style={[styles.submitBtn, scheduleTrip.isPending && styles.submitBtnDisabled]}
           onPress={handleSubmit}
-          disabled={scheduleTrip.isPending || loading}
+          disabled={scheduleTrip.isPending}
         >
           {scheduleTrip.isPending ? (
             <ActivityIndicator color="#1A0533" />
@@ -289,87 +382,57 @@ export default function IntercityScheduleScreen() {
 
 const styles = StyleSheet.create({
   container: { padding: 16, paddingBottom: 40 },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 20,
-    paddingTop: 4,
-  },
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 20, paddingTop: 4 },
   backBtn: { padding: 8 },
   backIcon: { color: "#FFD700", fontSize: 22 },
   headerTitle: { color: "#FFFFFF", fontSize: 18, fontWeight: "700" },
-  card: {
-    backgroundColor: "#1E1035",
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: "#2D1B4E",
-  },
+  card: { backgroundColor: "#1E1035", borderRadius: 16, padding: 16, marginBottom: 14, borderWidth: 1, borderColor: "#2D1B4E" },
   label: { color: "#FFD700", fontSize: 14, fontWeight: "700", marginBottom: 10 },
-  subLabel: { color: "#9B8EC4", fontSize: 11, marginBottom: 6 },
-  input: {
-    backgroundColor: "#0F0A1E",
-    borderRadius: 10,
-    padding: 12,
-    color: "#FFFFFF",
-    fontSize: 14,
-    borderWidth: 1,
-    borderColor: "#2D1B4E",
-  },
-  row: { flexDirection: "row", gap: 8 },
-  citySelector: {
-    backgroundColor: "#0F0A1E",
-    borderRadius: 10,
-    padding: 12,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#2D1B4E",
-  },
-  citySelectorText: { color: "#FFFFFF", fontSize: 14 },
+  subLabel: { color: "#9B8EC4", fontSize: 12, marginBottom: 6 },
+  citySelector: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", backgroundColor: "#2D1B4E", borderRadius: 10, padding: 12 },
+  citySelectorText: { color: "#FFFFFF", fontSize: 15, fontWeight: "600" },
   chevron: { color: "#9B8EC4", fontSize: 12 },
-  cityDropdown: {
-    backgroundColor: "#0F0A1E",
-    borderRadius: 10,
-    marginTop: 8,
-    borderWidth: 1,
-    borderColor: "#2D1B4E",
-    overflow: "hidden",
-  },
+  cityDropdown: { backgroundColor: "#2D1B4E", borderRadius: 10, marginTop: 6, overflow: "hidden" },
   cityOption: { padding: 12, borderBottomWidth: 1, borderBottomColor: "#1E1035" },
-  cityOptionActive: { backgroundColor: "#2D1B4E" },
+  cityOptionActive: { backgroundColor: "#FFD70022" },
   cityOptionText: { color: "#FFFFFF", fontSize: 14 },
   cityOptionTextActive: { color: "#FFD700", fontWeight: "700" },
-  seatsRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 4 },
-  seatChip: {
-    width: 36, height: 36, borderRadius: 18,
-    backgroundColor: "#0F0A1E", borderWidth: 1, borderColor: "#2D1B4E",
-    alignItems: "center", justifyContent: "center",
-  },
+  // Date Picker Button
+  dateBtn: { flexDirection: "row", alignItems: "center", backgroundColor: "#2D1B4E", borderRadius: 10, padding: 14, gap: 10 },
+  dateBtnIcon: { fontSize: 20 },
+  dateBtnText: { flex: 1, color: "#FFFFFF", fontSize: 14, fontWeight: "600" },
+  dateBtnChevron: { color: "#9B8EC4", fontSize: 12 },
+  // Modal
+  modalOverlay: { flex: 1, backgroundColor: "#000000AA", justifyContent: "flex-end" },
+  pickerModal: { backgroundColor: "#1A0533", borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 40 },
+  pickerTitle: { color: "#FFD700", fontSize: 18, fontWeight: "700", textAlign: "center", marginBottom: 16 },
+  pickerRow: { flexDirection: "row", gap: 6, marginBottom: 16 },
+  pickerCol: { flex: 1, alignItems: "center" },
+  pickerColLabel: { color: "#9B8EC4", fontSize: 11, marginBottom: 6, fontWeight: "600" },
+  pickerScroll: { maxHeight: 160, width: "100%" },
+  pickerItem: { paddingVertical: 8, paddingHorizontal: 4, borderRadius: 8, alignItems: "center", marginBottom: 2 },
+  pickerItemActive: { backgroundColor: "#FFD700" },
+  pickerItemText: { color: "#FFFFFF", fontSize: 13 },
+  pickerItemTextActive: { color: "#1A0533", fontWeight: "800" },
+  pickerPreview: { color: "#FFFFFF", textAlign: "center", fontSize: 13, marginBottom: 16, backgroundColor: "#2D1B4E", padding: 10, borderRadius: 10 },
+  pickerBtns: { flexDirection: "row", gap: 12 },
+  pickerCancelBtn: { flex: 1, backgroundColor: "#2D1B4E", borderRadius: 12, padding: 14, alignItems: "center" },
+  pickerCancelText: { color: "#9B8EC4", fontSize: 15, fontWeight: "700" },
+  pickerConfirmBtn: { flex: 1, backgroundColor: "#FFD700", borderRadius: 12, padding: 14, alignItems: "center" },
+  pickerConfirmText: { color: "#1A0533", fontSize: 15, fontWeight: "800" },
+  // Form
+  row: { flexDirection: "row", gap: 12 },
+  input: { backgroundColor: "#2D1B4E", borderRadius: 10, padding: 12, color: "#FFFFFF", fontSize: 14, borderWidth: 1, borderColor: "#3D2B5E" },
+  seatsRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  seatChip: { width: 36, height: 36, borderRadius: 18, backgroundColor: "#2D1B4E", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#3D2B5E" },
   seatChipActive: { backgroundColor: "#FFD700", borderColor: "#FFD700" },
-  seatChipText: { color: "#9B8EC4", fontSize: 13, fontWeight: "600" },
-  seatChipTextActive: { color: "#1A0533" },
-  summaryCard: {
-    backgroundColor: "#0F0A1E",
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: "#FFD700",
-  },
-  summaryTitle: { color: "#FFD700", fontSize: 14, fontWeight: "700", marginBottom: 10 },
+  seatChipText: { color: "#FFFFFF", fontSize: 14, fontWeight: "600" },
+  seatChipTextActive: { color: "#1A0533", fontWeight: "800" },
+  summaryCard: { backgroundColor: "#0D1F3C", borderRadius: 16, padding: 16, marginBottom: 14, borderWidth: 1, borderColor: "#1E3A5F" },
+  summaryTitle: { color: "#60A5FA", fontSize: 14, fontWeight: "700", marginBottom: 10 },
   summaryRow: { color: "#FFFFFF", fontSize: 13, marginBottom: 6 },
-  summaryTotal: { color: "#4ADE80", fontSize: 15, fontWeight: "700", marginTop: 8 },
-  submitBtn: {
-    backgroundColor: "#FFD700",
-    borderRadius: 16,
-    padding: 16,
-    alignItems: "center",
-    marginBottom: 20,
-  },
-  submitBtnDisabled: { opacity: 0.6 },
+  summaryTotal: { color: "#FFD700", fontSize: 15, fontWeight: "800", marginTop: 6 },
+  submitBtn: { backgroundColor: "#FFD700", borderRadius: 16, padding: 18, alignItems: "center", marginTop: 8 },
+  submitBtnDisabled: { opacity: 0.5 },
   submitText: { color: "#1A0533", fontSize: 16, fontWeight: "800" },
 });

@@ -1,14 +1,8 @@
 import React, { useState } from "react";
 import {
-  View,
-  Text,
-  TouchableOpacity,
-  FlatList,
-  ActivityIndicator,
-  Alert,
-  StyleSheet,
-  ScrollView,
-  TextInput,
+  View, Text, TouchableOpacity, FlatList,
+  ActivityIndicator, Alert, StyleSheet, ScrollView,
+  TextInput, Modal,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { ScreenContainer } from "@/components/screen-container";
@@ -23,19 +17,21 @@ const IRAQI_CITIES = [
 
 function formatDate(dateStr: string | Date) {
   const d = new Date(dateStr);
-  return d.toLocaleDateString("ar-IQ", {
-    weekday: "long", month: "short", day: "numeric",
-    hour: "2-digit", minute: "2-digit",
-  });
+  return (
+    d.toLocaleDateString("ar-IQ", { weekday: "long", month: "short", day: "numeric" }) +
+    "  " +
+    d.toLocaleTimeString("ar-IQ", { hour: "2-digit", minute: "2-digit" })
+  );
 }
 
 function timeUntil(dateStr: string | Date) {
   const diff = new Date(dateStr).getTime() - Date.now();
+  if (diff <= 0) return "انطلقت";
   const hours = Math.floor(diff / 3600000);
   const mins = Math.floor((diff % 3600000) / 60000);
-  if (hours > 24) return `${Math.floor(hours / 24)} يوم`;
-  if (hours > 0) return `${hours} ساعة و${mins} دقيقة`;
-  return `${mins} دقيقة`;
+  if (hours > 24) return Math.floor(hours / 24) + " يوم";
+  if (hours > 0) return hours + "س " + mins + "د";
+  return mins + " دقيقة";
 }
 
 export default function IntercityBrowseScreen() {
@@ -44,13 +40,16 @@ export default function IntercityBrowseScreen() {
   const [fromFilter, setFromFilter] = useState("الكل");
   const [toFilter, setToFilter] = useState("الكل");
   const [selectedTrip, setSelectedTrip] = useState<any | null>(null);
-  const [seatsToBook, setSeatsToBook] = useState("1");
+  const [seatsToBook, setSeatsToBook] = useState(1);
+  const [pickupAddress, setPickupAddress] = useState("");
   const [showBookingModal, setShowBookingModal] = useState(false);
 
   React.useEffect(() => {
     AsyncStorage.getItem("@masar_passenger").then((raw) => {
       if (raw) {
-        try { setPassenger(JSON.parse(raw)); } catch {}
+        try {
+          setPassenger(JSON.parse(raw));
+        } catch {}
       }
     });
   }, []);
@@ -60,11 +59,13 @@ export default function IntercityBrowseScreen() {
     toCity: toFilter === "الكل" ? undefined : toFilter,
   });
 
-  const bookTrip = trpc.intercity.bookTrip.useMutation({
+  const bookTrip = trpc.intercity.bookTripWithPickup.useMutation({
     onSuccess: () => {
       setShowBookingModal(false);
       setSelectedTrip(null);
-      Alert.alert("✅ تم الحجز!", "تم حجز مقعدك بنجاح. الدفع كاش عند الركوب.", [
+      setPickupAddress("");
+      setSeatsToBook(1);
+      Alert.alert("تم الحجز", "تم حجز مقعدك بنجاح. الدفع كاش عند الركوب.", [
         { text: "عرض حجوزاتي", onPress: () => router.push("/intercity/my-bookings") },
         { text: "حسناً" },
       ]);
@@ -73,7 +74,7 @@ export default function IntercityBrowseScreen() {
     onError: (err) => Alert.alert("خطأ", err.message),
   });
 
-  const handleBook = () => {
+  const openBookingModal = (trip: any) => {
     if (!passenger) {
       Alert.alert("تسجيل الدخول مطلوب", "يجب تسجيل الدخول لحجز رحلة", [
         { text: "تسجيل الدخول", onPress: () => router.push("/auth/login") },
@@ -81,34 +82,26 @@ export default function IntercityBrowseScreen() {
       ]);
       return;
     }
-    if (!selectedTrip) return;
-    const seats = parseInt(seatsToBook);
-    if (isNaN(seats) || seats < 1) {
-      Alert.alert("خطأ", "يرجى إدخال عدد مقاعد صحيح");
+    setSelectedTrip(trip);
+    setSeatsToBook(1);
+    setPickupAddress("");
+    setShowBookingModal(true);
+  };
+
+  const handleConfirmBook = () => {
+    if (!passenger || !selectedTrip) return;
+    if (seatsToBook > selectedTrip.availableSeats) {
+      Alert.alert("خطأ", "المقاعد المتاحة فقط " + selectedTrip.availableSeats);
       return;
     }
-    if (seats > selectedTrip.availableSeats) {
-      Alert.alert("خطأ", `المقاعد المتاحة فقط ${selectedTrip.availableSeats}`);
-      return;
-    }
-    const total = seats * parseInt(selectedTrip.pricePerSeat);
-    Alert.alert(
-      "تأكيد الحجز",
-      `${selectedTrip.fromCity} ← ${selectedTrip.toCity}\n${seats} مقعد × ${parseInt(selectedTrip.pricePerSeat).toLocaleString()} دينار\nالإجمالي: ${total.toLocaleString()} دينار (كاش عند الركوب)`,
-      [
-        { text: "إلغاء", style: "cancel" },
-        {
-          text: "تأكيد الحجز",
-          onPress: () => bookTrip.mutate({
-            tripId: selectedTrip.id,
-            passengerId: passenger.id,
-            seatsBooked: seats,
-            passengerPhone: passenger.phone,
-            passengerName: passenger.name || "مستخدم",
-          }),
-        },
-      ]
-    );
+    bookTrip.mutate({
+      tripId: selectedTrip.id,
+      passengerId: passenger.id,
+      seatsBooked: seatsToBook,
+      passengerPhone: passenger.phone,
+      passengerName: passenger.name || "مستخدم",
+      pickupAddress: pickupAddress.trim() || undefined,
+    });
   };
 
   return (
@@ -116,9 +109,9 @@ export default function IntercityBrowseScreen() {
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backIcon}>←</Text>
+          <Text style={styles.backIcon}>{"<"}</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>🛣️ السفر بين المدن</Text>
+        <Text style={styles.headerTitle}>السفر بين المدن</Text>
         <TouchableOpacity onPress={() => router.push("/intercity/my-bookings")} style={styles.myBookingsBtn}>
           <Text style={styles.myBookingsBtnText}>حجوزاتي</Text>
         </TouchableOpacity>
@@ -129,13 +122,15 @@ export default function IntercityBrowseScreen() {
         <Text style={styles.filterLabel}>من:</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
           <View style={{ flexDirection: "row", gap: 6 }}>
-            {IRAQI_CITIES.map(city => (
+            {IRAQI_CITIES.map((city) => (
               <TouchableOpacity
-                key={city}
+                key={"from_" + city}
                 style={[styles.filterChip, fromFilter === city && styles.filterChipActive]}
                 onPress={() => setFromFilter(city)}
               >
-                <Text style={[styles.filterChipText, fromFilter === city && styles.filterChipTextActive]}>{city}</Text>
+                <Text style={[styles.filterChipText, fromFilter === city && styles.filterChipTextActive]}>
+                  {city}
+                </Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -143,13 +138,15 @@ export default function IntercityBrowseScreen() {
         <Text style={styles.filterLabel}>إلى:</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
           <View style={{ flexDirection: "row", gap: 6 }}>
-            {IRAQI_CITIES.map(city => (
+            {IRAQI_CITIES.map((city) => (
               <TouchableOpacity
-                key={city}
+                key={"to_" + city}
                 style={[styles.filterChip, toFilter === city && styles.filterChipActive]}
                 onPress={() => setToFilter(city)}
               >
-                <Text style={[styles.filterChipText, toFilter === city && styles.filterChipTextActive]}>{city}</Text>
+                <Text style={[styles.filterChipText, toFilter === city && styles.filterChipTextActive]}>
+                  {city}
+                </Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -172,11 +169,10 @@ export default function IntercityBrowseScreen() {
           contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
           renderItem={({ item }) => (
             <View style={styles.tripCard}>
-              {/* Route Header */}
               <View style={styles.routeHeader}>
                 <View style={styles.routeInfo}>
                   <Text style={styles.cityFrom}>{item.fromCity}</Text>
-                  <Text style={styles.routeArrow}>←</Text>
+                  <Text style={styles.routeArrow}>{">"}</Text>
                   <Text style={styles.cityTo}>{item.toCity}</Text>
                 </View>
                 <View style={styles.priceTag}>
@@ -184,116 +180,127 @@ export default function IntercityBrowseScreen() {
                   <Text style={styles.priceUnit}>دينار/مقعد</Text>
                 </View>
               </View>
-
-              {/* Details */}
-              <View style={styles.detailsRow}>
-                <View style={styles.detailItem}>
-                  <Text style={styles.detailIcon}>🕐</Text>
-                  <Text style={styles.detailText}>{formatDate(item.departureTime)}</Text>
-                </View>
-              </View>
-              <View style={styles.detailsRow}>
-                <View style={styles.detailItem}>
-                  <Text style={styles.detailIcon}>⏱️</Text>
-                  <Text style={styles.detailText}>تغادر خلال {timeUntil(item.departureTime)}</Text>
-                </View>
-                <View style={styles.detailItem}>
-                  <Text style={styles.detailIcon}>💺</Text>
-                  <Text style={styles.detailText}>{item.availableSeats} مقعد متاح</Text>
-                </View>
-              </View>
-
+              <Text style={styles.detailText}>🕐 {formatDate(item.departureTime)}</Text>
+              <Text style={styles.detailText}>⏱️ تغادر خلال {timeUntil(item.departureTime)}</Text>
+              <Text style={styles.detailText}>💺 {item.availableSeats} مقعد متاح</Text>
               {item.meetingPoint ? (
-                <View style={styles.detailsRow}>
-                  <View style={styles.detailItem}>
-                    <Text style={styles.detailIcon}>📌</Text>
-                    <Text style={styles.detailText}>{item.meetingPoint}</Text>
-                  </View>
+                <Text style={styles.detailText}>📌 {item.meetingPoint}</Text>
+              ) : null}
+              {item.notes ? (
+                <View style={styles.notesBox}>
+                  <Text style={styles.notesLabel}>📝 ملاحظات السائق:</Text>
+                  <Text style={styles.notesText}>{item.notes}</Text>
                 </View>
               ) : null}
-
-              {/* Seats selector + Book */}
-              <View style={styles.bookRow}>
-                <View style={styles.seatsSelector}>
-                  <TouchableOpacity
-                    style={styles.seatBtn}
-                    onPress={() => {
-                      if (selectedTrip?.id === item.id) {
-                        setSeatsToBook(s => Math.max(1, parseInt(s) - 1).toString());
-                      }
-                    }}
-                  >
-                    <Text style={styles.seatBtnText}>−</Text>
-                  </TouchableOpacity>
-                  <Text style={styles.seatsCount}>
-                    {selectedTrip?.id === item.id ? seatsToBook : "1"} مقعد
-                  </Text>
-                  <TouchableOpacity
-                    style={styles.seatBtn}
-                    onPress={() => {
-                      setSelectedTrip(item);
-                      setSeatsToBook(s => Math.min(item.availableSeats, parseInt(s) + 1).toString());
-                    }}
-                  >
-                    <Text style={styles.seatBtnText}>+</Text>
-                  </TouchableOpacity>
-                </View>
-                <TouchableOpacity
-                  style={styles.bookBtn}
-                  onPress={() => {
-                    setSelectedTrip(item);
-                    if (selectedTrip?.id !== item.id) setSeatsToBook("1");
-                    handleBook();
-                  }}
-                  disabled={bookTrip.isPending}
-                >
-                  {bookTrip.isPending && selectedTrip?.id === item.id ? (
-                    <ActivityIndicator color="#1A0533" size="small" />
-                  ) : (
-                    <Text style={styles.bookBtnText}>احجز الآن</Text>
-                  )}
-                </TouchableOpacity>
-              </View>
+              <TouchableOpacity style={styles.bookBtn} onPress={() => openBookingModal(item)}>
+                <Text style={styles.bookBtnText}>احجز الآن</Text>
+              </TouchableOpacity>
             </View>
           )}
         />
       )}
+
+      {/* Booking Modal */}
+      <Modal visible={showBookingModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.bookingModal}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>تأكيد الحجز</Text>
+              <TouchableOpacity onPress={() => setShowBookingModal(false)}>
+                <Text style={styles.modalClose}>X</Text>
+              </TouchableOpacity>
+            </View>
+            {selectedTrip && (
+              <>
+                {/* Trip Summary */}
+                <View style={styles.tripSummary}>
+                  <Text style={styles.tripSummaryRoute}>
+                    {selectedTrip.fromCity} - {selectedTrip.toCity}
+                  </Text>
+                  <Text style={styles.tripSummaryDate}>🕐 {formatDate(selectedTrip.departureTime)}</Text>
+                  {selectedTrip.meetingPoint ? (
+                    <Text style={styles.tripSummaryDetail}>📌 {selectedTrip.meetingPoint}</Text>
+                  ) : null}
+                  {selectedTrip.notes ? (
+                    <View style={[styles.notesBox, { marginTop: 8 }]}>
+                      <Text style={styles.notesLabel}>📝 ملاحظات السائق:</Text>
+                      <Text style={styles.notesText}>{selectedTrip.notes}</Text>
+                    </View>
+                  ) : null}
+                </View>
+
+                {/* Seats Selector */}
+                <Text style={styles.fieldLabel}>عدد المقاعد</Text>
+                <View style={styles.seatsRow}>
+                  <TouchableOpacity
+                    style={styles.seatBtn}
+                    onPress={() => setSeatsToBook((s) => Math.max(1, s - 1))}
+                  >
+                    <Text style={styles.seatBtnText}>-</Text>
+                  </TouchableOpacity>
+                  <Text style={styles.seatsCount}>{seatsToBook}</Text>
+                  <TouchableOpacity
+                    style={styles.seatBtn}
+                    onPress={() => setSeatsToBook((s) => Math.min(selectedTrip.availableSeats, s + 1))}
+                  >
+                    <Text style={styles.seatBtnText}>+</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Pickup Address */}
+                <Text style={styles.fieldLabel}>📍 موقع الاستلام (اختياري)</Text>
+                <TextInput
+                  style={styles.pickupInput}
+                  placeholder="أدخل عنوانك أو موقعك للسائق..."
+                  placeholderTextColor="#6B5B8A"
+                  value={pickupAddress}
+                  onChangeText={setPickupAddress}
+                  multiline
+                  numberOfLines={2}
+                />
+
+                {/* Total */}
+                <View style={styles.totalRow}>
+                  <Text style={styles.totalLabel}>الإجمالي (كاش عند الركوب)</Text>
+                  <Text style={styles.totalAmount}>
+                    {(seatsToBook * parseInt(selectedTrip.pricePerSeat)).toLocaleString()} دينار
+                  </Text>
+                </View>
+
+                {/* Confirm */}
+                <TouchableOpacity
+                  style={styles.confirmBtn}
+                  onPress={handleConfirmBook}
+                  disabled={bookTrip.isPending}
+                >
+                  {bookTrip.isPending ? (
+                    <ActivityIndicator color="#1A0533" />
+                  ) : (
+                    <Text style={styles.confirmBtnText}>تأكيد الحجز</Text>
+                  )}
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
     </ScreenContainer>
   );
 }
 
 const styles = StyleSheet.create({
   header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: 16,
-    paddingTop: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: "#2D1B4E",
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    padding: 16, paddingTop: 8, borderBottomWidth: 1, borderBottomColor: "#2D1B4E",
   },
   backBtn: { padding: 8 },
   backIcon: { color: "#FFD700", fontSize: 22 },
   headerTitle: { color: "#FFFFFF", fontSize: 17, fontWeight: "700" },
-  myBookingsBtn: {
-    backgroundColor: "#2D1B4E",
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-  },
+  myBookingsBtn: { backgroundColor: "#2D1B4E", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 7 },
   myBookingsBtnText: { color: "#FFD700", fontSize: 12, fontWeight: "700" },
-  filtersContainer: {
-    padding: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#1E1035",
-    backgroundColor: "#0F0A1E",
-  },
+  filtersContainer: { padding: 12, borderBottomWidth: 1, borderBottomColor: "#1E1035", backgroundColor: "#0F0A1E" },
   filterLabel: { color: "#9B8EC4", fontSize: 11, fontWeight: "700", marginBottom: 6 },
-  filterChip: {
-    paddingHorizontal: 12, paddingVertical: 6,
-    borderRadius: 20, backgroundColor: "#1E1035",
-    borderWidth: 1, borderColor: "#2D1B4E",
-  },
+  filterChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: "#1E1035", borderWidth: 1, borderColor: "#2D1B4E" },
   filterChipActive: { backgroundColor: "#FFD700", borderColor: "#FFD700" },
   filterChipText: { color: "#9B8EC4", fontSize: 12 },
   filterChipTextActive: { color: "#1A0533", fontWeight: "700" },
@@ -301,66 +308,39 @@ const styles = StyleSheet.create({
   emptyEmoji: { fontSize: 60, marginBottom: 16 },
   emptyTitle: { color: "#FFFFFF", fontSize: 18, fontWeight: "700", marginBottom: 8 },
   emptyDesc: { color: "#9B8EC4", fontSize: 14, textAlign: "center" },
-  tripCard: {
-    backgroundColor: "#1E1035",
-    borderRadius: 18,
-    padding: 16,
-    marginBottom: 14,
-    borderWidth: 1,
-    borderColor: "#2D1B4E",
-  },
-  routeHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 12,
-  },
+  tripCard: { backgroundColor: "#1E1035", borderRadius: 16, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: "#2D1B4E" },
+  routeHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 },
   routeInfo: { flexDirection: "row", alignItems: "center", gap: 8 },
-  cityFrom: { color: "#FFFFFF", fontSize: 18, fontWeight: "800" },
-  routeArrow: { color: "#FFD700", fontSize: 20 },
-  cityTo: { color: "#FFFFFF", fontSize: 18, fontWeight: "800" },
-  priceTag: {
-    backgroundColor: "#FFD70022",
-    borderRadius: 12,
-    padding: 8,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#FFD700",
-  },
+  cityFrom: { color: "#FFFFFF", fontSize: 16, fontWeight: "800" },
+  routeArrow: { color: "#FFD700", fontSize: 18 },
+  cityTo: { color: "#FFFFFF", fontSize: 16, fontWeight: "800" },
+  priceTag: { alignItems: "flex-end" },
   priceText: { color: "#FFD700", fontSize: 16, fontWeight: "800" },
   priceUnit: { color: "#9B8EC4", fontSize: 10 },
-  detailsRow: { flexDirection: "row", gap: 16, marginBottom: 6 },
-  detailItem: { flexDirection: "row", alignItems: "center", gap: 4, flex: 1 },
-  detailIcon: { fontSize: 13 },
-  detailText: { color: "#9B8EC4", fontSize: 12, flex: 1 },
-  bookRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginTop: 14,
-    paddingTop: 14,
-    borderTopWidth: 1,
-    borderTopColor: "#2D1B4E",
-    gap: 12,
-  },
-  seatsSelector: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#0F0A1E",
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#2D1B4E",
-    overflow: "hidden",
-  },
-  seatBtn: { padding: 10, paddingHorizontal: 14 },
-  seatBtnText: { color: "#FFD700", fontSize: 18, fontWeight: "700" },
-  seatsCount: { color: "#FFFFFF", fontSize: 13, fontWeight: "600", paddingHorizontal: 8 },
-  bookBtn: {
-    flex: 1,
-    backgroundColor: "#FFD700",
-    borderRadius: 12,
-    padding: 12,
-    alignItems: "center",
-  },
+  detailText: { color: "#C4B5E0", fontSize: 12, marginBottom: 4 },
+  notesBox: { backgroundColor: "#2D1B4E", borderRadius: 10, padding: 10, marginTop: 8, marginBottom: 4 },
+  notesLabel: { color: "#FFD700", fontSize: 11, fontWeight: "700", marginBottom: 4 },
+  notesText: { color: "#FFFFFF", fontSize: 12, lineHeight: 18 },
+  bookBtn: { backgroundColor: "#FFD700", borderRadius: 12, padding: 12, alignItems: "center", marginTop: 12 },
   bookBtnText: { color: "#1A0533", fontSize: 14, fontWeight: "800" },
+  modalOverlay: { flex: 1, backgroundColor: "#000000BB", justifyContent: "flex-end" },
+  bookingModal: { backgroundColor: "#1A0533", borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 40 },
+  modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 },
+  modalTitle: { color: "#FFD700", fontSize: 18, fontWeight: "700" },
+  modalClose: { color: "#9B8EC4", fontSize: 20, padding: 4 },
+  tripSummary: { backgroundColor: "#2D1B4E", borderRadius: 12, padding: 14, marginBottom: 16 },
+  tripSummaryRoute: { color: "#FFFFFF", fontSize: 16, fontWeight: "800", marginBottom: 6 },
+  tripSummaryDate: { color: "#C4B5E0", fontSize: 13, marginBottom: 4 },
+  tripSummaryDetail: { color: "#9B8EC4", fontSize: 12 },
+  fieldLabel: { color: "#9B8EC4", fontSize: 12, fontWeight: "700", marginBottom: 8, marginTop: 4 },
+  seatsRow: { flexDirection: "row", alignItems: "center", gap: 16, marginBottom: 16 },
+  seatBtn: { backgroundColor: "#2D1B4E", borderRadius: 10, width: 40, height: 40, alignItems: "center", justifyContent: "center" },
+  seatBtnText: { color: "#FFD700", fontSize: 20, fontWeight: "800" },
+  seatsCount: { color: "#FFFFFF", fontSize: 22, fontWeight: "800", minWidth: 30, textAlign: "center" },
+  pickupInput: { backgroundColor: "#2D1B4E", borderRadius: 12, padding: 12, color: "#FFFFFF", fontSize: 14, marginBottom: 16, borderWidth: 1, borderColor: "#3D2B5E", textAlign: "right" },
+  totalRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", backgroundColor: "#2D1B4E", borderRadius: 12, padding: 14, marginBottom: 16 },
+  totalLabel: { color: "#9B8EC4", fontSize: 13 },
+  totalAmount: { color: "#22C55E", fontSize: 16, fontWeight: "800" },
+  confirmBtn: { backgroundColor: "#FFD700", borderRadius: 14, padding: 16, alignItems: "center" },
+  confirmBtnText: { color: "#1A0533", fontSize: 16, fontWeight: "800" },
 });

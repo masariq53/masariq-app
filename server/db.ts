@@ -1295,3 +1295,164 @@ export async function getTripBookings(tripId: number, driverId: number) {
     .where(and(eq(intercityBookings.tripId, tripId), eq(intercityBookings.status, "confirmed")))
     .orderBy(intercityBookings.createdAt);
 }
+
+/**
+ * Update intercity trip status (driver: start / complete)
+ */
+export async function updateIntercityTripStatus(
+  tripId: number,
+  driverId: number,
+  status: "in_progress" | "completed"
+) {
+  const db = await getDb();
+  if (!db) return;
+  const tripResult = await db
+    .select()
+    .from(intercityTrips)
+    .where(and(eq(intercityTrips.id, tripId), eq(intercityTrips.driverId, driverId)))
+    .limit(1);
+  if (!tripResult[0]) throw new Error("الرحلة غير موجودة أو لا تملك صلاحية");
+  await db
+    .update(intercityTrips)
+    .set({ status })
+    .where(eq(intercityTrips.id, tripId));
+  return { success: true };
+}
+
+/**
+ * Rate an intercity trip (passenger rates driver, driver rates passenger)
+ */
+export async function rateIntercityTrip(data: {
+  bookingId: number;
+  raterId: number;
+  raterType: "passenger" | "driver";
+  rating: number;
+}) {
+  const db = await getDb();
+  if (!db) return;
+  const bookingResult = await db
+    .select()
+    .from(intercityBookings)
+    .where(eq(intercityBookings.id, data.bookingId))
+    .limit(1);
+  if (!bookingResult[0]) throw new Error("الحجز غير موجود");
+  if (data.raterType === "passenger") {
+    await db
+      .update(intercityBookings)
+      .set({ driverRating: data.rating })
+      .where(eq(intercityBookings.id, data.bookingId));
+  } else {
+    await db
+      .update(intercityBookings)
+      .set({ passengerRating: data.rating })
+      .where(eq(intercityBookings.id, data.bookingId));
+  }
+  return { success: true };
+}
+
+/**
+ * Book a seat with pickup address
+ */
+export async function bookIntercityTripWithPickup(data: {
+  tripId: number;
+  passengerId: number;
+  seatsBooked: number;
+  passengerPhone: string;
+  passengerName: string;
+  pickupAddress?: string;
+  pickupLat?: number;
+  pickupLng?: number;
+}) {
+  const db = await getDb();
+  if (!db) return null;
+  const tripResult = await db
+    .select()
+    .from(intercityTrips)
+    .where(eq(intercityTrips.id, data.tripId))
+    .limit(1);
+  const trip = tripResult[0];
+  if (!trip) throw new Error("الرحلة غير موجودة");
+  if (trip.status !== "scheduled") throw new Error("الرحلة غير متاحة للحجز");
+  if (trip.availableSeats < data.seatsBooked) throw new Error("لا توجد مقاعد كافية");
+  const existingBooking = await db
+    .select()
+    .from(intercityBookings)
+    .where(
+      and(
+        eq(intercityBookings.tripId, data.tripId),
+        eq(intercityBookings.passengerId, data.passengerId),
+        eq(intercityBookings.status, "confirmed")
+      )
+    )
+    .limit(1);
+  if (existingBooking.length > 0) throw new Error("لقد حجزت هذه الرحلة مسبقاً");
+  const totalPrice = parseFloat(trip.pricePerSeat) * data.seatsBooked;
+  await db.insert(intercityBookings).values({
+    tripId: data.tripId,
+    passengerId: data.passengerId,
+    seatsBooked: data.seatsBooked,
+    totalPrice: totalPrice.toString(),
+    status: "confirmed",
+    passengerPhone: data.passengerPhone,
+    passengerName: data.passengerName,
+    pickupAddress: data.pickupAddress ?? null,
+    pickupLat: data.pickupLat ? data.pickupLat.toString() : null,
+    pickupLng: data.pickupLng ? data.pickupLng.toString() : null,
+  });
+  await db
+    .update(intercityTrips)
+    .set({ availableSeats: trip.availableSeats - data.seatsBooked })
+    .where(eq(intercityTrips.id, data.tripId));
+  const booking = await db
+    .select()
+    .from(intercityBookings)
+    .where(
+      and(
+        eq(intercityBookings.tripId, data.tripId),
+        eq(intercityBookings.passengerId, data.passengerId)
+      )
+    )
+    .orderBy(desc(intercityBookings.createdAt))
+    .limit(1);
+  return booking[0] ?? null;
+}
+
+/**
+ * Get passenger bookings enriched with trip + driver info
+ */
+export async function getPassengerIntercityBookingsWithTrip(passengerId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const bookings = await db
+    .select()
+    .from(intercityBookings)
+    .where(eq(intercityBookings.passengerId, passengerId))
+    .orderBy(desc(intercityBookings.createdAt));
+  const enriched = await Promise.all(
+    bookings.map(async (b) => {
+      const tripResult = await db
+        .select()
+        .from(intercityTrips)
+        .where(eq(intercityTrips.id, b.tripId))
+        .limit(1);
+      const trip = tripResult[0];
+      if (!trip) return { ...b, trip: null, driver: null };
+      const driverResult = await db
+        .select({
+          id: drivers.id,
+          name: drivers.name,
+          phone: drivers.phone,
+          vehiclePlate: drivers.vehiclePlate,
+          vehicleModel: drivers.vehicleModel,
+          vehicleColor: drivers.vehicleColor,
+          rating: drivers.rating,
+          photoUrl: drivers.photoUrl,
+        })
+        .from(drivers)
+        .where(eq(drivers.id, trip.driverId))
+        .limit(1);
+      return { ...b, trip, driver: driverResult[0] ?? null };
+    })
+  );
+  return enriched;
+}
