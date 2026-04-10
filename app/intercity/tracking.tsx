@@ -53,10 +53,10 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number) {
 }
 
 // تقدير وقت الوصول بالدقائق (fallback عند فشل OSRM)
-// بناءً على Waze: 116كم في 101 دقيقة = 69 كم/ساعة فعلية
+// OSRM يستخدم سرعة متوسطة ~75 كم/ساعة للطرق السريعة بين المدن
 function estimateMinutes(distKm: number) {
-  // سرعة واقعية حسب المسافة (تشمل الازدحام والتوقفات)
-  const avgSpeedKmh = distKm < 15 ? 30 : distKm < 50 ? 55 : 69;
+  // سرعة مطابقة لـ OSRM: مدينة 30، طريق مختلط 55، طريق سريع 75 كم/ساعة
+  const avgSpeedKmh = distKm < 15 ? 30 : distKm < 50 ? 55 : 75;
   return Math.max(1, Math.round((distKm / avgSpeedKmh) * 60));
 }
 

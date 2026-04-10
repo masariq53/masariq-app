@@ -11,6 +11,7 @@ import * as Location from "expo-location";
 import { ScreenContainer } from "@/components/screen-container";
 import { trpc } from "@/lib/trpc";
 import { useDriver } from "@/lib/driver-context";
+import { fetchOsrmRoute } from "@/lib/osrm";
 
 const CANCEL_PRESETS = [
   { label: "⚠️ ظرف طارئ" },
@@ -123,7 +124,7 @@ export default function IntercityPassengersScreen() {
   const handleHeadingToPassenger = async (bookingId: number, passengerName: string, passengerLat?: string | null, passengerLng?: string | null) => {
     if (!driver?.id) return;
 
-    // حساب ETA باستخدام OSRM قبل إظهار التأكيد
+    // حساب ETA باستخدام fetchOsrmRoute (يطبق معامل الازدحام الصحيح)
     let etaText = "";
     let etaMinutes: number | undefined;
     if (passengerLat && passengerLng) {
@@ -131,13 +132,20 @@ export default function IntercityPassengersScreen() {
         const { status: locStatus } = await Location.requestForegroundPermissionsAsync();
         if (locStatus === "granted") {
           const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-          const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${loc.coords.longitude},${loc.coords.latitude};${passengerLng},${passengerLat}?overview=false`;
-          const res = await fetch(osrmUrl, { signal: AbortSignal.timeout(5000) });
-          if (res.ok) {
-            const json = await res.json();
-            if (json.code === "Ok" && json.routes?.[0]) {
-              etaMinutes = Math.max(1, Math.round(json.routes[0].duration / 60));
-              etaText = ` — يصل خلال ${etaMinutes} دقيقة`;
+          const pLat = parseFloat(passengerLat);
+          const pLng = parseFloat(passengerLng);
+          if (!isNaN(pLat) && !isNaN(pLng)) {
+            const osrmResult = await fetchOsrmRoute(
+              { latitude: loc.coords.latitude, longitude: loc.coords.longitude },
+              { latitude: pLat, longitude: pLng }
+            );
+            if (osrmResult) {
+              etaMinutes = osrmResult.durationMin;
+              // تنسيق ساعة:دقيقة
+              const h = Math.floor(etaMinutes / 60);
+              const m = etaMinutes % 60;
+              const etaFormatted = h > 0 ? (m > 0 ? `${h} ساعة ${m} د` : `${h} ساعة`) : `${m} دقيقة`;
+              etaText = ` — يصل خلال ${etaFormatted}`;
             }
           }
         }
