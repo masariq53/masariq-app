@@ -120,11 +120,33 @@ export default function IntercityPassengersScreen() {
     });
   };
 
-  const handleHeadingToPassenger = (bookingId: number, passengerName: string) => {
+  const handleHeadingToPassenger = async (bookingId: number, passengerName: string, passengerLat?: string | null, passengerLng?: string | null) => {
     if (!driver?.id) return;
+
+    // حساب ETA باستخدام OSRM قبل إظهار التأكيد
+    let etaText = "";
+    let etaMinutes: number | undefined;
+    if (passengerLat && passengerLng) {
+      try {
+        const { status: locStatus } = await Location.requestForegroundPermissionsAsync();
+        if (locStatus === "granted") {
+          const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+          const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${loc.coords.longitude},${loc.coords.latitude};${passengerLng},${passengerLat}?overview=false`;
+          const res = await fetch(osrmUrl, { signal: AbortSignal.timeout(5000) });
+          if (res.ok) {
+            const json = await res.json();
+            if (json.code === "Ok" && json.routes?.[0]) {
+              etaMinutes = Math.max(1, Math.round(json.routes[0].duration / 60));
+              etaText = ` — يصل خلال ${etaMinutes} دقيقة`;
+            }
+          }
+        }
+      } catch {}
+    }
+
     Alert.alert(
       "🧭 التوجه إلى الراكب",
-      `هل تريد إشعار ${passengerName} بأنك في طريقك إليه؟`,
+      `هل تريد إشعار ${passengerName} بأنك في طريقك إليه؟${etaText}`,
       [
         { text: "تراجع", style: "cancel" },
         {
@@ -135,7 +157,8 @@ export default function IntercityPassengersScreen() {
               bookingId,
               driverId: driver.id,
               status: "heading",
-            });
+              etaMinutes,
+            } as any);
             // بدء إرسال الموقع فوراً ليرى الراكب موقع السائق
             startLocationTracking();
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -391,7 +414,7 @@ export default function IntercityPassengersScreen() {
                       {!isHeading && !isArrivedAtPickup && (
                         <TouchableOpacity
                           style={styles.headingBtn}
-                          onPress={() => handleHeadingToPassenger(item.id, item.passengerName || "الراكب")}
+                          onPress={() => handleHeadingToPassenger(item.id, item.passengerName || "الراكب", (item as any).pickupLat, (item as any).pickupLng)}
                           disabled={updateApproach.isPending}
                         >
                           <Text style={styles.headingBtnText}>🧭 التوجه إليه</Text>

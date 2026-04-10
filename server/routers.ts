@@ -2158,6 +2158,8 @@ export const appRouter = router({
         bookingId: z.number(),
         driverId: z.number(),
         status: z.enum(["idle", "heading", "arrived_at_pickup"]),
+        // ETA اختياري يُرسله الكابتن عند الضغط على "التوجه إليه"
+        etaMinutes: z.number().optional(),
       }))
       .mutation(async ({ input }) => {
         const result = await updateDriverApproachStatus(input.bookingId, input.driverId, input.status);
@@ -2169,6 +2171,15 @@ export const appRouter = router({
             const isHeading = input.status === "heading";
             const isArrived = input.status === "arrived_at_pickup";
             if (isHeading || isArrived) {
+              // بناء نص الإشعار مع ETA إذا كان متاحاً
+              let headingBody: string;
+              if (isHeading && input.etaMinutes && input.etaMinutes > 0) {
+                headingBody = `السائق في طريقه إليك في رحلة ${result.trip.fromCity} → ${result.trip.toCity}. يصل خلال ${input.etaMinutes} دقيقة تقريباً، كن مستعداً!`;
+              } else if (isHeading) {
+                headingBody = `السائق يتجه نحوك في رحلة ${result.trip.fromCity} → ${result.trip.toCity}. كن مستعداً!`;
+              } else {
+                headingBody = `السائق وصل إلى موقعك في رحلة ${result.trip.fromCity} → ${result.trip.toCity}. توجه إليه الآن.`;
+              }
               fetch("https://exp.host/--/api/v2/push/send", {
                 method: "POST",
                 headers: { "Content-Type": "application/json", "Accept": "application/json" },
@@ -2176,13 +2187,12 @@ export const appRouter = router({
                   to: passengerToken,
                   sound: "default",
                   title: isHeading ? "🚗 السائق في طريقه إليك" : "📍 السائق وصل إلى موقعك!",
-                  body: isHeading
-                    ? `السائق يتجه نحوك في رحلة ${result.trip.fromCity} → ${result.trip.toCity}. كن مستعداً!`
-                    : `السائق وصل إلى موقعك في رحلة ${result.trip.fromCity} → ${result.trip.toCity}. توجه إليه الآن.`,
+                  body: headingBody,
                   data: {
                     type: isHeading ? "driver_heading" : "driver_arrived_at_pickup",
                     bookingId: input.bookingId,
                     tripId: result.booking.tripId,
+                    etaMinutes: input.etaMinutes,
                   },
                   priority: "high",
                 }),

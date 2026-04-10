@@ -4,7 +4,8 @@ import {
   ActivityIndicator, Linking, Alert, Platform, Animated,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import MapView, { Marker, PROVIDER_DEFAULT, AnimatedRegion } from "react-native-maps";
+import MapView, { Marker, Polyline, PROVIDER_DEFAULT, AnimatedRegion } from "react-native-maps";
+import { fetchOsrmRoute, type OsrmRouteResult, type LatLng } from "@/lib/osrm";
 import { ScreenContainer } from "@/components/screen-container";
 import { trpc } from "@/lib/trpc";
 import { usePassenger } from "@/lib/passenger-context";
@@ -57,28 +58,7 @@ function estimateMinutes(distKm: number) {
   return Math.max(1, Math.round((distKm / avgSpeedKmh) * 60));
 }
 
-// جلب ETA الحقيقي من OSRM (مثل Waze)
-async function fetchOSRMEta(
-  fromLat: number, fromLng: number,
-  toLat: number, toLng: number
-): Promise<{ minutes: number; distKm: number } | null> {
-  try {
-    const url = `https://router.project-osrm.org/route/v1/driving/${fromLng},${fromLat};${toLng},${toLat}?overview=false`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
-    if (!res.ok) return null;
-    const json = await res.json();
-    if (json.code === "Ok" && json.routes?.[0]) {
-      const route = json.routes[0];
-      return {
-        minutes: Math.max(1, Math.round(route.duration / 60)),
-        distKm: Math.round((route.distance / 1000) * 10) / 10,
-      };
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
+// fetchOSRMEta تم استبدالها بـ fetchOsrmRoute من @/lib/osrm التي تجلب المسار كاملاً
 
 export default function IntercityTrackingScreen() {
   const router = useRouter();
@@ -103,6 +83,8 @@ export default function IntercityTrackingScreen() {
   const [etaMinutes, setEtaMinutes] = useState<number | null>(null);
   const [etaDistKm, setEtaDistKm] = useState<number | null>(null);
   const [soundPlayed, setSoundPlayed] = useState(false);
+  // مسار الطريق الفعلي من OSRM
+  const [routePolyline, setRoutePolyline] = useState<LatLng[]>([]);
 
   // Animated marker position
   const markerCoords = useRef(
@@ -180,20 +162,28 @@ export default function IntercityTrackingScreen() {
 
         setDriverCoords({ lat: newLat, lng: newLng });
 
-        // حساب وقت الوصول التقديري باستخدام OSRM
+        // جلب مسار الطريق الفعلي من OSRM (يتضمن ETA والمسافة والمسار)
         if (passengerLat && passengerLng) {
           const pLat = parseFloat(passengerLat);
           const pLng = parseFloat(passengerLng);
           if (!isNaN(pLat) && !isNaN(pLng)) {
-            // جلب ETA من OSRM أولاً، وإذا فشل استخدم الحساب البسيط
-            fetchOSRMEta(newLat, newLng, pLat, pLng).then((result) => {
-              if (result) {
-                setEtaMinutes(result.minutes);
-                setEtaDistKm(result.distKm);
+            fetchOsrmRoute(
+              { latitude: newLat, longitude: newLng },
+              { latitude: pLat, longitude: pLng }
+            ).then((osrmResult) => {
+              if (osrmResult) {
+                setEtaMinutes(osrmResult.durationMin);
+                setEtaDistKm(osrmResult.distanceKm);
+                // تحديث مسار الخريطة بالمسار الحقيقي
+                if (osrmResult.coords.length >= 2) {
+                  setRoutePolyline(osrmResult.coords);
+                }
               } else {
+                // فالباك: حساب بسيط بدون مسار
                 const distKm = haversineKm(newLat, newLng, pLat, pLng);
                 setEtaMinutes(estimateMinutes(distKm));
                 setEtaDistKm(Math.round(distKm * 10) / 10);
+                setRoutePolyline([]);
               }
             });
           }
@@ -276,6 +266,30 @@ export default function IntercityTrackingScreen() {
           showsUserLocation
           showsMyLocationButton={false}
         >
+          {/* مسار الطريق الفعلي من OSRM - أزرق غامق */}
+          {routePolyline.length >= 2 && approachStatus !== "arrived_at_pickup" && (
+            <Polyline
+              coordinates={routePolyline}
+              strokeColor="#4A9EFF"
+              strokeWidth={5}
+              lineCap="round"
+              lineJoin="round"
+            />
+          )}
+
+          {/* ماركر موقع الراكب */}
+          {passengerLat && passengerLng && (
+            <Marker
+              coordinate={{ latitude: parseFloat(passengerLat), longitude: parseFloat(passengerLng) }}
+              title="موقعك"
+              anchor={{ x: 0.5, y: 0.5 }}
+            >
+              <View style={styles.passengerMarker}>
+                <Text style={{ fontSize: 22 }}>📍</Text>
+              </View>
+            </Marker>
+          )}
+
           {driverCoords && (
             <Marker.Animated
               coordinate={markerCoords as any}
@@ -546,4 +560,13 @@ const styles = StyleSheet.create({
   },
   arrivedBannerEmoji: { fontSize: 24 },
   arrivedBannerText: { color: "#2ECC71", fontSize: 15, fontWeight: "800" },
+  // ماركر موقع الراكب
+  passengerMarker: {
+    width: 36, height: 36,
+    alignItems: "center", justifyContent: "center",
+    backgroundColor: "#0D2B1A",
+    borderRadius: 18,
+    borderWidth: 2,
+    borderColor: "#2ECC71",
+  },
 });
