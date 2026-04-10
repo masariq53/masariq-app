@@ -124,7 +124,8 @@ export default function IntercityTrackingScreen() {
   // تحديث حالة التوجه وتشغيل الصوت عند الوصول
   useEffect(() => {
     if (bookingStatusQuery.data) {
-      const status = (bookingStatusQuery.data as any).driverApproachStatus as ApproachStatus;
+      const data = bookingStatusQuery.data as any;
+      const status = data.driverApproachStatus as ApproachStatus;
       if (status && status !== approachStatus) {
         setPrevApproachStatus(approachStatus);
         setApproachStatus(status);
@@ -137,6 +138,11 @@ export default function IntercityTrackingScreen() {
             arrivedPlayer.play();
           } catch {}
         }
+      }
+
+      // إذا كان الـ booking يحتوي على ETA من الـ server استخدمه مباشرة
+      if (data.etaMinutes && etaMinutes === null) {
+        setEtaMinutes(data.etaMinutes);
       }
     }
   }, [bookingStatusQuery.data]);
@@ -340,7 +346,23 @@ export default function IntercityTrackingScreen() {
             <Text style={[styles.statusTitle, { color: statusConfig.color }]}>
               {statusConfig.title}
             </Text>
-            <Text style={styles.statusSubtitle}>{statusConfig.subtitle}</Text>
+            {/* ETA بارز عند حالة heading */}
+            {approachStatus === "heading" && etaMinutes !== null ? (
+              <View style={styles.etaStatusRow}>
+                <Text style={[styles.etaStatusTime, { color: statusConfig.color }]}>
+                  ⏱ يصل خلال{" "}
+                  <Text style={styles.etaStatusNumber}>{etaMinutes}</Text>
+                  {" "}دقيقة
+                </Text>
+                {etaDistKm !== null && (
+                  <Text style={styles.etaStatusDist}> • {etaDistKm} كم</Text>
+                )}
+              </View>
+            ) : approachStatus === "heading" ? (
+              <Text style={styles.statusSubtitle}>جاري حساب وقت الوصول...</Text>
+            ) : (
+              <Text style={styles.statusSubtitle}>{statusConfig.subtitle}</Text>
+            )}
           </View>
         </View>
 
@@ -569,4 +591,9 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: "#2ECC71",
   },
+  // ETA داخل بطاقة الحالة
+  etaStatusRow: { flexDirection: "row", alignItems: "center", marginTop: 4, flexWrap: "wrap" },
+  etaStatusTime: { fontSize: 14, fontWeight: "700", lineHeight: 20 },
+  etaStatusNumber: { fontSize: 18, fontWeight: "900" },
+  etaStatusDist: { color: "#9B8EC4", fontSize: 12, marginTop: 2 },
 });

@@ -2162,7 +2162,7 @@ export const appRouter = router({
         etaMinutes: z.number().optional(),
       }))
       .mutation(async ({ input }) => {
-        const result = await updateDriverApproachStatus(input.bookingId, input.driverId, input.status);
+        const result = await updateDriverApproachStatus(input.bookingId, input.driverId, input.status, input.etaMinutes);
         if (!result) return { success: false };
         // إرسال إشعار للمسافر
         try {

@@ -289,6 +289,8 @@ export const intercityBookings = mysqlTable("intercityBookings", {
   pickupStatus: mysqlEnum("pickupStatus", ["waiting", "picked_up", "arrived"]).default("waiting"),
   // حالة توجه الكابتن نحو الراكب المعين
   driverApproachStatus: mysqlEnum("driverApproachStatus", ["idle", "heading", "arrived_at_pickup"]).default("idle"),
+  // وقت الوصول التقديري بالدقائق عند ضغطة "التوجه إليه"
+  etaMinutes: int("etaMinutes"),
   cancelledBy: varchar("cancelledBy", { length: 100 }),
   cancelReason: text("cancelReason"),
   passengerRating: int("passengerRating"),

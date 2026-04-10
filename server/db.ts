@@ -1779,11 +1779,7 @@ export async function adminCancelIntercityTrip(tripId: number) {
  * heading = الكابتن في طريقه للراكب
  * arrived_at_pickup = الكابتن وصل لموقع الراكب
  */
-export async function updateDriverApproachStatus(
-  bookingId: number,
-  driverId: number,
-  status: "idle" | "heading" | "arrived_at_pickup"
-) {
+export async function updateDriverApproachStatus(bookingId: number, driverId: number, status: "idle" | "heading" | "arrived_at_pickup", etaMinutes?: number) {
   const db = await getDb();
   if (!db) return null;
   // التحقق من أن الكابتن يملك هذا الحجز
@@ -1802,7 +1798,7 @@ export async function updateDriverApproachStatus(
   if (!trip) throw new Error("غير مصرح");
   await db
     .update(intercityBookings)
-    .set({ driverApproachStatus: status } as any)
+    .set({ driverApproachStatus: status, ...(etaMinutes !== undefined ? { etaMinutes } : {}) } as any)
     .where(eq(intercityBookings.id, bookingId));
   return { booking, trip };
 }

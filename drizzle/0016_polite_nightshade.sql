@@ -1,0 +1,1 @@
+ALTER TABLE `intercityBookings` ADD `etaMinutes` int;
