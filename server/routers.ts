@@ -918,7 +918,9 @@ export const appRouter = router({
     savePushToken: publicProcedure
       .input(z.object({ driverId: z.number(), token: z.string() }))
       .mutation(async ({ input }) => {
+        console.log(`[Push] Saving driver push token for driver ${input.driverId}: ${input.token.substring(0, 30)}...`);
         await saveDriverPushToken(input.driverId, input.token);
+        console.log(`[Push] Driver push token saved successfully for driver ${input.driverId}`);
         return { success: true };
       }),
 
@@ -928,7 +930,9 @@ export const appRouter = router({
     savePassengerPushToken: publicProcedure
       .input(z.object({ passengerId: z.number(), token: z.string() }))
       .mutation(async ({ input }) => {
+        console.log(`[Push] Saving passenger push token for passenger ${input.passengerId}: ${input.token.substring(0, 30)}...`);
         await savePassengerPushToken(input.passengerId, input.token);
+        console.log(`[Push] Passenger push token saved successfully for passenger ${input.passengerId}`);
         return { success: true };
       }),
 
@@ -1931,6 +1935,42 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => {
         const booking = await bookIntercityTrip(input);
+        // إرسال Push notification للكابتن
+        console.log(`[Push] bookTrip: Attempting to send push notification for trip ${input.tripId}`);
+        try {
+          const db = await getDb();
+          if (db) {
+            const { intercityTrips: tripsTable } = await import("../drizzle/schema");
+            const { eq: eqFn } = await import("drizzle-orm");
+            const [trip] = await db
+              .select({ driverId: tripsTable.driverId, fromCity: tripsTable.fromCity, toCity: tripsTable.toCity })
+              .from(tripsTable)
+              .where(eqFn(tripsTable.id, input.tripId))
+              .limit(1);
+            console.log(`[Push] bookTrip: Found trip driver ${trip?.driverId}`);
+            if (trip?.driverId) {
+              const pushToken = await getDriverPushToken(trip.driverId);
+              console.log(`[Push] bookTrip: Driver ${trip.driverId} pushToken = ${pushToken ? pushToken.substring(0, 30) + '...' : 'NULL'}`);
+              if (pushToken && pushToken.startsWith("ExponentPushToken[")) {
+                console.log(`[Push] bookTrip: Sending push to Expo for driver ${trip.driverId}`);
+                fetch("https://exp.host/--/api/v2/push/send", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", "Accept": "application/json" },
+                  body: JSON.stringify({
+                    to: pushToken,
+                    sound: "default",
+                    title: "\uD83C\uDF89 حجز مقعد جديد!",
+                    body: `${input.passengerName} حجز ${input.seatsBooked} مقعد في رحلتك ${trip.fromCity} ← ${trip.toCity}`,
+                    data: { type: "intercity_booking", tripId: input.tripId },
+                    priority: "high",
+                  }),
+                }).catch((err) => console.warn("[Push] intercity booking notification failed:", err));
+              }
+            }
+          }
+        } catch (e) {
+          console.warn("[Push] Error sending intercity booking notification:", e);
+        }
         return { success: true, booking };
       }),
 
@@ -2165,8 +2205,10 @@ export const appRouter = router({
         const result = await updateDriverApproachStatus(input.bookingId, input.driverId, input.status, input.etaMinutes);
         if (!result) return { success: false };
         // إرسال إشعار للمسافر
+        console.log(`[Push] updateApproachStatus: status=${input.status}, passengerId=${result.booking.passengerId}`);
         try {
           const passengerToken = await getPassengerPushToken(result.booking.passengerId);
+          console.log(`[Push] updateApproachStatus: Passenger ${result.booking.passengerId} pushToken = ${passengerToken ? passengerToken.substring(0, 30) + '...' : 'NULL'}`);
           if (passengerToken && passengerToken.startsWith("ExponentPushToken[")) {
             const isHeading = input.status === "heading";
             const isArrived = input.status === "arrived_at_pickup";

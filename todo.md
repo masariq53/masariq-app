@@ -289,3 +289,13 @@
 - [x] رسم مسار الطريق الفعلي (Polyline) على خريطة التتبع باستخدام OSRM (overview=full&geometries=geojson)
 - [x] إضافة ماركر موقع الراكب على خريطة التتبع
 - [x] إخفاء الـ Polyline عند وصول السائق (arrived_at_pickup)
+
+## إصلاح الإشعارات Push للرحلات بين المدن (2026-04-10)
+- [x] إضافة عمود pushToken لجدول passengers في DB
+- [x] إصلاح savePassengerPushToken لحفظ الـ token في DB فعلياً
+- [x] إصلاح getPassengerPushToken لقراءة من DB كـ fallback
+- [x] إضافة إشعار Push للكابتن عند bookTrip (الحجز العادي)
+- [x] إضافة logging مفصّل لتتبع الإشعارات
+- [x] تسجيل pushToken تلقائي للراكب عند فتح التطبيق
+- [x] تسجيل pushToken تلقائي للكابتن عند استعادة الجلسة
+- [x] إضافة projectId و Device.isDevice لـ getExpoPushTokenAsync

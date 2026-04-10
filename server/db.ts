@@ -651,9 +651,8 @@ export async function savePassengerPushToken(passengerId: number, token: string)
   const db = await getDb();
   passengerPushTokens.set(passengerId, token);
   if (!db) return;
-  // Store in passengers table (add pushToken column if needed - using lastActiveAt as proxy for now)
-  // We store in memory map for now; in production add pushToken column to passengers table
-  await db.update(passengers).set({ lastActiveAt: new Date() }).where(eq(passengers.id, passengerId));
+  // Save push token to database for persistence across server restarts
+  await db.update(passengers).set({ pushToken: token, lastActiveAt: new Date() }).where(eq(passengers.id, passengerId));
 }
 
 /**
@@ -663,6 +662,14 @@ export async function getPassengerPushToken(passengerId: number): Promise<string
   // Check memory cache first
   if (passengerPushTokens.has(passengerId)) {
     return passengerPushTokens.get(passengerId) ?? null;
+  }
+  // Fallback to database
+  const db = await getDb();
+  if (!db) return null;
+  const [passenger] = await db.select({ pushToken: passengers.pushToken }).from(passengers).where(eq(passengers.id, passengerId)).limit(1);
+  if (passenger?.pushToken) {
+    passengerPushTokens.set(passengerId, passenger.pushToken);
+    return passenger.pushToken;
   }
   return null;
 }

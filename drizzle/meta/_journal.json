@@ -134,6 +134,13 @@
       "when": 1775844001680,
       "tag": "0018_minor_skin",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "5",
+      "when": 1775844928632,
+      "tag": "0019_known_ares",
+      "breakpoints": true
     }
   ]
 }
