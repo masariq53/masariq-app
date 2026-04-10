@@ -44,12 +44,13 @@ export async function fetchOsrmRoute(
       longitude: lng,
     }));
     // OSRM يعطي وقت مثالي بدون ازدحام — نضيف معامل تصحيح واقعي
-    // بناءً على مقارنة Waze: OSRM يُقلل الوقت بنسبة ~30-40% للطرق بين المدن
-    // معامل 1.25 يعطي نتيجة قريبة من Waze (يضيف ~25% للازدحام والتوقفات)
+    // بناءً على مقارنة Waze للطرق العراقية:
+    // - مدينة (<15كم): معامل 1.35 (ازدحام شديد)
+    // - طريق مختلط (15-50كم): معامل 1.2
+    // - طريق سريع بين مدن (>50كم): معامل 1.1 (قريب من Waze)
     const distKm = Math.round((route.distance / 1000) * 10) / 10;
     const rawMin = route.duration / 60;
-    // معامل تصحيح حسب المسافة: مدينة أكثر ازدحاماً، طريق سريع أقل
-    const trafficFactor = distKm < 15 ? 1.4 : distKm < 50 ? 1.3 : 1.2;
+    const trafficFactor = distKm < 15 ? 1.35 : distKm < 50 ? 1.2 : 1.1;
     const adjustedMin = Math.round(rawMin * trafficFactor);
     return {
       coords,

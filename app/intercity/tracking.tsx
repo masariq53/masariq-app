@@ -53,11 +53,19 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number) {
 }
 
 // تقدير وقت الوصول بالدقائق (fallback عند فشل OSRM)
-// الطرق بين المدن في العراق سرعة متوسطة 75-80 كم/ساعة
+// بناءً على Waze: 116كم في 101 دقيقة = 69 كم/ساعة فعلية
 function estimateMinutes(distKm: number) {
-  // سرعة متغيرة حسب المسافة: قريب = مدينة (40), بعيد = طريق سريع (80)
-  const avgSpeedKmh = distKm < 15 ? 35 : distKm < 50 ? 60 : 80;
+  // سرعة واقعية حسب المسافة (تشمل الازدحام والتوقفات)
+  const avgSpeedKmh = distKm < 15 ? 30 : distKm < 50 ? 55 : 69;
   return Math.max(1, Math.round((distKm / avgSpeedKmh) * 60));
+}
+
+// تنسيق ETA: أقل من ساعة = "45 د" | ساعة فأكثر = "1 س 25 د"
+function formatEta(minutes: number): string {
+  if (minutes < 60) return `${minutes} د`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m === 0 ? `${h} س` : `${h} س ${m} د`;
 }
 
 // fetchOSRMEta تم استبدالها بـ fetchOsrmRoute من @/lib/osrm التي تجلب المسار كاملاً
@@ -339,8 +347,7 @@ export default function IntercityTrackingScreen() {
           <View style={styles.etaBadge}>
             <Text style={styles.etaLabel}>وقت الوصول</Text>
             <View style={styles.etaRow}>
-              <Text style={styles.etaTime}>{etaMinutes}</Text>
-              <Text style={styles.etaUnit}>دقيقة</Text>
+              <Text style={styles.etaTime}>{formatEta(etaMinutes!)}</Text>
             </View>
             {etaDistKm !== null && (
               <Text style={styles.etaDist}>{etaDistKm} كم</Text>
@@ -372,9 +379,7 @@ export default function IntercityTrackingScreen() {
             {approachStatus === "heading" && etaMinutes !== null ? (
               <View style={styles.etaStatusRow}>
                 <Text style={[styles.etaStatusTime, { color: statusConfig.color }]}>
-                  ⏱ يصل خلال{" "}
-                  <Text style={styles.etaStatusNumber}>{etaMinutes}</Text>
-                  {" "}دقيقة
+                  ⧱ يصل خلال {formatEta(etaMinutes!)}
                 </Text>
                 {etaDistKm !== null && (
                   <Text style={styles.etaStatusDist}> • {etaDistKm} كم</Text>
@@ -433,7 +438,7 @@ export default function IntercityTrackingScreen() {
           </Text>
           {etaMinutes !== null && approachStatus === "heading" && (
             <View style={styles.etaInlineRow}>
-              <Text style={styles.etaInline}>⏱ يصل خلال {etaMinutes} دقيقة</Text>
+              <Text style={styles.etaInline}>⧱ يصل خلال {formatEta(etaMinutes!)}</Text>
               {etaDistKm !== null && (
                 <Text style={styles.etaInlineDist}> • {etaDistKm} كم</Text>
               )}
