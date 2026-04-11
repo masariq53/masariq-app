@@ -67,7 +67,7 @@ export default function AgentTransactionsScreen() {
                   -{Number(item.amount).toLocaleString("ar-IQ")} د.ع
                 </Text>
                 <Text style={styles.txType}>
-                  {item.recipientType === "driver" ? "🚗 كابتن" : "👤 مستخدم"}
+                  {item.recipientType === "driver" ? "🚗 سائق" : "👤 مستخدم"}
                 </Text>
               </View>
               <Text style={styles.txName}>{item.recipientName || item.recipientPhone}</Text>

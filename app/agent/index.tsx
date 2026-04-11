@@ -54,7 +54,7 @@ export default function AgentIndexScreen() {
             <Text style={styles.heroIcon}>💼</Text>
             <Text style={styles.heroTitle}>وكيل معتمد مسار</Text>
             <Text style={styles.heroDesc}>
-              انضم لشبكة وكلاء مسار المعتمدين وابدأ بشحن رصيد الكابتنات والمستخدمين في منطقتك
+              انضم لشبكة وكلاء مسار المعتمدين وابدأ بشحن رصيد السائقون والمستخدمين في منطقتك
             </Text>
           </View>
 
@@ -62,7 +62,7 @@ export default function AgentIndexScreen() {
             <Text style={styles.benefitsTitle}>مزايا الوكيل المعتمد</Text>
             <View style={styles.benefit}>
               <Text style={styles.benefitIcon}>💰</Text>
-              <Text style={styles.benefitText}>اشحن رصيد الكابتنات والمستخدمين من رصيدك</Text>
+              <Text style={styles.benefitText}>اشحن رصيد السائقون والمستخدمين من رصيدك</Text>
             </View>
             <View style={styles.benefit}>
               <Text style={styles.benefitIcon}>📊</Text>
@@ -213,7 +213,7 @@ export default function AgentIndexScreen() {
           onPress={() => router.push("/agent/recharge" as any)}
         >
           <Text style={styles.rechargeBtnIcon}>⚡</Text>
-          <Text style={styles.rechargeBtnText}>شحن رصيد كابتن أو مستخدم</Text>
+          <Text style={styles.rechargeBtnText}>شحن رصيد سائق أو مستخدم</Text>
         </TouchableOpacity>
 
         {/* سجل المعاملات */}
@@ -275,7 +275,7 @@ export default function AgentIndexScreen() {
                     <View style={[styles.reportStatBox, { borderColor: "#3B82F6" }]}>
                       <Text style={styles.reportStatIcon}>🚗</Text>
                       <Text style={[styles.reportStatValue, { color: "#3B82F6" }]}>{m.driversCount}</Text>
-                      <Text style={styles.reportStatLabel}>شحن للكابتنات</Text>
+                      <Text style={styles.reportStatLabel}>شحن للسائقين</Text>
                     </View>
                     <View style={[styles.reportStatBox, { borderColor: "#8B5CF6" }]}>
                       <Text style={styles.reportStatIcon}>👤</Text>

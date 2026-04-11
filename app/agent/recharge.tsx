@@ -139,7 +139,7 @@ export default function AgentRechargeScreen() {
         )}
 
         {/* البحث عن المستخدم */}
-        <Text style={styles.sectionTitle}>رقم هاتف المستخدم أو الكابتن</Text>
+        <Text style={styles.sectionTitle}>رقم هاتف المستخدم أو السائق</Text>
         <View style={styles.searchRow}>
           <TextInput
             style={styles.phoneInput}
@@ -167,7 +167,7 @@ export default function AgentRechargeScreen() {
         {recipient && (
           <View style={styles.recipientCard}>
             <Text style={styles.recipientType}>
-              {recipient.type === "driver" ? "🚗 كابتن" : "👤 مستخدم"}
+              {recipient.type === "driver" ? "🚗 سائق" : "👤 مستخدم"}
             </Text>
             <Text style={styles.recipientName}>{recipient.name || "—"}</Text>
             <Text style={styles.recipientPhone}>{recipient.phone}</Text>

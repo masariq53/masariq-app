@@ -393,7 +393,7 @@ export default function ProfileScreen() {
             <View style={styles.captainBannerContent}>
               <View>
                 <Text style={styles.agentBannerTitle}>💼  كن وكيلاً معتمداً</Text>
-                <Text style={styles.agentBannerSub}>اشحن رصيد الكابتنات والمستخدمين</Text>
+                <Text style={styles.agentBannerSub}>اشحن رصيد السائقون والمستخدمين</Text>
               </View>
               <Text style={styles.captainBannerArrow}>←</Text>
             </View>
