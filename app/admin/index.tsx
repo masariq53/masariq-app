@@ -1966,10 +1966,8 @@ export default function AdminDashboard() {
                         <TouchableOpacity
                           style={{ backgroundColor: '#22C55E', borderRadius: 10, padding: 12, alignItems: 'center' }}
                           onPress={() => {
-                            Alert.alert('تأكيد', `تفعيل حساب ${selectedAgent.name}؟`, [
-                              { text: 'إلغاء', style: 'cancel' },
-                              { text: 'تفعيل', onPress: () => { approveAgentMutation.mutate({ agentId: selectedAgent.id }); setShowAgentModal(false); } },
-                            ]);
+                            approveAgentMutation.mutate({ agentId: selectedAgent.id });
+                            setShowAgentModal(false);
                           }}
                         >
                           <Text style={{ color: '#fff', fontWeight: '700' }}>✅ قبول الطلب</Text>
@@ -1986,10 +1984,8 @@ export default function AdminDashboard() {
                       <TouchableOpacity
                         style={{ backgroundColor: '#F59E0B', borderRadius: 10, padding: 12, alignItems: 'center' }}
                         onPress={() => {
-                          Alert.alert('تأكيد', `إيقاف حساب ${selectedAgent.name}؟`, [
-                            { text: 'إلغاء', style: 'cancel' },
-                            { text: 'إيقاف', style: 'destructive', onPress: () => { suspendAgentMutation.mutate({ agentId: selectedAgent.id }); setShowAgentModal(false); } },
-                          ]);
+                          suspendAgentMutation.mutate({ agentId: selectedAgent.id });
+                          setShowAgentModal(false);
                         }}
                       >
                         <Text style={{ color: '#fff', fontWeight: '700' }}>🚫 إيقاف الحساب</Text>
