@@ -103,6 +103,7 @@ import {
   getAllAgentTransactions,
   searchRecipientByPhone,
   getAgentMonthlyStats,
+  deleteAgent,
 } from "./db";
 import { storagePut } from "./storage";
 
@@ -2764,6 +2765,12 @@ export const appRouter = router({
       }))
       .query(async ({ input }) => {
         return getAgentMonthlyStats(input.agentId, input.months ?? 6);
+      }),
+    // حذف حساب الوكيل نهائياً
+    delete: publicProcedure
+      .input(z.object({ agentId: z.number() }))
+      .mutation(async ({ input }) => {
+        return deleteAgent(input.agentId);
       }),
   }),
 });

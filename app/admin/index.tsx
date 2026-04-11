@@ -186,6 +186,7 @@ export default function AdminDashboard() {
   const rejectAgentMutation = trpc.agents.reject.useMutation({ onSuccess: () => refetchAgents() });
   const suspendAgentMutation = trpc.agents.suspend.useMutation({ onSuccess: () => refetchAgents() });
   const topupAgentMutation = trpc.agents.topup.useMutation({ onSuccess: () => refetchAgents() });
+  const deleteAgentMutation = trpc.agents.delete.useMutation({ onSuccess: () => { refetchAgents(); setShowAgentModal(false); } });
 
   const { data: ratingStats } = trpc.support.adminRatingStats.useQuery(
     undefined,
@@ -1999,6 +2000,20 @@ export default function AdminDashboard() {
                         <Text style={{ color: '#fff', fontWeight: '700' }}>✅ إعادة تفعيل</Text>
                       </TouchableOpacity>
                     )}
+                    <TouchableOpacity
+                      style={{ backgroundColor: '#7F1D1D', borderRadius: 10, padding: 12, alignItems: 'center', borderWidth: 1, borderColor: '#EF4444' }}
+                      onPress={() => {
+                        if (selectedAgent) {
+                          deleteAgentMutation.mutate({ agentId: selectedAgent.id });
+                        }
+                      }}
+                    >
+                      {deleteAgentMutation.isPending ? (
+                        <ActivityIndicator color="#EF4444" />
+                      ) : (
+                        <Text style={{ color: '#EF4444', fontWeight: '700' }}>🗑️ حذف الحساب نهائياً</Text>
+                      )}
+                    </TouchableOpacity>
                     <TouchableOpacity
                       style={{ backgroundColor: '#333', borderRadius: 10, padding: 12, alignItems: 'center' }}
                       onPress={() => setShowAgentModal(false)}

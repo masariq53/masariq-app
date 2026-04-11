@@ -2448,3 +2448,16 @@ export async function getAgentMonthlyStats(agentId: number, months = 6) {
 
   return results;
 }
+
+/**
+ * Delete an agent and all their transactions permanently
+ */
+export async function deleteAgent(agentId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("قاعدة البيانات غير متاحة");
+  // Delete transactions first (foreign key safety)
+  await db.delete(agentTransactions).where(eq(agentTransactions.agentId, agentId));
+  // Delete agent record
+  await db.delete(agents).where(eq(agents.id, agentId));
+  return { success: true };
+}
