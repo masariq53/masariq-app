@@ -2496,6 +2496,7 @@ export const appRouter = router({
         message: z.string().min(5), // الرسالة الأولى
         rideId: z.number().optional(),
         tripId: z.number().optional(),
+        imageUrls: z.array(z.string()).max(6).optional(), // صور مرفقة اختيارية (حد أقصى 6)
       }))
       .mutation(async ({ input }) => {
         const ticketId = await createSupportTicket({
@@ -2513,12 +2514,26 @@ export const appRouter = router({
           unreadByUser: 0,
         });
         if (ticketId) {
+          // إرسال الرسالة الأولى مع أول صورة مرفقة (إن وجدت)
+          const firstImageUrl = input.imageUrls?.[0];
           await addSupportMessage({
             ticketId,
             senderType: "user",
             senderName: input.userName,
             message: input.message,
+            imageUrl: firstImageUrl,
           });
+          // إرسال باقي الصور كرسائل منفصلة
+          const extraImages = input.imageUrls?.slice(1) ?? [];
+          for (const imgUrl of extraImages) {
+            await addSupportMessage({
+              ticketId,
+              senderType: "user",
+              senderName: input.userName,
+              message: "📎 صورة مرفقة",
+              imageUrl: imgUrl,
+            });
+          }
         }
         return { success: true, ticketId };
       }),
