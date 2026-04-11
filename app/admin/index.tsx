@@ -114,6 +114,8 @@ export default function AdminDashboard() {
   const [blockReasonInput, setBlockReasonInput] = useState("");
   const [showBlockModal, setShowBlockModal] = useState(false);
   const [blockTargetDriver, setBlockTargetDriver] = useState<{ id: number; name: string } | null>(null);
+  const [showUnblockModal, setShowUnblockModal] = useState(false);
+  const [unblockTargetDriver, setUnblockTargetDriver] = useState<{ id: number; name: string } | null>(null);
 
   // ──  // ─── Intercity Trips ─────────────────────────────────────────────
   const [intercityStatusFilter, setIntercityStatusFilter] = useState<"all" | "scheduled" | "in_progress" | "completed" | "cancelled">("all");
@@ -668,13 +670,8 @@ export default function AdminDashboard() {
                           style={[styles.blockBtn, driver.isBlocked && styles.unblockBtn]}
                           onPress={() => {
                             if (driver.isBlocked) {
-                              Alert.alert("تفعيل الحساب", `هل تريد تفعيل حساب ${driver.name}؟`, [
-                                { text: "إلغاء", style: "cancel" },
-                                { text: "تفعيل", onPress: () => blockDriver.mutate(
-                                  { driverId: driver.id, isBlocked: false },
-                                  { onSuccess: () => Alert.alert("✅ تم التفعيل", `تم تفعيل حساب ${driver.name} بنجاح`) }
-                                ) },
-                              ]);
+                              setUnblockTargetDriver({ id: driver.id, name: driver.name });
+                              setShowUnblockModal(true);
                             } else {
                               setBlockTargetDriver({ id: driver.id, name: driver.name });
                               setBlockReasonInput("");
@@ -1704,6 +1701,39 @@ export default function AdminDashboard() {
       </Modal>
 
       {/* Block Driver Modal */}
+      {/* Unblock Confirmation Modal */}
+      <Modal visible={showUnblockModal} transparent animationType="fade" onRequestClose={() => setShowUnblockModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={{ backgroundColor: '#1e0a3c', borderRadius: 16, padding: 24, width: '85%', maxWidth: 400 }}>
+            <Text style={{ color: '#fff', fontSize: 18, fontWeight: '800', marginBottom: 8, textAlign: 'right' }}>✅ تفعيل الحساب</Text>
+            <Text style={{ color: '#ccc', fontSize: 14, marginBottom: 24, textAlign: 'right' }}>هل تريد تفعيل حساب {unblockTargetDriver?.name}؟</Text>
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <TouchableOpacity
+                style={{ flex: 1, backgroundColor: '#22C55E', borderRadius: 10, padding: 12, alignItems: 'center' }}
+                onPress={() => {
+                  if (unblockTargetDriver) {
+                    blockDriver.mutate(
+                      { driverId: unblockTargetDriver.id, isBlocked: false },
+                    );
+                  }
+                  setShowUnblockModal(false);
+                  setUnblockTargetDriver(null);
+                }}
+              >
+                <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>تفعيل</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{ flex: 1, backgroundColor: '#333', borderRadius: 10, padding: 12, alignItems: 'center' }}
+                onPress={() => { setShowUnblockModal(false); setUnblockTargetDriver(null); }}
+              >
+                <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>إلغاء</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Block Modal */}
       <Modal visible={showBlockModal} transparent animationType="fade" onRequestClose={() => setShowBlockModal(false)}>
         <View style={styles.modalOverlay}>
           <View style={{ backgroundColor: '#1e0a3c', borderRadius: 16, padding: 24, width: '85%', maxWidth: 400 }}>
