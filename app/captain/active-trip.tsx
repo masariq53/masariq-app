@@ -36,7 +36,10 @@ export default function CaptainActiveTripScreen() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ rideId?: string }>();
   const { driver } = useDriver();
-  const { coords } = useLocation();
+  const { coords, heading, isRealLocation } = useLocation();
+  // تتبع مستمر لموقع الكابتن أثناء الرحلة
+  const isFirstLocation = useRef(true);
+  const [isFollowingDriver, setIsFollowingDriver] = useState(true);
   const [phase, setPhase] = useState<TripPhase>("pickup");
   const mapRef = useRef<MapView>(null);
   // منع useEffect من التراجع عن المرحلة المحلية بعد ضغط الزر
@@ -101,7 +104,7 @@ export default function CaptainActiveTripScreen() {
     }
   }, [ride?.status]);
 
-  // تمركز الخريطة على موقع الراكب عند التحميل
+  // تمركز الخريطة على موقع الراكب عند أول تحميل
   useEffect(() => {
     if (ride && mapRef.current) {
       mapRef.current.animateToRegion({
@@ -110,8 +113,19 @@ export default function CaptainActiveTripScreen() {
         latitudeDelta: 0.04,
         longitudeDelta: 0.04,
       }, 800);
+      isFirstLocation.current = false; // بعد التمركز الأولي نبدأ بتتبع الكابتن
     }
   }, [ride?.id]);
+
+  // تتبع موقع الكابتن بسلاسة أثناء الرحلة
+  useEffect(() => {
+    if (!isRealLocation || !mapRef.current || isFirstLocation.current) return;
+    if (!isFollowingDriver) return;
+    mapRef.current.animateCamera(
+      { center: { latitude: coords.latitude, longitude: coords.longitude } },
+      { duration: 1000 }
+    );
+  }, [isRealLocation, coords.latitude, coords.longitude, isFollowingDriver]);
 
   const updateStatus = trpc.rides.updateStatus.useMutation();
 
@@ -292,7 +306,7 @@ export default function CaptainActiveTripScreen() {
       <StatusBar style="light" />
 
       {/* خريطة حقيقية */}
-      {Platform.OS !== "web" ? (
+        {Platform.OS !== "web" ? (
         <MapView
           ref={mapRef}
           style={styles.map}
@@ -303,23 +317,33 @@ export default function CaptainActiveTripScreen() {
             latitudeDelta: 0.05,
             longitudeDelta: 0.05,
           }}
-          showsUserLocation
+          showsUserLocation={false}
           showsMyLocationButton={false}
+          onPanDrag={() => setIsFollowingDriver(false)}
         >
+          {/* موقع الكابتن - سيارة تتدور حسب اتجاه السير */}
+          <Marker
+            coordinate={coords}
+            anchor={{ x: 0.5, y: 0.5 }}
+            flat
+            rotation={heading ?? 0}
+          >
+            <View style={styles.driverMarker}>
+              <Text style={{ fontSize: 26 }}>🚗</Text>
+            </View>
+          </Marker>
           {/* موقع الراكب */}
           <Marker coordinate={pickupCoord} title="موقع الراكب">
             <View style={styles.pickupMarker}>
               <Text style={{ fontSize: 22 }}>👤</Text>
             </View>
           </Marker>
-
           {/* الوجهة */}
           <Marker coordinate={destCoord} title="الوجهة">
             <View style={styles.destMarker}>
               <Text style={{ fontSize: 22 }}>🏁</Text>
             </View>
           </Marker>
-
           {/* مسار الرحلة */}
           <Polyline
             coordinates={config.route}
@@ -333,6 +357,24 @@ export default function CaptainActiveTripScreen() {
           <Text style={{ fontSize: 56 }}>🗺️</Text>
           <Text style={styles.webMapLabel}>{config.title}</Text>
         </View>
+      )}
+
+      {/* زر إعادة التمركز على الكابتن */}
+      {Platform.OS !== "web" && !isFollowingDriver && (
+        <TouchableOpacity
+          style={[styles.recenterBtn, { bottom: insets.bottom + 180 }]}
+          onPress={() => {
+            setIsFollowingDriver(true);
+            if (mapRef.current && isRealLocation) {
+              mapRef.current.animateCamera(
+                { center: { latitude: coords.latitude, longitude: coords.longitude } },
+                { duration: 600 }
+              );
+            }
+          }}
+        >
+          <Text style={{ fontSize: 22 }}>📍</Text>
+        </TouchableOpacity>
       )}
 
       {/* زر الرجوع - مقيّد حسب مرحلة الرحلة */}
@@ -546,6 +588,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFD700",
   },
   statusTitle: { color: "#FFD700", fontSize: 13, fontWeight: "600" },
+  driverMarker: { alignItems: "center" },
   pickupMarker: { alignItems: "center" },
   destMarker: { alignItems: "center" },
   tripSheet: {
@@ -661,4 +704,22 @@ const styles = StyleSheet.create({
     borderColor: "#3D2070",
   },
   navBtnText: { color: "#9B8EC4", fontSize: 14 },
+  recenterBtn: {
+    position: "absolute",
+    right: 16,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: "rgba(26,5,51,0.92)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: "rgba(255,215,0,0.6)",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.4,
+    shadowRadius: 4,
+    elevation: 6,
+    zIndex: 50,
+  },
 });

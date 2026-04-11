@@ -20,6 +20,7 @@ export type LocationCoords = {
 
 export type LocationState = {
   coords: LocationCoords;
+  heading: number | null; // اتجاه السير بالدرجات (0-360) - null إذا غير متاح
   isLoading: boolean;
   error: string | null;
   isRealLocation: boolean;
@@ -28,6 +29,7 @@ export type LocationState = {
 
 export function useLocation(): LocationState {
   const [coords, setCoords] = useState<LocationCoords>(MOSUL_CENTER);
+  const [heading, setHeading] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isRealLocation, setIsRealLocation] = useState(false);
@@ -73,6 +75,9 @@ export function useLocation(): LocationState {
                 latitude: pos.coords.latitude,
                 longitude: pos.coords.longitude,
               });
+              if (pos.coords.heading !== null && !isNaN(pos.coords.heading)) {
+                setHeading(pos.coords.heading);
+              }
               setIsRealLocation(true);
               setIsLoading(false);
             },
@@ -130,6 +135,9 @@ export function useLocation(): LocationState {
               latitude: location.coords.latitude,
               longitude: location.coords.longitude,
             });
+            if (location.coords.heading !== null && location.coords.heading !== undefined) {
+              setHeading(location.coords.heading);
+            }
             setIsRealLocation(true);
             setIsLoading(false);
           }
@@ -165,6 +173,7 @@ export function useLocation(): LocationState {
 
   return {
     coords,
+    heading,
     isLoading,
     error,
     isRealLocation,

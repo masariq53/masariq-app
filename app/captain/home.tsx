@@ -62,7 +62,7 @@ export default function CaptainHomeScreen() {
     { enabled: !!driver?.id, refetchInterval: 60000 }
   );
   const walletBalance = walletBalanceQuery.data?.balance ?? driver?.walletBalance?.toString() ?? "0";
-  const { coords, isRealLocation } = useLocation();
+  const { coords, heading, isRealLocation } = useLocation();
   const [isOnline, setIsOnline] = useState(false);
   const [currentRequest, setCurrentRequest] = useState<PendingRide | null>(null);
   const [seenRideIds, setSeenRideIds] = useState<Set<number>>(new Set());
@@ -185,20 +185,21 @@ export default function CaptainHomeScreen() {
     }
   }, [isRealLocation, coords.latitude, coords.longitude, isFollowingDriver]);
 
-  // تحديث موقع السائق على السيرفر كل 15 ثانية عندما يكون متاحاً
+  // تحديث موقع السائق على السيرفر فورياً عند كل تغيير موقع حقيقي
+  // مع throttle لمنع الإرسال الزائد للسيرفر (5 ثواني كحد أدنى)
   const updateLocationMutation = trpc.driver.updateLocation.useMutation();
+  const lastLocationUpdateRef = useRef<number>(0);
   useEffect(() => {
-    if (!isOnline || !driver?.id) return;
-    const interval = setInterval(() => {
-      if (isRealLocation) {
-        updateLocationMutation.mutate({
-          driverId: driver.id,
-          lat: coords.latitude,
-          lng: coords.longitude,
-        });
-      }
-    }, 15000);
-    return () => clearInterval(interval);
+    if (!isOnline || !driver?.id || !isRealLocation) return;
+    const now = Date.now();
+    // throttle: لا ترسل أكثر من مرة كل 5 ثواني
+    if (now - lastLocationUpdateRef.current < 5000) return;
+    lastLocationUpdateRef.current = now;
+    updateLocationMutation.mutate({
+      driverId: driver.id,
+      lat: coords.latitude,
+      lng: coords.longitude,
+    });
   }, [isOnline, driver?.id, coords.latitude, coords.longitude, isRealLocation]);
 
   // تحديث حالة السائق على السيرفر
@@ -421,13 +422,16 @@ export default function CaptainHomeScreen() {
             setIsFollowingDriver(false);
           }}
         >
-          {/* موقع الكابتن الحالي */}
+          {/* موقع الكابتن الحالي - مع تدوير حسب اتجاه السير */}
           <Marker
             coordinate={coords}
             title="موقعي"
+            anchor={{ x: 0.5, y: 0.5 }}
+            flat
+            rotation={heading ?? 0}
           >
             <Animated.View style={[styles.myMarker, { transform: [{ scale: pulseAnim }] }]}>
-              <Text style={{ fontSize: 24 }}>⭐</Text>
+              <Text style={{ fontSize: 26 }}>🚗</Text>
             </Animated.View>
           </Marker>
 
