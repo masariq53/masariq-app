@@ -91,6 +91,8 @@ import {
   getSupportMessages,
   markSupportMessagesRead,
   getAdminUnreadSupportCount,
+  rateSupportTicket,
+  getSupportRatingStats,
 } from "./db";
 import { storagePut } from "./storage";
 
@@ -2590,6 +2592,24 @@ export const appRouter = router({
       .input(z.object({ ticketId: z.number() }))
       .query(async ({ input }) => {
         return getSupportTicketById(input.ticketId);
+      }),
+
+    // تقييم جودة الدعم بعد إغلاق التذكرة
+    rateTicket: publicProcedure
+      .input(z.object({
+        ticketId: z.number(),
+        rating: z.number().min(1).max(5),
+        ratingComment: z.string().max(500).optional(),
+      }))
+      .mutation(async ({ input }) => {
+        await rateSupportTicket(input.ticketId, input.rating, input.ratingComment);
+        return { success: true };
+      }),
+
+    // إحصاءات التقييم للإدارة
+    adminRatingStats: publicProcedure
+      .query(async () => {
+        return getSupportRatingStats();
       }),
   }),
 });

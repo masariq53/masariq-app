@@ -366,6 +366,10 @@ export const supportTickets = mysqlTable("supportTickets", {
   unreadByUser: int("unreadByUser").default(0).notNull(),
   closedAt: timestamp("closedAt"),
   closedBy: varchar("closedBy", { length: 100 }),
+  // تقييم جودة الدعم (1-5 نجوم)
+  rating: int("rating"),
+  ratingComment: varchar("ratingComment", { length: 500 }),
+  ratedAt: timestamp("ratedAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });

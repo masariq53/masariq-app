@@ -2123,3 +2123,54 @@ export async function getAdminUnreadSupportCount() {
     .where(ne(supportTickets.status, "closed"));
   return Number(result[0]?.total ?? 0);
 }
+
+/**
+ * Rate a support ticket (user rates the support quality after resolution)
+ */
+export async function rateSupportTicket(
+  ticketId: number,
+  rating: number,
+  ratingComment?: string
+) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(supportTickets).set({
+    rating,
+    ratingComment: ratingComment ?? null,
+    ratedAt: new Date(),
+  }).where(eq(supportTickets.id, ticketId));
+}
+
+/**
+ * Get support rating statistics for admin dashboard
+ */
+export async function getSupportRatingStats() {
+  const db = await getDb();
+  if (!db) return { avgRating: 0, totalRated: 0, distribution: [0, 0, 0, 0, 0] };
+  const result = await db
+    .select({
+      avgRating: sql<number>`AVG(rating)`,
+      totalRated: sql<number>`COUNT(rating)`,
+    })
+    .from(supportTickets)
+    .where(sql`rating IS NOT NULL`);
+  const dist = await db
+    .select({
+      rating: supportTickets.rating,
+      count: sql<number>`COUNT(*)`,
+    })
+    .from(supportTickets)
+    .where(sql`rating IS NOT NULL`)
+    .groupBy(supportTickets.rating);
+  const distribution = [0, 0, 0, 0, 0];
+  for (const row of dist) {
+    if (row.rating && row.rating >= 1 && row.rating <= 5) {
+      distribution[row.rating - 1] = Number(row.count);
+    }
+  }
+  return {
+    avgRating: Number(result[0]?.avgRating ?? 0),
+    totalRated: Number(result[0]?.totalRated ?? 0),
+    distribution,
+  };
+}

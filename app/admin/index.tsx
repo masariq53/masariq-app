@@ -163,6 +163,10 @@ export default function AdminDashboard() {
     onSuccess: () => refetchSupport(),
   });
   const markSupportReadMutation = trpc.support.markRead.useMutation();
+  const { data: ratingStats } = trpc.support.adminRatingStats.useQuery(
+    undefined,
+    { enabled: activeTab === "support" }
+  );
 
   const supportUnreadCount = supportUnreadData?.count ?? 0;
 
@@ -1399,6 +1403,47 @@ export default function AdminDashboard() {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>🎟️ إدارة الدعم الفني</Text>
 
+            {/* Rating Stats Card */}
+            {ratingStats && ratingStats.totalRated > 0 && (
+              <View style={{
+                backgroundColor: "#1E0F4A", borderRadius: 14, padding: 14, marginBottom: 16,
+                borderWidth: 1, borderColor: "#FFD70033",
+              }}>
+                <Text style={{ color: "#FFD700", fontSize: 13, fontWeight: "700", marginBottom: 10 }}>
+                  ⭐ تقييمات الدعم الفني
+                </Text>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 16 }}>
+                  <View style={{ alignItems: "center" }}>
+                    <Text style={{ color: "#FFFFFF", fontSize: 32, fontWeight: "800" }}>
+                      {ratingStats.avgRating > 0 ? ratingStats.avgRating.toFixed(1) : "-"}
+                    </Text>
+                    <Text style={{ color: "#9B8EC4", fontSize: 11 }}>من 5</Text>
+                    <Text style={{ fontSize: 16, marginTop: 2 }}>
+                      {"⭐".repeat(Math.round(ratingStats.avgRating))}
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1, gap: 4 }}>
+                    {[5, 4, 3, 2, 1].map((star) => {
+                      const count = ratingStats.distribution?.[star - 1] ?? 0;
+                      const pct = ratingStats.totalRated > 0 ? (count / ratingStats.totalRated) * 100 : 0;
+                      return (
+                        <View key={star} style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                          <Text style={{ color: "#9B8EC4", fontSize: 10, width: 14 }}>{star}⭐</Text>
+                          <View style={{ flex: 1, height: 6, backgroundColor: "#2D1B4E", borderRadius: 3 }}>
+                            <View style={{ width: `${pct}%`, height: 6, backgroundColor: "#FFD700", borderRadius: 3 }} />
+                          </View>
+                          <Text style={{ color: "#9B8EC4", fontSize: 10, width: 20 }}>{count}</Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+                </View>
+                <Text style={{ color: "#6B5A8A", fontSize: 11, marginTop: 8, textAlign: "center" }}>
+                  إجمالي التقييمات: {ratingStats.totalRated} تذكرة
+                </Text>
+              </View>
+            )}
+
             {/* Filters */}
             <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
               {(["all", "open", "in_progress", "resolved", "closed"] as const).map((s) => (
@@ -1576,8 +1621,35 @@ export default function AdminDashboard() {
               )}
             </ScrollView>
 
+            {/* Quick Replies */}
+            <View style={{ paddingHorizontal: 12, paddingTop: 10, gap: 6 }}>
+              <Text style={{ color: "#9B8EC4", fontSize: 11, fontWeight: "700", marginBottom: 4 }}>ردود جاهزة:</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                {[
+                  "تم استلام طلبك، سيتم مراجعته خلال 24 ساعة إن شاء الله",
+                  "شكراً على تواصلك، تم حل المشكلة بنجاح ✔️",
+                  "يرجى تزويدنا بمزيد من التفاصيل حتى نتمكن من مساعدتك",
+                  "تم تحويل طلبك إلى الفريق المختص، سيتواصلون معك قريباً",
+                  "نعتذر عن الإزعاج، سنعمل على حل المشكلة فوراً",
+                  "تم استرداد المبلغ بنجاح إلى حسابك",
+                  "هل تحتاج إلى مساعدة إضافية؟",
+                ].map((reply, i) => (
+                  <TouchableOpacity
+                    key={i}
+                    style={{
+                      backgroundColor: "#2D1B4E", borderRadius: 16, paddingHorizontal: 12, paddingVertical: 7,
+                      borderWidth: 1, borderColor: "#3D2070",
+                    }}
+                    onPress={() => setAdminReplyText(reply)}
+                  >
+                    <Text style={{ color: "#C4B5FD", fontSize: 12 }}>{reply}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+
             {/* Reply Input */}
-            <View style={{ flexDirection: "row", padding: 12, gap: 10, borderTopWidth: 1, borderTopColor: "#2D1B4E" }}>
+            <View style={{ flexDirection: "row", padding: 12, gap: 10, borderTopWidth: 1, borderTopColor: "#2D1B4E", marginTop: 8 }}>
               <TextInput
                 style={{
                   flex: 1, backgroundColor: "#2D1B4E", borderRadius: 20,

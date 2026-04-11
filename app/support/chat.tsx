@@ -10,6 +10,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  Modal,
 } from "react-native";
 import { router, useLocalSearchParams, useFocusEffect } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -30,6 +31,13 @@ type Message = {
   isRead: number;
 };
 
+type TicketData = {
+  status?: string;
+  rating?: number | null;
+  ratingComment?: string | null;
+  ratedAt?: string | null;
+};
+
 export default function SupportChatScreen() {
   const t = useT();
   const insets = useSafeAreaInsets();
@@ -47,6 +55,9 @@ export default function SupportChatScreen() {
   const userName = isDriverMode ? driver?.name : passenger?.name;
 
   const [newMessage, setNewMessage] = useState("");
+  const [showRatingModal, setShowRatingModal] = useState(false);
+  const [selectedRating, setSelectedRating] = useState(0);
+  const [ratingComment, setRatingComment] = useState("");
   const flatListRef = useRef<FlatList>(null);
 
   const colors = {
@@ -78,8 +89,21 @@ export default function SupportChatScreen() {
 
   const sendMessageMutation = trpc.support.sendMessage.useMutation();
   const markReadMutation = trpc.support.markRead.useMutation();
+  const rateTicketMutation = trpc.support.rateTicket.useMutation({
+    onSuccess: () => {
+      setShowRatingModal(false);
+      ticketQuery.refetch();
+      Alert.alert("شكراً!", "تم إرسال تقييمك بنجاح 🌟");
+    },
+    onError: () => {
+      Alert.alert("خطأ", "فشل إرسال التقييم. يرجى المحاولة مجدداً.");
+    },
+  });
 
   const messages: Message[] = (messagesQuery.data as Message[] | undefined) ?? [];
+  const ticket = ticketQuery.data as TicketData | null | undefined;
+  const isClosed = ticket?.status === "closed" || ticket?.status === "resolved";
+  const hasRated = !!(ticket?.rating);
 
   // تحديد الرسائل كمقروءة عند فتح الشاشة
   useFocusEffect(
@@ -117,6 +141,18 @@ export default function SupportChatScreen() {
       Alert.alert("خطأ", "فشل إرسال الرسالة. يرجى المحاولة مجدداً.");
       setNewMessage(text);
     }
+  };
+
+  const handleSubmitRating = async () => {
+    if (selectedRating === 0) {
+      Alert.alert("تنبيه", "يرجى اختيار عدد النجوم أولاً");
+      return;
+    }
+    await rateTicketMutation.mutateAsync({
+      ticketId,
+      rating: selectedRating,
+      ratingComment: ratingComment.trim() || undefined,
+    });
   };
 
   const formatTime = (dateStr: string) => {
@@ -173,9 +209,6 @@ export default function SupportChatScreen() {
     );
   };
 
-  const ticket = ticketQuery.data as { status?: string } | null | undefined;
-  const isClosed = ticket?.status === "closed" || ticket?.status === "resolved";
-
   return (
     <KeyboardAvoidingView
       style={{ flex: 1 }}
@@ -198,6 +231,20 @@ export default function SupportChatScreen() {
               </Text>
             )}
           </View>
+          {/* زر التقييم إذا كانت التذكرة مغلقة ولم يُقيَّم بعد */}
+          {isClosed && !hasRated && (
+            <TouchableOpacity
+              style={styles.rateBtn}
+              onPress={() => setShowRatingModal(true)}
+            >
+              <Text style={styles.rateBtnText}>⭐ قيّم</Text>
+            </TouchableOpacity>
+          )}
+          {isClosed && hasRated && (
+            <View style={styles.ratedBadge}>
+              <Text style={styles.ratedBadgeText}>{"⭐".repeat(ticket?.rating ?? 0)}</Text>
+            </View>
+          )}
         </View>
 
         {/* Messages */}
@@ -215,6 +262,26 @@ export default function SupportChatScreen() {
             style={{ backgroundColor: colors.bg }}
             showsVerticalScrollIndicator={false}
             onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
+            ListFooterComponent={
+              isClosed && !hasRated ? (
+                <TouchableOpacity
+                  style={styles.ratePromptCard}
+                  onPress={() => setShowRatingModal(true)}
+                >
+                  <Text style={styles.ratePromptIcon}>⭐</Text>
+                  <Text style={styles.ratePromptTitle}>كيف كانت تجربتك مع الدعم الفني؟</Text>
+                  <Text style={styles.ratePromptSub}>اضغط هنا لتقييم جودة الخدمة</Text>
+                </TouchableOpacity>
+              ) : isClosed && hasRated ? (
+                <View style={styles.ratedCard}>
+                  <Text style={styles.ratedCardStars}>{"⭐".repeat(ticket?.rating ?? 0)}</Text>
+                  <Text style={styles.ratedCardText}>شكراً على تقييمك!</Text>
+                  {ticket?.ratingComment ? (
+                    <Text style={styles.ratedCardComment}>"{ticket.ratingComment}"</Text>
+                  ) : null}
+                </View>
+              ) : null
+            }
           />
         )}
 
@@ -254,6 +321,76 @@ export default function SupportChatScreen() {
 
         <View style={{ height: insets.bottom }} />
       </View>
+
+      {/* Rating Modal */}
+      <Modal
+        visible={showRatingModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowRatingModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.ratingModal}>
+            <Text style={styles.ratingModalTitle}>قيّم تجربتك مع الدعم الفني</Text>
+            <Text style={styles.ratingModalSub}>رأيك يساعدنا على تحسين خدمتنا</Text>
+
+            {/* Stars */}
+            <View style={styles.starsRow}>
+              {[1, 2, 3, 4, 5].map((star) => (
+                <TouchableOpacity
+                  key={star}
+                  onPress={() => setSelectedRating(star)}
+                  style={styles.starBtn}
+                >
+                  <Text style={[styles.starIcon, { opacity: star <= selectedRating ? 1 : 0.3 }]}>⭐</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* Rating Label */}
+            {selectedRating > 0 && (
+              <Text style={styles.ratingLabel}>
+                {selectedRating === 1 ? "سيء جداً 😞" :
+                 selectedRating === 2 ? "سيء 😕" :
+                 selectedRating === 3 ? "مقبول 😐" :
+                 selectedRating === 4 ? "جيد 😊" : "ممتاز 🌟"}
+              </Text>
+            )}
+
+            {/* Comment */}
+            <TextInput
+              style={styles.ratingCommentInput}
+              value={ratingComment}
+              onChangeText={setRatingComment}
+              placeholder="أضف تعليقاً (اختياري)..."
+              placeholderTextColor="#6B5A8A"
+              multiline
+              maxLength={500}
+            />
+
+            {/* Buttons */}
+            <View style={styles.ratingBtns}>
+              <TouchableOpacity
+                style={styles.ratingCancelBtn}
+                onPress={() => setShowRatingModal(false)}
+              >
+                <Text style={styles.ratingCancelText}>إلغاء</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.ratingSubmitBtn, { opacity: selectedRating === 0 ? 0.5 : 1 }]}
+                onPress={handleSubmitRating}
+                disabled={selectedRating === 0 || rateTicketMutation.isPending}
+              >
+                {rateTicketMutation.isPending ? (
+                  <ActivityIndicator color="#FFFFFF" size="small" />
+                ) : (
+                  <Text style={styles.ratingSubmitText}>إرسال التقييم</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -272,6 +409,22 @@ const styles = StyleSheet.create({
   headerInfo: { flex: 1 },
   headerTitle: { fontSize: 16, fontWeight: "700", color: "#FFFFFF" },
   headerStatus: { fontSize: 12, marginTop: 2 },
+  rateBtn: {
+    backgroundColor: "#FFD70022",
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: "#FFD70055",
+  },
+  rateBtnText: { color: "#FFD700", fontSize: 12, fontWeight: "700" },
+  ratedBadge: {
+    backgroundColor: "#FFD70011",
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  ratedBadgeText: { fontSize: 12 },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   messagesList: { padding: 16, paddingBottom: 8, flexGrow: 1 },
   dateSeparator: { alignItems: "center", marginVertical: 12 },
@@ -333,4 +486,102 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   closedText: { fontSize: 14 },
+  // Rating prompt card (inside FlatList footer)
+  ratePromptCard: {
+    backgroundColor: "#1E0F4A",
+    borderRadius: 16,
+    padding: 20,
+    marginTop: 16,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#FFD70033",
+  },
+  ratePromptIcon: { fontSize: 36, marginBottom: 8 },
+  ratePromptTitle: { color: "#FFD700", fontSize: 15, fontWeight: "700", textAlign: "center", marginBottom: 4 },
+  ratePromptSub: { color: "#9B8EC4", fontSize: 12, textAlign: "center" },
+  ratedCard: {
+    backgroundColor: "#1E0F4A",
+    borderRadius: 16,
+    padding: 16,
+    marginTop: 16,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#FFD70033",
+  },
+  ratedCardStars: { fontSize: 24, marginBottom: 6 },
+  ratedCardText: { color: "#FFD700", fontSize: 14, fontWeight: "700" },
+  ratedCardComment: { color: "#9B8EC4", fontSize: 12, marginTop: 4, textAlign: "center", fontStyle: "italic" },
+  // Rating Modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.7)",
+    justifyContent: "flex-end",
+  },
+  ratingModal: {
+    backgroundColor: "#1A0533",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    paddingBottom: 40,
+  },
+  ratingModalTitle: {
+    color: "#FFFFFF",
+    fontSize: 18,
+    fontWeight: "800",
+    textAlign: "center",
+    marginBottom: 6,
+  },
+  ratingModalSub: {
+    color: "#9B8EC4",
+    fontSize: 13,
+    textAlign: "center",
+    marginBottom: 24,
+  },
+  starsRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 12,
+    marginBottom: 12,
+  },
+  starBtn: { padding: 4 },
+  starIcon: { fontSize: 36 },
+  ratingLabel: {
+    color: "#FFD700",
+    fontSize: 15,
+    fontWeight: "700",
+    textAlign: "center",
+    marginBottom: 16,
+  },
+  ratingCommentInput: {
+    backgroundColor: "#2D1B4E",
+    borderRadius: 12,
+    padding: 14,
+    color: "#FFFFFF",
+    fontSize: 14,
+    minHeight: 80,
+    textAlignVertical: "top",
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: "#3D2070",
+  },
+  ratingBtns: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  ratingCancelBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: "#2D1B4E",
+    alignItems: "center",
+  },
+  ratingCancelText: { color: "#9B8EC4", fontSize: 15, fontWeight: "600" },
+  ratingSubmitBtn: {
+    flex: 2,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: "#7C3AED",
+    alignItems: "center",
+  },
+  ratingSubmitText: { color: "#FFFFFF", fontSize: 15, fontWeight: "700" },
 });
