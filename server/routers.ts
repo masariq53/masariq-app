@@ -591,6 +591,15 @@ export const appRouter = router({
                 await db.update(driversTable)
                   .set({ totalRides: sqlOp`totalRides + 1`, isAvailable: true })
                   .where(eqOp(driversTable.id, ride.driverId));
+                // استقطاع 10% عمولة الشركة من محفظة السائق
+                if (ride.fare && Number(ride.fare) > 0) {
+                  try {
+                    const { deductDriverCommission } = await import("./db");
+                    await deductDriverCommission(ride.driverId, ride.id, Number(ride.fare));
+                  } catch (e) {
+                    console.warn("[Commission] Failed to deduct commission:", e);
+                  }
+                }
               }
               await db.update(passengersTable)
                 .set({ totalRides: sqlOp`totalRides + 1` })
@@ -1648,6 +1657,27 @@ export const appRouter = router({
       }),
   }),
 
+  // ─── Driver Wallet ───────────────────────────────────────────────────────────────────
+  driverWallet: router({
+    /**
+     * Get driver wallet balance
+     */
+    getBalance: publicProcedure
+      .input(z.object({ driverId: z.number() }))
+      .query(async ({ input }) => {
+        const { getDriverWalletInfo } = await import("./db");
+        return getDriverWalletInfo(input.driverId);
+      }),
+    /**
+     * Get driver wallet transactions
+     */
+    getTransactions: publicProcedure
+      .input(z.object({ driverId: z.number(), limit: z.number().optional() }))
+      .query(async ({ input }) => {
+        const { getDriverWalletTransactions } = await import("./db");
+        return getDriverWalletTransactions(input.driverId, input.limit ?? 50);
+      }),
+  }),
   // ─── Admin Dashboard ─────────────────────────────────────────────────────────────────
   admin: router({
     /**

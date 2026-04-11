@@ -2461,3 +2461,69 @@ export async function deleteAgent(agentId: number) {
   await db.delete(agents).where(eq(agents.id, agentId));
   return { success: true };
 }
+
+/**
+ * Get driver wallet balance
+ */
+export async function getDriverWalletInfo(driverId: number) {
+  const db = await getDb();
+  if (!db) return { balance: "0" };
+  const [driver] = await db
+    .select({ walletBalance: drivers.walletBalance })
+    .from(drivers)
+    .where(eq(drivers.id, driverId))
+    .limit(1);
+  if (!driver) throw new Error("السائق غير موجود");
+  return { balance: driver.walletBalance?.toString() ?? "0" };
+}
+
+/**
+ * Get driver wallet transactions (credits from agents + debits from commission)
+ */
+export async function getDriverWalletTransactions(driverId: number, limit = 50) {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db
+    .select()
+    .from(walletTransactions)
+    .where(
+      and(
+        eq(walletTransactions.userId, driverId),
+        eq(walletTransactions.userType, "driver")
+      )
+    )
+    .orderBy(desc(walletTransactions.createdAt))
+    .limit(limit);
+  return rows;
+}
+
+/**
+ * Deduct 10% commission from driver wallet upon ride completion
+ */
+export async function deductDriverCommission(driverId: number, rideId: number, rideFare: number) {
+  const db = await getDb();
+  if (!db) return;
+  const commission = Math.round(rideFare * 0.1 * 100) / 100; // 10%
+  const [driver] = await db
+    .select({ walletBalance: drivers.walletBalance })
+    .from(drivers)
+    .where(eq(drivers.id, driverId))
+    .limit(1);
+  if (!driver) return;
+  const balanceBefore = parseFloat(driver.walletBalance?.toString() ?? "0");
+  const balanceAfter = Math.max(0, balanceBefore - commission);
+  await db.update(drivers)
+    .set({ walletBalance: sql`GREATEST(0, walletBalance - ${commission})` })
+    .where(eq(drivers.id, driverId));
+  await db.insert(walletTransactions).values({
+    userId: driverId,
+    userType: "driver",
+    type: "debit",
+    amount: commission.toString(),
+    description: `عمولة الشركة 10% - رحلة #${rideId}`,
+    rideId,
+    balanceBefore: balanceBefore.toString(),
+    balanceAfter: balanceAfter.toString(),
+  });
+  return { commission, balanceBefore, balanceAfter };
+}

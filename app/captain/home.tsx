@@ -57,6 +57,11 @@ export default function CaptainHomeScreen() {
   const t = useT();
   const insets = useSafeAreaInsets();
   const { driver, logout } = useDriver();
+  const walletBalanceQuery = trpc.driverWallet.getBalance.useQuery(
+    { driverId: driver?.id ?? 0 },
+    { enabled: !!driver?.id, refetchInterval: 60000 }
+  );
+  const walletBalance = walletBalanceQuery.data?.balance ?? driver?.walletBalance?.toString() ?? "0";
   const { coords, isRealLocation } = useLocation();
   const [isOnline, setIsOnline] = useState(false);
   const [currentRequest, setCurrentRequest] = useState<PendingRide | null>(null);
@@ -485,12 +490,22 @@ export default function CaptainHomeScreen() {
             </View>
           </View>
         </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.supportBtn}
-          onPress={() => router.push("/support" as any)}
-        >
-          <Text style={styles.supportBtnIcon}>💬</Text>
-        </TouchableOpacity>
+        <View style={styles.headerRight}>
+          <TouchableOpacity
+            style={styles.walletBtn}
+            onPress={() => router.push("/captain/wallet" as any)}
+          >
+            <Text style={styles.walletIcon}>💰</Text>
+            <Text style={styles.walletAmount}>{Number(walletBalance).toLocaleString("ar-IQ")}</Text>
+            <Text style={styles.walletCurrency}>د.ع</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.supportBtn}
+            onPress={() => router.push("/support" as any)}
+          >
+            <Text style={styles.supportBtnIcon}>💬</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* زر الحالة */}
@@ -892,6 +907,25 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "600",
   },
+  headerRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  walletBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(255,215,0,0.15)",
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderWidth: 1,
+    borderColor: "#FFD700",
+    gap: 4,
+  },
+  walletIcon: { fontSize: 14 },
+  walletAmount: { fontSize: 13, fontWeight: "800", color: "#FFD700" },
+  walletCurrency: { fontSize: 10, color: "#FFD700", fontWeight: "600" },
   supportBtn: {
     width: 40,
     height: 40,
