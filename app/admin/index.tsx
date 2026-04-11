@@ -94,7 +94,11 @@ export default function AdminDashboard() {
     onSuccess: () => refetchDrivers(),
   });
   const blockDriver = trpc.admin.blockDriver.useMutation({
-    onSuccess: () => refetchDrivers(),
+    onSuccess: async () => {
+      await refetchDrivers();
+      await refetchStats();
+    },
+    onError: (err) => Alert.alert("خطأ", err.message || "حدث خطأ أثناء تحديث الحساب"),
   });
   const [docsDriver, setDocsDriver] = useState<NonNullable<typeof allDrivers>[number] | null>(null);
   const cancelRide = trpc.admin.cancelRide.useMutation({
@@ -666,7 +670,10 @@ export default function AdminDashboard() {
                             if (driver.isBlocked) {
                               Alert.alert("تفعيل الحساب", `هل تريد تفعيل حساب ${driver.name}؟`, [
                                 { text: "إلغاء", style: "cancel" },
-                                { text: "تفعيل", onPress: () => blockDriver.mutate({ driverId: driver.id, isBlocked: false }) },
+                                { text: "تفعيل", onPress: () => blockDriver.mutate(
+                                  { driverId: driver.id, isBlocked: false },
+                                  { onSuccess: () => Alert.alert("✅ تم التفعيل", `تم تفعيل حساب ${driver.name} بنجاح`) }
+                                ) },
                               ]);
                             } else {
                               setBlockTargetDriver({ id: driver.id, name: driver.name });
