@@ -22,6 +22,11 @@ export default function AgentIndexScreen() {
     { passengerId: passenger?.id ?? 0 },
     { enabled: !!passenger?.id }
   );
+  const [selectedMonthIdx, setSelectedMonthIdx] = useState(0);
+  const { data: monthlyStats } = trpc.agents.getMonthlyStats.useQuery(
+    { agentId: agentStatus?.id ?? 0, months: 6 },
+    { enabled: !!agentStatus?.id && agentStatus?.status === "approved" }
+  );
 
   if (isLoading) {
     return (
@@ -218,6 +223,104 @@ export default function AgentIndexScreen() {
         >
           <Text style={styles.transactionsBtnText}>📋  سجل المعاملات</Text>
         </TouchableOpacity>
+
+        {/* التقرير المالي الشهري */}
+        {monthlyStats && monthlyStats.length > 0 && (
+          <View style={styles.reportCard}>
+            <Text style={styles.reportTitle}>📊 التقرير المالي الشهري</Text>
+
+            {/* Month Selector */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                {monthlyStats.map((m, idx) => {
+                  const monthNames = ["يناير","فبراير","مارس","أبريل","مايو","يونيو","يوليو","أغسطس","سبتمبر","أكتوبر","نوفمبر","ديسمبر"];
+                  return (
+                    <TouchableOpacity
+                      key={idx}
+                      style={[styles.monthChip, selectedMonthIdx === idx && styles.monthChipActive]}
+                      onPress={() => setSelectedMonthIdx(idx)}
+                    >
+                      <Text style={[styles.monthChipText, selectedMonthIdx === idx && styles.monthChipTextActive]}>
+                        {monthNames[m.month - 1]}
+                      </Text>
+                      <Text style={[styles.monthChipYear, selectedMonthIdx === idx && styles.monthChipTextActive]}>
+                        {m.year}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </ScrollView>
+
+            {/* Selected Month Stats */}
+            {monthlyStats[selectedMonthIdx] && (() => {
+              const m = monthlyStats[selectedMonthIdx]!;
+              return (
+                <View>
+                  <View style={styles.reportStatsRow}>
+                    <View style={styles.reportStatBox}>
+                      <Text style={styles.reportStatIcon}>💰</Text>
+                      <Text style={styles.reportStatValue}>
+                        {m.totalAmount.toLocaleString("ar-IQ")}
+                      </Text>
+                      <Text style={styles.reportStatLabel}>إجمالي المشحون (د.ع)</Text>
+                    </View>
+                    <View style={styles.reportStatBox}>
+                      <Text style={styles.reportStatIcon}>🔢</Text>
+                      <Text style={styles.reportStatValue}>{m.operationsCount}</Text>
+                      <Text style={styles.reportStatLabel}>عدد العمليات</Text>
+                    </View>
+                  </View>
+                  <View style={styles.reportStatsRow}>
+                    <View style={[styles.reportStatBox, { borderColor: "#3B82F6" }]}>
+                      <Text style={styles.reportStatIcon}>🚗</Text>
+                      <Text style={[styles.reportStatValue, { color: "#3B82F6" }]}>{m.driversCount}</Text>
+                      <Text style={styles.reportStatLabel}>شحن للكابتنات</Text>
+                    </View>
+                    <View style={[styles.reportStatBox, { borderColor: "#8B5CF6" }]}>
+                      <Text style={styles.reportStatIcon}>👤</Text>
+                      <Text style={[styles.reportStatValue, { color: "#8B5CF6" }]}>{m.passengersCount}</Text>
+                      <Text style={styles.reportStatLabel}>شحن للمستخدمين</Text>
+                    </View>
+                  </View>
+                  {m.operationsCount === 0 && (
+                    <View style={{ alignItems: "center", paddingVertical: 12 }}>
+                      <Text style={{ color: "#9CA3AF", fontSize: 14 }}>لا توجد عمليات هذا الشهر</Text>
+                    </View>
+                  )}
+                </View>
+              );
+            })()}
+
+            {/* 6-Month Bar Chart (simple visual) */}
+            <View style={{ marginTop: 16 }}>
+              <Text style={styles.reportChartTitle}>مقارنة آخر 6 أشهر</Text>
+              <View style={styles.barChart}>
+                {[...monthlyStats].reverse().map((m, idx) => {
+                  const maxAmount = Math.max(...monthlyStats.map(x => x.totalAmount), 1);
+                  const barHeight = Math.max((m.totalAmount / maxAmount) * 80, 4);
+                  const monthNames = ["يناير","فبراير","مارس","أبريل","مايو","يونيو","يوليو","أغسطس","سبتمبر","أكتوبر","نوفمبر","ديسمبر"];
+                  const isSelected = selectedMonthIdx === (monthlyStats.length - 1 - idx);
+                  return (
+                    <TouchableOpacity
+                      key={idx}
+                      style={styles.barItem}
+                      onPress={() => setSelectedMonthIdx(monthlyStats.length - 1 - idx)}
+                    >
+                      <Text style={[styles.barAmount, isSelected && { color: "#2ECC71" }]}>
+                        {m.totalAmount > 0 ? (m.totalAmount / 1000).toFixed(0) + "k" : ""}
+                      </Text>
+                      <View style={[styles.bar, { height: barHeight, backgroundColor: isSelected ? "#2ECC71" : "#1A3A2A" }]} />
+                      <Text style={[styles.barLabel, isSelected && { color: "#2ECC71" }]}>
+                        {monthNames[m.month - 1]?.slice(0, 3)}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+          </View>
+        )}
       </ScrollView>
     </ScreenContainer>
   );
@@ -313,4 +416,44 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   transactionsBtnText: { fontSize: 16, fontWeight: "600", color: "#374151" },
+  reportCard: {
+    backgroundColor: "#0D1F17",
+    borderRadius: 20,
+    padding: 20,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: "#1A3A2A",
+  },
+  reportTitle: { fontSize: 16, fontWeight: "800", color: "#2ECC71", marginBottom: 16, textAlign: "right" as const },
+  monthChip: {
+    backgroundColor: "#1A3A2A",
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    alignItems: "center" as const,
+    minWidth: 70,
+  },
+  monthChipActive: { backgroundColor: "#2ECC71" },
+  monthChipText: { fontSize: 13, color: "#A8D8C0", fontWeight: "600" as const },
+  monthChipYear: { fontSize: 10, color: "#6B9E80", marginTop: 2 },
+  monthChipTextActive: { color: "#0D1F17" },
+  reportStatsRow: { flexDirection: "row" as const, gap: 10, marginBottom: 10 },
+  reportStatBox: {
+    flex: 1,
+    backgroundColor: "#1A3A2A",
+    borderRadius: 14,
+    padding: 14,
+    alignItems: "center" as const,
+    borderWidth: 1,
+    borderColor: "#2ECC71",
+  },
+  reportStatIcon: { fontSize: 22, marginBottom: 4 },
+  reportStatValue: { fontSize: 18, fontWeight: "800" as const, color: "#2ECC71", marginBottom: 2 },
+  reportStatLabel: { fontSize: 11, color: "#A8D8C0", textAlign: "center" as const },
+  reportChartTitle: { fontSize: 13, color: "#A8D8C0", fontWeight: "700" as const, marginBottom: 10, textAlign: "right" as const },
+  barChart: { flexDirection: "row" as const, alignItems: "flex-end" as const, justifyContent: "space-around" as const, height: 110 },
+  barItem: { alignItems: "center" as const, flex: 1 },
+  barAmount: { fontSize: 9, color: "#6B9E80", marginBottom: 2 },
+  bar: { width: 24, borderRadius: 4, marginBottom: 4 },
+  barLabel: { fontSize: 10, color: "#6B9E80" },
 });

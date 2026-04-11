@@ -2394,3 +2394,57 @@ export async function searchRecipientByPhone(phone: string) {
   if (passengerResult[0]) return { ...passengerResult[0], type: "passenger" as const };
   return null;
 }
+
+/**
+ * Monthly financial report for agent
+ * Returns stats for each of the last N months
+ */
+export async function getAgentMonthlyStats(agentId: number, months = 6) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const results: Array<{
+    year: number;
+    month: number;
+    totalAmount: number;
+    operationsCount: number;
+    driversCount: number;
+    passengersCount: number;
+  }> = [];
+
+  const now = new Date();
+  for (let i = 0; i < months; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const year = d.getFullYear();
+    const month = d.getMonth() + 1; // 1-12
+    const startOfMonth = new Date(year, month - 1, 1);
+    const endOfMonth = new Date(year, month, 1);
+
+    const rows = await db
+      .select({
+        totalAmount: sql<number>`COALESCE(SUM(${agentTransactions.amount}), 0)`,
+        operationsCount: sql<number>`COUNT(*)`,
+        driversCount: sql<number>`SUM(CASE WHEN ${agentTransactions.recipientType} = 'driver' THEN 1 ELSE 0 END)`,
+        passengersCount: sql<number>`SUM(CASE WHEN ${agentTransactions.recipientType} = 'passenger' THEN 1 ELSE 0 END)`,
+      })
+      .from(agentTransactions)
+      .where(
+        and(
+          eq(agentTransactions.agentId, agentId),
+          sql`${agentTransactions.createdAt} >= ${startOfMonth.toISOString().slice(0, 19).replace('T', ' ')}`,
+          sql`${agentTransactions.createdAt} < ${endOfMonth.toISOString().slice(0, 19).replace('T', ' ')}`
+        )
+      );
+
+    results.push({
+      year,
+      month,
+      totalAmount: Number(rows[0]?.totalAmount ?? 0),
+      operationsCount: Number(rows[0]?.operationsCount ?? 0),
+      driversCount: Number(rows[0]?.driversCount ?? 0),
+      passengersCount: Number(rows[0]?.passengersCount ?? 0),
+    });
+  }
+
+  return results;
+}

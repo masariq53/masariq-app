@@ -102,6 +102,7 @@ import {
   getAgentTransactions,
   getAllAgentTransactions,
   searchRecipientByPhone,
+  getAgentMonthlyStats,
 } from "./db";
 import { storagePut } from "./storage";
 
@@ -2754,6 +2755,15 @@ export const appRouter = router({
       .input(z.object({ phone: z.string() }))
       .query(async ({ input }) => {
         return searchRecipientByPhone(input.phone);
+      }),
+    // التقرير المالي الشهري للوكيل
+    getMonthlyStats: publicProcedure
+      .input(z.object({
+        agentId: z.number(),
+        months: z.number().min(1).max(24).optional(),
+      }))
+      .query(async ({ input }) => {
+        return getAgentMonthlyStats(input.agentId, input.months ?? 6);
       }),
   }),
 });
