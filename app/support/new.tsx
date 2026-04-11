@@ -11,7 +11,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { usePassenger } from "@/lib/passenger-context";
@@ -36,9 +36,10 @@ export default function NewSupportTicketScreen() {
   const userName = isDriverMode ? driver?.name : passenger?.name;
   const userPhone = isDriverMode ? driver?.phone : passenger?.phone;
 
-  const [subject, setSubject] = useState("");
-  const [message, setMessage] = useState("");
-  const [category, setCategory] = useState<Category>("other");
+  const params = useLocalSearchParams<{ prefillSubject?: string; prefillMessage?: string }>();
+  const [subject, setSubject] = useState(params.prefillSubject ?? "");
+  const [message, setMessage] = useState(params.prefillMessage ?? "");
+  const [category, setCategory] = useState<Category>(params.prefillSubject ? "account" : "other");
 
   const colors = {
     bg: isDark ? "#0D0019" : "#F0EBF8",

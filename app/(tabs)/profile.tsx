@@ -122,7 +122,17 @@ export default function ProfileScreen() {
 
         if (freshStatus.isBlocked) {
           const reason = freshStatus.blockReason || "تم تعطيل حسابك من قِبل الإدارة";
-          Alert.alert("حسابك معطّل 🚫", `لا يمكنك الدخول لوضع الكابتن.\n\nالسبب: ${reason}\n\nللاستفسار تواصل مع الدعم.`, [{ text: t.common.ok }]);
+          Alert.alert(
+            "حسابك معطّل 🚫",
+            `لا يمكنك الدخول لوضع الكابتن.\n\nالسبب: ${reason}\n\nللاستفسار تواصل مع الدعم.`,
+            [
+              { text: t.common.ok, style: "cancel" },
+              {
+                text: "💬 تواصل مع الدعم",
+                onPress: () => router.push({ pathname: "/support/new" as any, params: { prefillSubject: "تعطيل الحساب", prefillMessage: `حسابي تم تعطيله. السبب: ${reason}` } }),
+              },
+            ]
+          );
           return;
         }
 
