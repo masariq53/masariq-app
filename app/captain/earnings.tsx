@@ -127,13 +127,7 @@ export default function CaptainEarningsScreen() {
               ⭐ {driver?.rating ?? "4.9"} · {driver?.vehicleModel ?? "سيارة مسار"}
             </Text>
           </View>
-          <View style={styles.walletBox}>
-            <Text style={styles.walletLabel}>المحفظة</Text>
-            <Text style={styles.walletValue}>
-              {parseFloat(driver?.walletBalance ?? "0").toLocaleString("ar-IQ")}
-            </Text>
-            <Text style={styles.walletCurrency}>دينار</Text>
-          </View>
+
         </View>
 
         {/* Period Tabs */}
