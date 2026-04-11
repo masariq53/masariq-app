@@ -152,17 +152,38 @@ export default function CaptainHomeScreen() {
     }).current
   );
 
-  // تمركز الخريطة على موقع GPS الحقيقي عند تحميل الشاشة
+  // تتبع موقع الكابتن على الخريطة بشكل مستمر وسلس
+  // عند أول موقع حقيقي: تمركز الخريطة على الكابتن
+  // عند كل تحديث: تحريك الكاميرا بسلاسة لمتابعة الكابتن
+  const isFirstRealLocation = useRef(true);
+  const [isFollowingDriver, setIsFollowingDriver] = useState(true); // يتتبع الكابتن ما لم يتحرك المستخدم الخريطة يدوياً
+
   useEffect(() => {
-    if (isRealLocation && mapRef.current) {
+    if (!isRealLocation || !mapRef.current) return;
+    if (!isFollowingDriver) return;
+
+    if (isFirstRealLocation.current) {
+      // أول موقع حقيقي: تمركز فوري مع zoom مناسب
       mapRef.current.animateToRegion({
         latitude: coords.latitude,
         longitude: coords.longitude,
-        latitudeDelta: 0.04,
-        longitudeDelta: 0.04,
+        latitudeDelta: 0.025,
+        longitudeDelta: 0.025,
       }, 800);
+      isFirstRealLocation.current = false;
+    } else {
+      // تحديثات لاحقة: تحريك الكاميرا بسلاسة للموقع الجديد مع الحفاظ على zoom الحالي
+      mapRef.current.animateCamera(
+        {
+          center: {
+            latitude: coords.latitude,
+            longitude: coords.longitude,
+          },
+        },
+        { duration: 1000 }
+      );
     }
-  }, [isRealLocation, coords.latitude, coords.longitude]);
+  }, [isRealLocation, coords.latitude, coords.longitude, isFollowingDriver]);
 
   // تحديث موقع السائق على السيرفر كل 15 ثانية عندما يكون متاحاً
   const updateLocationMutation = trpc.driver.updateLocation.useMutation();
@@ -393,8 +414,12 @@ export default function CaptainHomeScreen() {
           style={styles.map}
           provider={PROVIDER_DEFAULT}
           initialRegion={MOSUL_CENTER}
-          showsUserLocation
+          showsUserLocation={false}
           showsMyLocationButton={false}
+          onPanDrag={() => {
+            // عند تحريك الخريطة يدوياً: إيقاف التتبع التلقائي
+            setIsFollowingDriver(false);
+          }}
         >
           {/* موقع الكابتن الحالي */}
           <Marker
@@ -470,6 +495,24 @@ export default function CaptainHomeScreen() {
           </Text>
           <Text style={styles.webMapCoords}>36.3392° N, 43.1289° E</Text>
         </View>
+      )}
+
+      {/* زر إعادة التمركز على موقع الكابتن */}
+      {Platform.OS !== "web" && !isFollowingDriver && (
+        <TouchableOpacity
+          style={[styles.recenterBtn, { bottom: insets.bottom + 120 }]}
+          onPress={() => {
+            setIsFollowingDriver(true);
+            if (mapRef.current && isRealLocation) {
+              mapRef.current.animateCamera(
+                { center: { latitude: coords.latitude, longitude: coords.longitude } },
+                { duration: 600 }
+              );
+            }
+          }}
+        >
+          <Text style={styles.recenterIcon}>📍</Text>
+        </TouchableOpacity>
       )}
 
       {/* Header */}
@@ -936,5 +979,26 @@ const styles = StyleSheet.create({
   },
   supportBtnIcon: {
     fontSize: 20,
+  },
+  recenterBtn: {
+    position: "absolute",
+    right: 16,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: "rgba(28, 10, 60, 0.92)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: "rgba(255,215,0,0.6)",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.4,
+    shadowRadius: 4,
+    elevation: 6,
+    zIndex: 50,
+  },
+  recenterIcon: {
+    fontSize: 22,
   },
 });

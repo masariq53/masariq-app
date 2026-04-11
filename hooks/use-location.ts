@@ -1,9 +1,10 @@
 /**
  * useLocation hook
- * Requests GPS permission and returns current user location.
+ * Requests GPS permission and continuously watches user location in real-time.
  * Falls back to Mosul center if permission denied or unavailable.
+ * Uses watchPositionAsync for continuous tracking (no need to reload).
  */
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Platform } from "react-native";
 import * as Location from "expo-location";
 
@@ -31,69 +32,142 @@ export function useLocation(): LocationState {
   const [error, setError] = useState<string | null>(null);
   const [isRealLocation, setIsRealLocation] = useState(false);
 
-  const fetchLocation = useCallback(async () => {
+  // مرجع للـ subscription لإلغائها عند unmount
+  const watchSubscriptionRef = useRef<Location.LocationSubscription | null>(null);
+  // مرجع لـ watchId على الويب
+  const webWatchIdRef = useRef<number | null>(null);
+
+  const startWatching = useCallback(async () => {
     setIsLoading(true);
     setError(null);
 
     try {
       if (Platform.OS === "web") {
-        // Web: use browser geolocation
+        // Web: استخدام watchPosition للتتبع المستمر
         if (typeof navigator !== "undefined" && navigator.geolocation) {
-          await new Promise<void>((resolve) => {
-            navigator.geolocation.getCurrentPosition(
-              (pos) => {
-                setCoords({
-                  latitude: pos.coords.latitude,
-                  longitude: pos.coords.longitude,
-                });
-                setIsRealLocation(true);
-                resolve();
-              },
-              () => {
-                // Fall back to Mosul center
-                setCoords(MOSUL_CENTER);
-                setIsRealLocation(false);
-                resolve();
-              },
-              { timeout: 5000 }
-            );
-          });
+          // أولاً: جلب الموقع الحالي بسرعة
+          navigator.geolocation.getCurrentPosition(
+            (pos) => {
+              setCoords({
+                latitude: pos.coords.latitude,
+                longitude: pos.coords.longitude,
+              });
+              setIsRealLocation(true);
+              setIsLoading(false);
+            },
+            () => {
+              setCoords(MOSUL_CENTER);
+              setIsRealLocation(false);
+              setIsLoading(false);
+            },
+            { timeout: 5000, enableHighAccuracy: false }
+          );
+
+          // ثانياً: مراقبة مستمرة للتحديثات
+          if (webWatchIdRef.current !== null) {
+            navigator.geolocation.clearWatch(webWatchIdRef.current);
+          }
+          webWatchIdRef.current = navigator.geolocation.watchPosition(
+            (pos) => {
+              setCoords({
+                latitude: pos.coords.latitude,
+                longitude: pos.coords.longitude,
+              });
+              setIsRealLocation(true);
+              setIsLoading(false);
+            },
+            () => {
+              // لا نغير الموقع عند خطأ في التحديث المستمر
+            },
+            { enableHighAccuracy: true, maximumAge: 5000 }
+          );
         } else {
           setCoords(MOSUL_CENTER);
           setIsRealLocation(false);
+          setIsLoading(false);
         }
       } else {
-        // Native: use expo-location
+        // Native: استخدام expo-location watchPositionAsync
         const { status } = await Location.requestForegroundPermissionsAsync();
-
         if (status !== "granted") {
           setError("لم يتم منح إذن الموقع. سيتم استخدام موقع الموصل الافتراضي.");
           setCoords(MOSUL_CENTER);
           setIsRealLocation(false);
-        } else {
-          const location = await Location.getCurrentPositionAsync({
+          setIsLoading(false);
+          return;
+        }
+
+        // جلب الموقع الأولي بسرعة
+        try {
+          const initialLocation = await Location.getCurrentPositionAsync({
             accuracy: Location.Accuracy.Balanced,
           });
           setCoords({
-            latitude: location.coords.latitude,
-            longitude: location.coords.longitude,
+            latitude: initialLocation.coords.latitude,
+            longitude: initialLocation.coords.longitude,
           });
           setIsRealLocation(true);
+          setIsLoading(false);
+        } catch {
+          setIsLoading(false);
         }
+
+        // إلغاء المراقبة السابقة إن وجدت
+        if (watchSubscriptionRef.current) {
+          watchSubscriptionRef.current.remove();
+          watchSubscriptionRef.current = null;
+        }
+
+        // بدء المراقبة المستمرة للموقع
+        const subscription = await Location.watchPositionAsync(
+          {
+            accuracy: Location.Accuracy.BestForNavigation,
+            timeInterval: 2000,    // تحديث كل 2 ثانية
+            distanceInterval: 5,   // أو عند تحرك 5 أمتار
+          },
+          (location) => {
+            setCoords({
+              latitude: location.coords.latitude,
+              longitude: location.coords.longitude,
+            });
+            setIsRealLocation(true);
+            setIsLoading(false);
+          }
+        );
+
+        watchSubscriptionRef.current = subscription;
       }
     } catch (err) {
       console.warn("[useLocation] Error:", err);
       setError("فشل في تحديد الموقع");
       setCoords(MOSUL_CENTER);
       setIsRealLocation(false);
-    } finally {
       setIsLoading(false);
     }
   }, []);
 
+  // بدء المراقبة عند تحميل الـ hook
   useEffect(() => {
-    fetchLocation();
-  }, [fetchLocation]);
+    startWatching();
 
-  return { coords, isLoading, error, isRealLocation, refresh: fetchLocation };
+    // تنظيف عند unmount
+    return () => {
+      if (watchSubscriptionRef.current) {
+        watchSubscriptionRef.current.remove();
+        watchSubscriptionRef.current = null;
+      }
+      if (Platform.OS === "web" && webWatchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(webWatchIdRef.current);
+        webWatchIdRef.current = null;
+      }
+    };
+  }, [startWatching]);
+
+  return {
+    coords,
+    isLoading,
+    error,
+    isRealLocation,
+    refresh: startWatching,
+  };
 }
