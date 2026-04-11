@@ -155,6 +155,13 @@
       "when": 1775903614417,
       "tag": "0021_mushy_revanche",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "5",
+      "when": 1775919723550,
+      "tag": "0022_luxuriant_white_queen",
+      "breakpoints": true
     }
   ]
 }

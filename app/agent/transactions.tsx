@@ -1,0 +1,136 @@
+import React from "react";
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  FlatList,
+  ActivityIndicator,
+} from "react-native";
+import { router } from "expo-router";
+import { ScreenContainer } from "@/components/screen-container";
+import { usePassenger } from "@/lib/passenger-context";
+import { trpc } from "@/lib/trpc";
+
+export default function AgentTransactionsScreen() {
+  const { passenger } = usePassenger();
+
+  const { data: agentStatus } = trpc.agents.getMyStatus.useQuery(
+    { passengerId: passenger?.id ?? 0 },
+    { enabled: !!passenger?.id }
+  );
+
+  const { data: transactions, isLoading } = trpc.agents.getTransactions.useQuery(
+    { agentId: agentStatus?.id ?? 0 },
+    { enabled: !!agentStatus?.id }
+  );
+
+  const formatDate = (d: Date | string) => {
+    const date = new Date(d);
+    return date.toLocaleDateString("ar-IQ", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
+  return (
+    <ScreenContainer>
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <Text style={styles.backText}>→</Text>
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>سجل المعاملات</Text>
+        <View style={{ width: 40 }} />
+      </View>
+
+      {isLoading ? (
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color="#2ECC71" />
+        </View>
+      ) : !transactions || transactions.length === 0 ? (
+        <View style={styles.center}>
+          <Text style={styles.emptyIcon}>📋</Text>
+          <Text style={styles.emptyText}>لا توجد معاملات بعد</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={transactions}
+          keyExtractor={(item) => String(item.id)}
+          contentContainerStyle={styles.list}
+          renderItem={({ item }) => (
+            <View style={styles.txCard}>
+              <View style={styles.txHeader}>
+                <Text style={styles.txAmount}>
+                  -{Number(item.amount).toLocaleString("ar-IQ")} د.ع
+                </Text>
+                <Text style={styles.txType}>
+                  {item.recipientType === "driver" ? "🚗 كابتن" : "👤 مستخدم"}
+                </Text>
+              </View>
+              <Text style={styles.txName}>{item.recipientName || item.recipientPhone}</Text>
+              <Text style={styles.txPhone}>{item.recipientPhone}</Text>
+              {item.notes && <Text style={styles.txNotes}>{item.notes}</Text>}
+              <View style={styles.txFooter}>
+                <Text style={styles.txBalance}>
+                  الرصيد بعد: {Number(item.agentBalanceAfter).toLocaleString("ar-IQ")} د.ع
+                </Text>
+                <Text style={styles.txDate}>{formatDate(item.createdAt)}</Text>
+              </View>
+            </View>
+          )}
+        />
+      )}
+    </ScreenContainer>
+  );
+}
+
+const styles = StyleSheet.create({
+  header: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: "#E5E7EB",
+  },
+  backBtn: { width: 40, height: 40, justifyContent: "center", alignItems: "center" },
+  backText: { fontSize: 22, color: "#2ECC71" },
+  headerTitle: { fontSize: 18, fontWeight: "700", color: "#11181C" },
+  center: { flex: 1, justifyContent: "center", alignItems: "center" },
+  emptyIcon: { fontSize: 48, marginBottom: 12 },
+  emptyText: { fontSize: 16, color: "#6B7280" },
+  list: { padding: 16, paddingBottom: 40 },
+  txCard: {
+    backgroundColor: "#F9FAFB",
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+  },
+  txHeader: {
+    flexDirection: "row-reverse",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 6,
+  },
+  txAmount: { fontSize: 18, fontWeight: "800", color: "#EF4444" },
+  txType: { fontSize: 13, color: "#6B7280" },
+  txName: { fontSize: 16, fontWeight: "600", color: "#111827", textAlign: "right", marginBottom: 2 },
+  txPhone: { fontSize: 13, color: "#6B7280", textAlign: "right", marginBottom: 4 },
+  txNotes: { fontSize: 13, color: "#9CA3AF", textAlign: "right", marginBottom: 4, fontStyle: "italic" },
+  txFooter: {
+    flexDirection: "row-reverse",
+    justifyContent: "space-between",
+    borderTopWidth: 1,
+    borderTopColor: "#E5E7EB",
+    paddingTop: 8,
+    marginTop: 4,
+  },
+  txBalance: { fontSize: 12, color: "#059669", fontWeight: "600" },
+  txDate: { fontSize: 12, color: "#9CA3AF" },
+});

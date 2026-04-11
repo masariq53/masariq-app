@@ -93,6 +93,15 @@ import {
   getAdminUnreadSupportCount,
   rateSupportTicket,
   getSupportRatingStats,
+  applyForAgent,
+  getAgentByPassengerId,
+  getAllAgents,
+  updateAgentStatus,
+  rechargeAgentBalance,
+  agentRechargeWallet,
+  getAgentTransactions,
+  getAllAgentTransactions,
+  searchRecipientByPhone,
 } from "./db";
 import { storagePut } from "./storage";
 
@@ -2610,6 +2619,141 @@ export const appRouter = router({
     adminRatingStats: publicProcedure
       .query(async () => {
         return getSupportRatingStats();
+      }),
+  }),
+
+  // ─── Agents (وكلاء معتمدون) ───────────────────────────────────────────────────
+  agents: router({
+    // رفع وثيقة وكيل
+    uploadDocument: publicProcedure
+      .input(z.object({
+        passengerId: z.number(),
+        documentType: z.enum(["face", "idFront", "idBack", "office"]),
+        base64: z.string(),
+        mimeType: z.string().default("image/jpeg"),
+      }))
+      .mutation(async ({ input }) => {
+        const buffer = Buffer.from(input.base64, "base64");
+        const key = `agents/${input.passengerId}/${input.documentType}_${Date.now()}.jpg`;
+        const { url } = await storagePut(key, buffer, input.mimeType);
+        return { success: true, url };
+      }),
+
+    // تقديم طلب وكيل
+    register: publicProcedure
+      .input(z.object({
+        passengerId: z.number(),
+        phone: z.string(),
+        name: z.string(),
+        facePhotoUrl: z.string().optional(),
+        idFrontUrl: z.string().optional(),
+        idBackUrl: z.string().optional(),
+        officePhotoUrl: z.string().optional(),
+        officeAddress: z.string(),
+        officeLatitude: z.number(),
+        officeLongitude: z.number(),
+      }))
+      .mutation(async ({ input }) => {
+        const agent = await applyForAgent(input);
+        return { success: true, agent };
+      }),
+
+    // جلب حالة طلب الوكيل للمستخدم
+    getMyStatus: publicProcedure
+      .input(z.object({ passengerId: z.number() }))
+      .query(async ({ input }) => {
+        return getAgentByPassengerId(input.passengerId);
+      }),
+
+    // جلب قائمة الوكلاء (للإدارة)
+    getAll: publicProcedure
+      .input(z.object({ status: z.string().optional() }))
+      .query(async ({ input }) => {
+        return getAllAgents(input.status);
+      }),
+
+    // الموافقة على وكيل
+    approve: publicProcedure
+      .input(z.object({
+        agentId: z.number(),
+        adminNotes: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        await updateAgentStatus(input.agentId, "approved", input.adminNotes);
+        return { success: true };
+      }),
+
+    // رفض وكيل
+    reject: publicProcedure
+      .input(z.object({
+        agentId: z.number(),
+        rejectionReason: z.string(),
+        adminNotes: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        await updateAgentStatus(input.agentId, "rejected", input.adminNotes, input.rejectionReason);
+        return { success: true };
+      }),
+
+    // تعليق حساب وكيل
+    suspend: publicProcedure
+      .input(z.object({
+        agentId: z.number(),
+        adminNotes: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        await updateAgentStatus(input.agentId, "suspended", input.adminNotes);
+        return { success: true };
+      }),
+
+    // شحن رصيد وكيل (الإدارة)
+    topup: publicProcedure
+      .input(z.object({
+        agentId: z.number(),
+        amount: z.number().positive(),
+      }))
+      .mutation(async ({ input }) => {
+        await rechargeAgentBalance(input.agentId, input.amount);
+        return { success: true };
+      }),
+
+    // الوكيل يشحن رصيد كابتن أو مستخدم
+    recharge: publicProcedure
+      .input(z.object({
+        agentId: z.number(),
+        recipientType: z.enum(["driver", "passenger"]),
+        recipientId: z.number(),
+        amount: z.number().positive(),
+        notes: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        return agentRechargeWallet(
+          input.agentId,
+          input.recipientType,
+          input.recipientId,
+          input.amount,
+          input.notes
+        );
+      }),
+
+    // سجل معاملات الوكيل
+    getTransactions: publicProcedure
+      .input(z.object({ agentId: z.number(), limit: z.number().optional() }))
+      .query(async ({ input }) => {
+        return getAgentTransactions(input.agentId, input.limit);
+      }),
+
+    // جميع المعاملات (للإدارة)
+    getAllTransactions: publicProcedure
+      .query(async () => {
+        return getAllAgentTransactions();
+      }),
+
+    // البحث عن مستخدم أو كابتن برقم الهاتف
+    searchRecipient: publicProcedure
+      .input(z.object({ phone: z.string() }))
+      .query(async ({ input }) => {
+        return searchRecipientByPhone(input.phone);
       }),
   }),
 });

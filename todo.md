@@ -325,3 +325,14 @@
 - [ ] قسم الدعم الفني في لوحة التحكم الإدارية (app/admin/support.tsx)
 - [ ] فلترة التذاكر (مفتوحة/مغلقة/قيد المعالجة + حسب النوع كابتن/مستخدم)
 - [ ] إشعار Push للمستخدم/الكابتن عند رد الإدارة
+
+## نظام الوكلاء المعتمدين (2026-04-11)
+- [x] schema قاعدة البيانات: جدول agents + agentTransactions
+- [x] API endpoints: register, uploadDocument, getMyStatus, getAll, approve, reject, suspend, topup, recharge, getTransactions, searchRecipient, getAllTransactions
+- [x] زر "كن وكيلاً معتمداً" في صفحة الحساب (profile.tsx)
+- [x] شاشة /agent/index - لوحة الوكيل (حالات: لم يتقدم / قيد المراجعة / مرفوض / موقوف / معتمد)
+- [x] شاشة /agent/register - نموذج التسجيل (رفع وثائق + GPS)
+- [x] شاشة /agent/recharge - شحن رصيد كابتن أو مستخدم
+- [x] شاشة /agent/transactions - سجل معاملات الوكيل
+- [x] لوحة التحكم: tab "الوكلاء" مع قائمة + فلتر + إحصاءات
+- [x] لوحة التحكم: Modal تفاصيل الوكيل (قبول/رفض/إيقاف/شحن رصيد)

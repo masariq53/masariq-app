@@ -23,6 +23,10 @@ import {
   SupportMessage,
   InsertSupportTicket,
   InsertSupportMessage,
+  agents,
+  agentTransactions,
+  Agent,
+  InsertAgent,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
@@ -2173,4 +2177,220 @@ export async function getSupportRatingStats() {
     totalRated: Number(result[0]?.totalRated ?? 0),
     distribution,
   };
+}
+
+// ─── Agents (وكلاء معتمدون) ───────────────────────────────────────────────────
+
+/**
+ * Apply to become an agent
+ */
+export async function applyForAgent(data: {
+  passengerId: number;
+  phone: string;
+  name: string;
+  facePhotoUrl?: string;
+  idFrontUrl?: string;
+  idBackUrl?: string;
+  officePhotoUrl?: string;
+  officeAddress: string;
+  officeLatitude: number;
+  officeLongitude: number;
+}) {
+  const db = await getDb();
+  if (!db) return null;
+  // Check if already applied
+  const existing = await db.select().from(agents).where(eq(agents.passengerId, data.passengerId)).limit(1);
+  if (existing.length > 0) {
+    return existing[0];
+  }
+  await db.insert(agents).values({
+    passengerId: data.passengerId,
+    phone: data.phone,
+    name: data.name,
+    facePhotoUrl: data.facePhotoUrl ?? null,
+    idFrontUrl: data.idFrontUrl ?? null,
+    idBackUrl: data.idBackUrl ?? null,
+    officePhotoUrl: data.officePhotoUrl ?? null,
+    officeAddress: data.officeAddress,
+    officeLatitude: data.officeLatitude,
+    officeLongitude: data.officeLongitude,
+    status: "pending",
+  });
+  const created = await db.select().from(agents).where(eq(agents.passengerId, data.passengerId)).limit(1);
+  return created[0] ?? null;
+}
+
+/**
+ * Get agent by passengerId
+ */
+export async function getAgentByPassengerId(passengerId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db.select().from(agents).where(eq(agents.passengerId, passengerId)).limit(1);
+  return result[0] ?? null;
+}
+
+/**
+ * Get all agents (admin)
+ */
+export async function getAllAgents(status?: string) {
+  const db = await getDb();
+  if (!db) return [];
+  if (status && status !== "all") {
+    return db.select().from(agents).where(eq(agents.status, status as any)).orderBy(desc(agents.createdAt));
+  }
+  return db.select().from(agents).orderBy(desc(agents.createdAt));
+}
+
+/**
+ * Update agent status (admin approve/reject/suspend)
+ */
+export async function updateAgentStatus(
+  agentId: number,
+  status: "approved" | "rejected" | "suspended",
+  adminNotes?: string,
+  rejectionReason?: string
+) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(agents).set({
+    status,
+    adminNotes: adminNotes ?? null,
+    rejectionReason: rejectionReason ?? null,
+    approvedAt: status === "approved" ? new Date() : undefined,
+  }).where(eq(agents.id, agentId));
+}
+
+/**
+ * Recharge agent balance (admin)
+ */
+export async function rechargeAgentBalance(agentId: number, amount: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(agents).set({
+    balance: sql`balance + ${amount}`,
+  }).where(eq(agents.id, agentId));
+}
+
+/**
+ * Agent recharges a driver or passenger wallet
+ */
+export async function agentRechargeWallet(
+  agentId: number,
+  recipientType: "driver" | "passenger",
+  recipientId: number,
+  amount: number,
+  notes?: string
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  // Get agent
+  const agentResult = await db.select().from(agents).where(eq(agents.id, agentId)).limit(1);
+  const agent = agentResult[0];
+  if (!agent) throw new Error("الوكيل غير موجود");
+  if (agent.status !== "approved") throw new Error("حساب الوكيل غير مفعّل");
+
+  const agentBalance = Number(agent.balance);
+  if (agentBalance < amount) throw new Error("رصيد الوكيل غير كافٍ");
+
+  // Get recipient info
+  let recipientName = "";
+  let recipientPhone = "";
+  if (recipientType === "driver") {
+    const r = await db.select({ name: drivers.name, phone: drivers.phone }).from(drivers).where(eq(drivers.id, recipientId)).limit(1);
+    if (!r[0]) throw new Error("الكابتن غير موجود");
+    recipientName = r[0].name;
+    recipientPhone = r[0].phone;
+  } else {
+    const r = await db.select({ name: passengers.name, phone: passengers.phone }).from(passengers).where(eq(passengers.id, recipientId)).limit(1);
+    if (!r[0]) throw new Error("المستخدم غير موجود");
+    recipientName = r[0].name ?? "";
+    recipientPhone = r[0].phone;
+  }
+
+  // Deduct from agent balance
+  await db.update(agents).set({
+    balance: sql`balance - ${amount}`,
+    totalRecharges: sql`totalRecharges + 1`,
+    totalRechargeAmount: sql`totalRechargeAmount + ${amount}`,
+  }).where(eq(agents.id, agentId));
+
+  // Add to recipient wallet
+  if (recipientType === "driver") {
+    await db.update(drivers).set({
+      walletBalance: sql`walletBalance + ${amount}`,
+    }).where(eq(drivers.id, recipientId));
+    // Log wallet transaction
+    await db.insert(walletTransactions).values({
+      userId: recipientId,
+      userType: "driver",
+      type: "credit",
+      amount: amount.toString(),
+      description: `شحن رصيد من وكيل معتمد`,
+      balanceBefore: "0",
+      balanceAfter: amount.toString(),
+    });
+  } else {
+    await db.update(passengers).set({
+      walletBalance: sql`walletBalance + ${amount}`,
+    }).where(eq(passengers.id, recipientId));
+  }
+
+  // Log agent transaction
+  await db.insert(agentTransactions).values({
+    agentId,
+    recipientType,
+    recipientId,
+    recipientName,
+    recipientPhone,
+    amount: amount.toString(),
+    agentBalanceBefore: agentBalance.toString(),
+    agentBalanceAfter: (agentBalance - amount).toString(),
+    notes: notes ?? null,
+  });
+
+  return { success: true };
+}
+
+/**
+ * Get agent transactions
+ */
+export async function getAgentTransactions(agentId: number, limit = 50) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(agentTransactions)
+    .where(eq(agentTransactions.agentId, agentId))
+    .orderBy(desc(agentTransactions.createdAt))
+    .limit(limit);
+}
+
+/**
+ * Get all agent transactions (admin)
+ */
+export async function getAllAgentTransactions(limit = 100) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(agentTransactions)
+    .orderBy(desc(agentTransactions.createdAt))
+    .limit(limit);
+}
+
+/**
+ * Search driver or passenger by phone for agent recharge
+ */
+export async function searchRecipientByPhone(phone: string) {
+  const db = await getDb();
+  if (!db) return null;
+  // Search driver
+  const driverResult = await db.select({
+    id: drivers.id, name: drivers.name, phone: drivers.phone, walletBalance: drivers.walletBalance, type: sql<string>`'driver'`
+  }).from(drivers).where(eq(drivers.phone, phone)).limit(1);
+  if (driverResult[0]) return { ...driverResult[0], type: "driver" as const };
+  // Search passenger
+  const passengerResult = await db.select({
+    id: passengers.id, name: passengers.name, phone: passengers.phone, walletBalance: passengers.walletBalance, type: sql<string>`'passenger'`
+  }).from(passengers).where(eq(passengers.phone, phone)).limit(1);
+  if (passengerResult[0]) return { ...passengerResult[0], type: "passenger" as const };
+  return null;
 }

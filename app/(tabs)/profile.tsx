@@ -385,6 +385,19 @@ export default function ProfileScreen() {
             </View>
           </TouchableOpacity>
 
+          {/* Agent Mode Banner */}
+          <TouchableOpacity
+            style={styles.agentBanner}
+            onPress={() => router.push('/agent' as any)}
+          >
+            <View style={styles.captainBannerContent}>
+              <View>
+                <Text style={styles.agentBannerTitle}>💼  كن وكيلاً معتمداً</Text>
+                <Text style={styles.agentBannerSub}>اشحن رصيد الكابتنات والمستخدمين</Text>
+              </View>
+              <Text style={styles.captainBannerArrow}>←</Text>
+            </View>
+          </TouchableOpacity>
           {/* Logout */}
           <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
             <Text style={styles.logoutText}>🚪  {t.auth.logout}</Text>
@@ -498,6 +511,17 @@ const styles = StyleSheet.create({
   menuArrow: { fontSize: 18 },
   logoutBtn: { marginHorizontal: 16, marginBottom: 12, backgroundColor: "#FEE2E2", borderRadius: 16, paddingVertical: 16, alignItems: "center" },
   logoutText: { color: "#EF4444", fontSize: 16, fontWeight: "700" },
+  agentBanner: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    borderRadius: 16,
+    overflow: 'hidden',
+    backgroundColor: '#1A3A2A',
+    borderWidth: 1,
+    borderColor: '#2ECC71',
+  },
+  agentBannerTitle: { color: '#2ECC71', fontSize: 17, fontWeight: '700', textAlign: 'right' },
+  agentBannerSub: { color: '#A8D8C0', fontSize: 13, marginTop: 4, textAlign: 'right' },
   captainBanner: {
     marginHorizontal: 20, marginBottom: 12, borderRadius: 16,
     overflow: 'hidden', backgroundColor: '#2D0A5E', borderWidth: 1.5, borderColor: '#FFD700',

@@ -63,7 +63,7 @@ function StatCard({
 export default function AdminDashboard() {
   const insets = useSafeAreaInsets();
   const [refreshing, setRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState<"overview" | "rides" | "drivers" | "passengers" | "pricing" | "intercity" | "support">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "rides" | "drivers" | "passengers" | "pricing" | "intercity" | "support" | "agents">("overview");
 
   const [driversPage, setDriversPage] = useState(0);
   const [passengersPage, setPassengersPage] = useState(0);
@@ -145,6 +145,13 @@ export default function AdminDashboard() {
   });
 
   // ─── Support State ───────────────────────────────────────────────────────────
+  const [agentStatusFilter, setAgentStatusFilter] = useState<"all" | "pending" | "approved" | "rejected" | "suspended">("all");
+  const [selectedAgent, setSelectedAgent] = useState<any | null>(null);
+  const [showAgentModal, setShowAgentModal] = useState(false);
+  const [agentTopupAmount, setAgentTopupAmount] = useState("");
+  const [agentTopupLoading, setAgentTopupLoading] = useState(false);
+  const [showAgentRejectModal, setShowAgentRejectModal] = useState(false);
+  const [agentRejectReason, setAgentRejectReason] = useState("");
   const [supportStatusFilter, setSupportStatusFilter] = useState<"all" | "open" | "in_progress" | "resolved" | "closed">("all");
   const [supportUserTypeFilter, setSupportUserTypeFilter] = useState<"all" | "passenger" | "driver">("all");
   const [selectedSupportTicketId, setSelectedSupportTicketId] = useState<number | null>(null);
@@ -171,6 +178,15 @@ export default function AdminDashboard() {
     onSuccess: () => refetchSupport(),
   });
   const markSupportReadMutation = trpc.support.markRead.useMutation();
+  const { data: allAgents, isLoading: agentsLoading, refetch: refetchAgents } = trpc.agents.getAll.useQuery(
+    { status: agentStatusFilter },
+    { enabled: activeTab === "agents" }
+  );
+  const approveAgentMutation = trpc.agents.approve.useMutation({ onSuccess: () => refetchAgents() });
+  const rejectAgentMutation = trpc.agents.reject.useMutation({ onSuccess: () => refetchAgents() });
+  const suspendAgentMutation = trpc.agents.suspend.useMutation({ onSuccess: () => refetchAgents() });
+  const topupAgentMutation = trpc.agents.topup.useMutation({ onSuccess: () => refetchAgents() });
+
   const { data: ratingStats } = trpc.support.adminRatingStats.useQuery(
     undefined,
     { enabled: activeTab === "support" }
@@ -196,6 +212,7 @@ export default function AdminDashboard() {
     { id: "pricing", label: "التسعير", icon: "💰" },
     { id: "intercity", label: "بين المدن", icon: "🗣️" },
     { id: "support", label: "الدعم الفني", icon: "🎟️" },
+    { id: "agents", label: "الوكلاء", icon: "💼" },
   ] as const;
 
   return (
@@ -1535,6 +1552,88 @@ export default function AdminDashboard() {
           </View>
         )}
 
+        {/* Agents Section */}
+        {activeTab === "agents" && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>💼 إدارة الوكلاء المعتمدين</Text>
+
+            {allAgents && (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+                {[
+                  { label: 'الكل', value: allAgents.length, color: '#9B8EC4' },
+                  { label: 'قيد المراجعة', value: allAgents.filter((a: any) => a.status === 'pending').length, color: '#F59E0B' },
+                  { label: 'معتمدون', value: allAgents.filter((a: any) => a.status === 'approved').length, color: '#22C55E' },
+                  { label: 'مرفوضون', value: allAgents.filter((a: any) => a.status === 'rejected').length, color: '#EF4444' },
+                ].map((stat: any) => (
+                  <View key={stat.label} style={{ backgroundColor: '#1E0F4A', borderRadius: 10, padding: 10, minWidth: 80, alignItems: 'center', borderWidth: 1, borderColor: stat.color + '44' }}>
+                    <Text style={{ color: stat.color, fontSize: 20, fontWeight: '800' }}>{stat.value}</Text>
+                    <Text style={{ color: '#9B8EC4', fontSize: 11, marginTop: 2 }}>{stat.label}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                {(['all', 'pending', 'approved', 'rejected', 'suspended'] as const).map(s => (
+                  <TouchableOpacity
+                    key={s}
+                    style={[styles.filterChip, agentStatusFilter === s && styles.filterChipActive]}
+                    onPress={() => setAgentStatusFilter(s)}
+                  >
+                    <Text style={[styles.filterChipText, agentStatusFilter === s && styles.filterChipTextActive]}>
+                      {s === 'all' ? 'الكل' : s === 'pending' ? 'قيد المراجعة' : s === 'approved' ? 'معتمد' : s === 'rejected' ? 'مرفوض' : 'موقوف'}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
+
+            {agentsLoading ? (
+              <ActivityIndicator color="#FFD700" size="large" />
+            ) : !allAgents || allAgents.length === 0 ? (
+              <View style={{ alignItems: 'center', padding: 32 }}>
+                <Text style={{ fontSize: 40, marginBottom: 8 }}>💼</Text>
+                <Text style={{ color: '#9B8EC4', fontSize: 15 }}>لا يوجد وكلاء</Text>
+              </View>
+            ) : (
+              allAgents.map((agent: any) => (
+                <TouchableOpacity
+                  key={agent.id}
+                  style={{ backgroundColor: '#1E0F4A', borderRadius: 14, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: '#2D1B4E' }}
+                  onPress={() => { setSelectedAgent(agent); setShowAgentModal(true); }}
+                >
+                  <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text style={{ color: '#FFFFFF', fontSize: 16, fontWeight: '700' }}>{agent.name}</Text>
+                      <Text style={{ color: '#9B8EC4', fontSize: 13, marginTop: 2 }}>{agent.phone}</Text>
+                    </View>
+                    <View style={{
+                      backgroundColor: agent.status === 'approved' ? '#22C55E22' : agent.status === 'pending' ? '#F59E0B22' : agent.status === 'rejected' ? '#EF444422' : '#6B728022',
+                      borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4,
+                    }}>
+                      <Text style={{
+                        color: agent.status === 'approved' ? '#22C55E' : agent.status === 'pending' ? '#F59E0B' : agent.status === 'rejected' ? '#EF4444' : '#9CA3AF',
+                        fontSize: 12, fontWeight: '700',
+                      }}>
+                        {agent.status === 'approved' ? '✅ معتمد' : agent.status === 'pending' ? '⏳ قيد المراجعة' : agent.status === 'rejected' ? '❌ مرفوض' : '🚫 موقوف'}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between' }}>
+                    <Text style={{ color: '#9B8EC4', fontSize: 12 }}>📍 {agent.officeAddress}</Text>
+                    {agent.status === 'approved' && (
+                      <Text style={{ color: '#22C55E', fontSize: 13, fontWeight: '700' }}>
+                        💰 {Number(agent.balance).toLocaleString('ar-IQ')} د.ع
+                      </Text>
+                    )}
+                  </View>
+                </TouchableOpacity>
+              ))
+            )}
+          </View>
+        )}
+
         <View style={{ height: 40 }} />
       </ScrollView>
 
@@ -1763,6 +1862,191 @@ export default function AdminDashboard() {
               <TouchableOpacity
                 style={{ flex: 1, backgroundColor: '#333', borderRadius: 10, padding: 12, alignItems: 'center' }}
                 onPress={() => setShowBlockModal(false)}
+              >
+                <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>إلغاء</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Agent Detail Modal */}
+      <Modal visible={showAgentModal} transparent animationType="slide" onRequestClose={() => setShowAgentModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={{ backgroundColor: '#1A0533', borderRadius: 20, padding: 20, width: '92%', maxHeight: '88%' }}>
+            <Text style={{ color: '#FFD700', fontSize: 16, fontWeight: '800', marginBottom: 4, textAlign: 'center' }}>
+              تفاصيل الوكيل: {selectedAgent?.name}
+            </Text>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {selectedAgent && (
+                <>
+                  {/* Status */}
+                  <View style={{ backgroundColor: '#2D1B4E', borderRadius: 12, padding: 12, marginBottom: 12 }}>
+                    <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 6 }}>
+                      <Text style={{ color: '#9B8EC4', fontSize: 13 }}>الحالة:</Text>
+                      <Text style={{ color: selectedAgent.status === 'approved' ? '#22C55E' : selectedAgent.status === 'pending' ? '#F59E0B' : '#EF4444', fontWeight: '700' }}>
+                        {selectedAgent.status === 'approved' ? '✅ معتمد' : selectedAgent.status === 'pending' ? '⏳ قيد المراجعة' : selectedAgent.status === 'rejected' ? '❌ مرفوض' : '🚫 موقوف'}
+                      </Text>
+                    </View>
+                    <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 6 }}>
+                      <Text style={{ color: '#9B8EC4', fontSize: 13 }}>الاسم:</Text>
+                      <Text style={{ color: '#fff', fontWeight: '600' }}>{selectedAgent.name}</Text>
+                    </View>
+                    <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 6 }}>
+                      <Text style={{ color: '#9B8EC4', fontSize: 13 }}>الهاتف:</Text>
+                      <Text style={{ color: '#fff' }}>{selectedAgent.phone}</Text>
+                    </View>
+                    <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 6 }}>
+                      <Text style={{ color: '#9B8EC4', fontSize: 13 }}>العنوان:</Text>
+                      <Text style={{ color: '#fff', flex: 1, textAlign: 'right', marginRight: 8 }}>{selectedAgent.officeAddress}</Text>
+                    </View>
+                    {selectedAgent.status === 'approved' && (
+                      <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between' }}>
+                        <Text style={{ color: '#9B8EC4', fontSize: 13 }}>الرصيد:</Text>
+                        <Text style={{ color: '#22C55E', fontWeight: '800', fontSize: 16 }}>
+                          {Number(selectedAgent.balance).toLocaleString('ar-IQ')} د.ع
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+
+                  {/* Documents */}
+                  <Text style={{ color: '#9B8EC4', fontSize: 13, fontWeight: '700', marginBottom: 8, textAlign: 'right' }}>الوثائق:</Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+                    {[
+                      { key: 'facePhotoUrl', label: 'بصمة الوجه' },
+                      { key: 'idFrontUrl', label: 'هوية أمامية' },
+                      { key: 'idBackUrl', label: 'هوية خلفية' },
+                      { key: 'officePhotoUrl', label: 'صورة المكتب' },
+                    ].map(doc => selectedAgent[doc.key] ? (
+                      <View key={doc.key} style={{ alignItems: 'center' }}>
+                        <Image source={{ uri: selectedAgent[doc.key] }} style={{ width: 80, height: 80, borderRadius: 8 }} />
+                        <Text style={{ color: '#9B8EC4', fontSize: 10, marginTop: 2 }}>{doc.label}</Text>
+                      </View>
+                    ) : null)}
+                  </View>
+
+                  {/* Topup */}
+                  {selectedAgent.status === 'approved' && (
+                    <View style={{ backgroundColor: '#2D1B4E', borderRadius: 12, padding: 12, marginBottom: 12 }}>
+                      <Text style={{ color: '#FFD700', fontSize: 14, fontWeight: '700', marginBottom: 8, textAlign: 'right' }}>💰 شحن رصيد الوكيل</Text>
+                      <TextInput
+                        value={agentTopupAmount}
+                        onChangeText={setAgentTopupAmount}
+                        placeholder="المبلغ بالدينار العراقي"
+                        placeholderTextColor="#666"
+                        keyboardType="numeric"
+                        style={{ backgroundColor: '#1A0533', color: '#fff', borderRadius: 8, padding: 10, fontSize: 14, textAlign: 'right', marginBottom: 8, borderWidth: 1, borderColor: '#4a2080' }}
+                      />
+                      <TouchableOpacity
+                        style={{ backgroundColor: '#22C55E', borderRadius: 10, padding: 12, alignItems: 'center' }}
+                        disabled={agentTopupLoading}
+                        onPress={async () => {
+                          const amt = parseFloat(agentTopupAmount);
+                          if (!amt || amt <= 0) { Alert.alert('خطأ', 'أدخل مبلغاً صحيحاً'); return; }
+                          setAgentTopupLoading(true);
+                          try {
+                            await topupAgentMutation.mutateAsync({ agentId: selectedAgent.id, amount: amt });
+                            setAgentTopupAmount('');
+                            Alert.alert('تم', `تم شحن ${amt.toLocaleString('ar-IQ')} د.ع بنجاح`);
+                            setShowAgentModal(false);
+                          } catch (e: any) { Alert.alert('خطأ', e.message); }
+                          setAgentTopupLoading(false);
+                        }}
+                      >
+                        {agentTopupLoading ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontWeight: '700' }}>شحن الرصيد</Text>}
+                      </TouchableOpacity>
+                    </View>
+                  )}
+
+                  {/* Actions */}
+                  <View style={{ gap: 8 }}>
+                    {selectedAgent.status === 'pending' && (
+                      <>
+                        <TouchableOpacity
+                          style={{ backgroundColor: '#22C55E', borderRadius: 10, padding: 12, alignItems: 'center' }}
+                          onPress={() => {
+                            Alert.alert('تأكيد', `تفعيل حساب ${selectedAgent.name}؟`, [
+                              { text: 'إلغاء', style: 'cancel' },
+                              { text: 'تفعيل', onPress: () => { approveAgentMutation.mutate({ agentId: selectedAgent.id }); setShowAgentModal(false); } },
+                            ]);
+                          }}
+                        >
+                          <Text style={{ color: '#fff', fontWeight: '700' }}>✅ قبول الطلب</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={{ backgroundColor: '#EF4444', borderRadius: 10, padding: 12, alignItems: 'center' }}
+                          onPress={() => { setShowAgentRejectModal(true); }}
+                        >
+                          <Text style={{ color: '#fff', fontWeight: '700' }}>❌ رفض الطلب</Text>
+                        </TouchableOpacity>
+                      </>
+                    )}
+                    {selectedAgent.status === 'approved' && (
+                      <TouchableOpacity
+                        style={{ backgroundColor: '#F59E0B', borderRadius: 10, padding: 12, alignItems: 'center' }}
+                        onPress={() => {
+                          Alert.alert('تأكيد', `إيقاف حساب ${selectedAgent.name}؟`, [
+                            { text: 'إلغاء', style: 'cancel' },
+                            { text: 'إيقاف', style: 'destructive', onPress: () => { suspendAgentMutation.mutate({ agentId: selectedAgent.id }); setShowAgentModal(false); } },
+                          ]);
+                        }}
+                      >
+                        <Text style={{ color: '#fff', fontWeight: '700' }}>🚫 إيقاف الحساب</Text>
+                      </TouchableOpacity>
+                    )}
+                    {selectedAgent.status === 'suspended' && (
+                      <TouchableOpacity
+                        style={{ backgroundColor: '#22C55E', borderRadius: 10, padding: 12, alignItems: 'center' }}
+                        onPress={() => { approveAgentMutation.mutate({ agentId: selectedAgent.id }); setShowAgentModal(false); }}
+                      >
+                        <Text style={{ color: '#fff', fontWeight: '700' }}>✅ إعادة تفعيل</Text>
+                      </TouchableOpacity>
+                    )}
+                    <TouchableOpacity
+                      style={{ backgroundColor: '#333', borderRadius: 10, padding: 12, alignItems: 'center' }}
+                      onPress={() => setShowAgentModal(false)}
+                    >
+                      <Text style={{ color: '#fff', fontWeight: '700' }}>إغلاق</Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Agent Reject Reason Modal */}
+      <Modal visible={showAgentRejectModal} transparent animationType="fade" onRequestClose={() => setShowAgentRejectModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={{ backgroundColor: '#1e0a3c', borderRadius: 16, padding: 24, width: '85%', maxWidth: 400 }}>
+            <Text style={{ color: '#fff', fontSize: 18, fontWeight: '800', marginBottom: 8, textAlign: 'right' }}>❌ رفض طلب الوكيل</Text>
+            <TextInput
+              value={agentRejectReason}
+              onChangeText={setAgentRejectReason}
+              placeholder="سبب الرفض (اختياري)..."
+              placeholderTextColor="#888"
+              style={{ backgroundColor: '#2a1050', color: '#fff', borderRadius: 10, padding: 12, fontSize: 14, textAlign: 'right', marginBottom: 20, borderWidth: 1, borderColor: '#4a2080' }}
+              multiline numberOfLines={3}
+            />
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <TouchableOpacity
+                style={{ flex: 1, backgroundColor: '#EF4444', borderRadius: 10, padding: 12, alignItems: 'center' }}
+                onPress={() => {
+                  if (selectedAgent) {
+                    rejectAgentMutation.mutate({ agentId: selectedAgent.id, rejectionReason: agentRejectReason || "" });
+                  }
+                  setShowAgentRejectModal(false);
+                  setShowAgentModal(false);
+                  setAgentRejectReason('');
+                }}
+              >
+                <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>رفض</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{ flex: 1, backgroundColor: '#333', borderRadius: 10, padding: 12, alignItems: 'center' }}
+                onPress={() => setShowAgentRejectModal(false)}
               >
                 <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>إلغاء</Text>
               </TouchableOpacity>

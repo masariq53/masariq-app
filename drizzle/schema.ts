@@ -390,3 +390,60 @@ export const supportMessages = mysqlTable("supportMessages", {
 });
 export type SupportMessage = typeof supportMessages.$inferSelect;
 export type InsertSupportMessage = typeof supportMessages.$inferInsert;
+
+/**
+ * Agents (وكلاء معتمدون) - authorized agents who can recharge captain/passenger wallets
+ */
+export const agents = mysqlTable("agents", {
+  id: int("id").autoincrement().primaryKey(),
+  // مرتبط بمستخدم موجود (passenger)
+  passengerId: int("passengerId").notNull(),
+  phone: varchar("phone", { length: 20 }).notNull(),
+  name: varchar("name", { length: 100 }).notNull(),
+  // وثائق التحقق
+  facePhotoUrl: text("facePhotoUrl"),
+  idFrontUrl: text("idFrontUrl"),
+  idBackUrl: text("idBackUrl"),
+  officePhotoUrl: text("officePhotoUrl"),
+  // عنوان المكتب
+  officeAddress: varchar("officeAddress", { length: 500 }),
+  officeLatitude: float("officeLatitude"),
+  officeLongitude: float("officeLongitude"),
+  // الحالة
+  status: mysqlEnum("status", ["pending", "approved", "rejected", "suspended"]).default("pending").notNull(),
+  rejectionReason: varchar("rejectionReason", { length: 500 }),
+  // رصيد الوكيل (يُشحن من الإدارة)
+  balance: decimal("balance", { precision: 15, scale: 2 }).default("0").notNull(),
+  // إجمالي عمليات الشحن
+  totalRecharges: int("totalRecharges").default(0).notNull(),
+  totalRechargeAmount: decimal("totalRechargeAmount", { precision: 15, scale: 2 }).default("0").notNull(),
+  // ملاحظات الإدارة
+  adminNotes: text("adminNotes"),
+  approvedAt: timestamp("approvedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type Agent = typeof agents.$inferSelect;
+export type InsertAgent = typeof agents.$inferInsert;
+
+/**
+ * Agent transactions - log of all recharge operations done by agents
+ */
+export const agentTransactions = mysqlTable("agentTransactions", {
+  id: int("id").autoincrement().primaryKey(),
+  agentId: int("agentId").notNull(),
+  // نوع المستفيد
+  recipientType: mysqlEnum("recipientType", ["driver", "passenger"]).notNull(),
+  recipientId: int("recipientId").notNull(),
+  recipientName: varchar("recipientName", { length: 100 }),
+  recipientPhone: varchar("recipientPhone", { length: 20 }),
+  // المبلغ
+  amount: decimal("amount", { precision: 15, scale: 2 }).notNull(),
+  // رصيد الوكيل قبل وبعد العملية
+  agentBalanceBefore: decimal("agentBalanceBefore", { precision: 15, scale: 2 }).notNull(),
+  agentBalanceAfter: decimal("agentBalanceAfter", { precision: 15, scale: 2 }).notNull(),
+  notes: varchar("notes", { length: 500 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type AgentTransaction = typeof agentTransactions.$inferSelect;
+export type InsertAgentTransaction = typeof agentTransactions.$inferInsert;
