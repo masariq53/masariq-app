@@ -2540,20 +2540,35 @@ export const appRouter = router({
         return getSupportMessages(input.ticketId);
       }),
 
+    // رفع صورة في محادثة الدعم الفني
+    uploadImage: publicProcedure
+      .input(z.object({
+        base64: z.string(),
+        mimeType: z.string().default("image/jpeg"),
+      }))
+      .mutation(async ({ input }) => {
+        const buffer = Buffer.from(input.base64, "base64");
+        const key = `support/images/${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`;
+        const { url } = await storagePut(key, buffer, input.mimeType);
+        return { success: true, url };
+      }),
+
     // إرسال رسالة من المستخدم
     sendMessage: publicProcedure
       .input(z.object({
         ticketId: z.number(),
         senderType: z.enum(["user", "admin"]),
         senderName: z.string().optional(),
-        message: z.string().min(1),
+        message: z.string(),
+        imageUrl: z.string().optional(),
       }))
       .mutation(async ({ input }) => {
         const msgId = await addSupportMessage({
           ticketId: input.ticketId,
           senderType: input.senderType,
           senderName: input.senderName,
-          message: input.message,
+          message: input.message || "",
+          imageUrl: input.imageUrl,
         });
         // إرسال إشعار Push للمستخدم عند رد الإدارة
         if (input.senderType === "admin") {

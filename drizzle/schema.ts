@@ -385,6 +385,7 @@ export const supportMessages = mysqlTable("supportMessages", {
   senderType: mysqlEnum("senderType", ["user", "admin"]).notNull(),
   senderName: varchar("senderName", { length: 100 }),
   message: text("message").notNull(),
+  imageUrl: varchar("imageUrl", { length: 500 }),
   isRead: boolean("isRead").default(false).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });

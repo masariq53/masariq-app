@@ -162,6 +162,13 @@
       "when": 1775919723550,
       "tag": "0022_luxuriant_white_queen",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "5",
+      "when": 1775928585016,
+      "tag": "0023_blushing_nehzno",
+      "breakpoints": true
     }
   ]
 }

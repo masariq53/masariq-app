@@ -11,6 +11,7 @@ import {
   Platform,
   Alert,
   Modal,
+  Image,
 } from "react-native";
 import { router, useLocalSearchParams, useFocusEffect } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -20,6 +21,9 @@ import { useDriver } from "@/lib/driver-context";
 import { useThemeContext } from "@/lib/theme-provider";
 import { useT } from "@/lib/i18n";
 import { trpc } from "@/lib/trpc";
+import * as ImagePicker from "expo-image-picker";
+import * as ImageManipulator from "expo-image-manipulator";
+import { CameraView, useCameraPermissions } from "expo-camera";
 
 type Message = {
   id: number;
@@ -27,6 +31,7 @@ type Message = {
   senderType: "user" | "admin";
   senderName: string | null;
   message: string;
+  imageUrl?: string | null;
   createdAt: string;
   isRead: number;
 };
@@ -58,7 +63,15 @@ export default function SupportChatScreen() {
   const [showRatingModal, setShowRatingModal] = useState(false);
   const [selectedRating, setSelectedRating] = useState(0);
   const [ratingComment, setRatingComment] = useState("");
+  const [showAttachMenu, setShowAttachMenu] = useState(false);
+  const [showCamera, setShowCamera] = useState(false);
+  const [pendingImage, setPendingImage] = useState<string | null>(null); // base64 or uri preview
+  const [pendingImageBase64, setPendingImageBase64] = useState<string | null>(null);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
   const flatListRef = useRef<FlatList>(null);
+  const cameraRef = useRef<CameraView>(null);
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
+  const [cameraFacing, setCameraFacing] = useState<"front" | "back">("back");
 
   const colors = {
     bg: isDark ? "#0D0019" : "#F0EBF8",
@@ -88,6 +101,7 @@ export default function SupportChatScreen() {
   );
 
   const sendMessageMutation = trpc.support.sendMessage.useMutation();
+  const uploadImageMutation = trpc.support.uploadImage.useMutation();
   const markReadMutation = trpc.support.markRead.useMutation();
   const rateTicketMutation = trpc.support.rateTicket.useMutation({
     onSuccess: () => {
@@ -105,7 +119,6 @@ export default function SupportChatScreen() {
   const isClosed = ticket?.status === "closed" || ticket?.status === "resolved";
   const hasRated = !!(ticket?.rating);
 
-  // تحديد الرسائل كمقروءة عند فتح الشاشة
   useFocusEffect(
     useCallback(() => {
       if (ticketId) {
@@ -114,7 +127,6 @@ export default function SupportChatScreen() {
     }, [ticketId])
   );
 
-  // التمرير للأسفل عند وصول رسائل جديدة
   useEffect(() => {
     if (messages.length > 0) {
       setTimeout(() => {
@@ -125,21 +137,98 @@ export default function SupportChatScreen() {
 
   const handleSend = async () => {
     const text = newMessage.trim();
-    if (!text) return;
+    if (!text && !pendingImageBase64) return;
     if (!ticketId) return;
 
+    const msgText = text;
+    const imgBase64 = pendingImageBase64;
+
     setNewMessage("");
+    setPendingImage(null);
+    setPendingImageBase64(null);
+
     try {
+      let imageUrl: string | undefined;
+
+      if (imgBase64) {
+        setIsUploadingImage(true);
+        const result = await uploadImageMutation.mutateAsync({
+          base64: imgBase64,
+          mimeType: "image/jpeg",
+        });
+        imageUrl = result.url;
+        setIsUploadingImage(false);
+      }
+
       await sendMessageMutation.mutateAsync({
         ticketId,
         senderType: "user",
         senderName: userName ?? undefined,
-        message: text,
+        message: msgText || "",
+        imageUrl,
       });
       await messagesQuery.refetch();
     } catch (e) {
+      setIsUploadingImage(false);
       Alert.alert("خطأ", "فشل إرسال الرسالة. يرجى المحاولة مجدداً.");
-      setNewMessage(text);
+      setNewMessage(msgText);
+    }
+  };
+
+  const handlePickFromGallery = async () => {
+    setShowAttachMenu(false);
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("صلاحية مطلوبة", "يرجى السماح بالوصول إلى المعرض");
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.7,
+      base64: true,
+      allowsEditing: true,
+    });
+    if (!result.canceled && result.assets[0]) {
+      const asset = result.assets[0];
+      // Compress if needed
+      const manipulated = await ImageManipulator.manipulateAsync(
+        asset.uri,
+        [{ resize: { width: 1024 } }],
+        { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+      );
+      setPendingImage(manipulated.uri);
+      setPendingImageBase64(manipulated.base64 ?? asset.base64 ?? null);
+    }
+  };
+
+  const handleOpenCamera = async () => {
+    setShowAttachMenu(false);
+    if (!cameraPermission?.granted) {
+      const result = await requestCameraPermission();
+      if (!result.granted) {
+        Alert.alert("صلاحية مطلوبة", "يرجى السماح بالوصول إلى الكاميرا");
+        return;
+      }
+    }
+    setShowCamera(true);
+  };
+
+  const handleCapturePhoto = async () => {
+    if (!cameraRef.current) return;
+    try {
+      const photo = await cameraRef.current.takePictureAsync({ base64: true, quality: 0.7 });
+      if (photo) {
+        const manipulated = await ImageManipulator.manipulateAsync(
+          photo.uri,
+          [{ resize: { width: 1024 } }],
+          { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+        );
+        setPendingImage(manipulated.uri);
+        setPendingImageBase64(manipulated.base64 ?? photo.base64 ?? null);
+        setShowCamera(false);
+      }
+    } catch (e) {
+      Alert.alert("خطأ", "فشل التقاط الصورة");
     }
   };
 
@@ -197,9 +286,18 @@ export default function SupportChatScreen() {
             {!isUser && (
               <Text style={[styles.senderName, { color: colors.accent }]}>{t.help.adminReply}</Text>
             )}
-            <Text style={[styles.messageText, { color: isUser ? colors.userText : colors.adminText }]}>
-              {item.message}
-            </Text>
+            {item.imageUrl ? (
+              <Image
+                source={{ uri: item.imageUrl }}
+                style={styles.messageImage}
+                resizeMode="cover"
+              />
+            ) : null}
+            {item.message ? (
+              <Text style={[styles.messageText, { color: isUser ? colors.userText : colors.adminText }]}>
+                {item.message}
+              </Text>
+            ) : null}
             <Text style={[styles.messageTime, { color: isUser ? "rgba(255,255,255,0.6)" : colors.muted }]}>
               {formatTime(item.createdAt)}
             </Text>
@@ -231,12 +329,8 @@ export default function SupportChatScreen() {
               </Text>
             )}
           </View>
-          {/* زر التقييم إذا كانت التذكرة مغلقة ولم يُقيَّم بعد */}
           {isClosed && !hasRated && (
-            <TouchableOpacity
-              style={styles.rateBtn}
-              onPress={() => setShowRatingModal(true)}
-            >
+            <TouchableOpacity style={styles.rateBtn} onPress={() => setShowRatingModal(true)}>
               <Text style={styles.rateBtnText}>⭐ قيّم</Text>
             </TouchableOpacity>
           )}
@@ -264,10 +358,7 @@ export default function SupportChatScreen() {
             onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
             ListFooterComponent={
               isClosed && !hasRated ? (
-                <TouchableOpacity
-                  style={styles.ratePromptCard}
-                  onPress={() => setShowRatingModal(true)}
-                >
+                <TouchableOpacity style={styles.ratePromptCard} onPress={() => setShowRatingModal(true)}>
                   <Text style={styles.ratePromptIcon}>⭐</Text>
                   <Text style={styles.ratePromptTitle}>كيف كانت تجربتك مع الدعم الفني؟</Text>
                   <Text style={styles.ratePromptSub}>اضغط هنا لتقييم جودة الخدمة</Text>
@@ -285,9 +376,29 @@ export default function SupportChatScreen() {
           />
         )}
 
+        {/* Pending image preview */}
+        {pendingImage && (
+          <View style={[styles.pendingImageRow, { backgroundColor: colors.input, borderTopColor: colors.inputBorder }]}>
+            <Image source={{ uri: pendingImage }} style={styles.pendingImageThumb} resizeMode="cover" />
+            <Text style={[styles.pendingImageLabel, { color: colors.muted }]}>صورة مرفقة</Text>
+            <TouchableOpacity onPress={() => { setPendingImage(null); setPendingImageBase64(null); }} style={styles.removePendingBtn}>
+              <Text style={styles.removePendingText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* Input */}
         {!isClosed ? (
           <View style={[styles.inputRow, { backgroundColor: colors.input, borderTopColor: colors.inputBorder }]}>
+            {/* Attach button */}
+            <TouchableOpacity
+              style={styles.attachBtn}
+              onPress={() => setShowAttachMenu(true)}
+              disabled={isUploadingImage || sendMessageMutation.isPending}
+            >
+              <Text style={styles.attachIcon}>📎</Text>
+            </TouchableOpacity>
+
             <TextInput
               style={[styles.textInput, { color: colors.text }]}
               value={newMessage}
@@ -300,11 +411,13 @@ export default function SupportChatScreen() {
               onSubmitEditing={handleSend}
             />
             <TouchableOpacity
-              style={[styles.sendBtn, { backgroundColor: newMessage.trim() ? colors.sendBtn : colors.border }]}
+              style={[styles.sendBtn, {
+                backgroundColor: (newMessage.trim() || pendingImageBase64) ? colors.sendBtn : colors.border
+              }]}
               onPress={handleSend}
-              disabled={!newMessage.trim() || sendMessageMutation.isPending}
+              disabled={(!newMessage.trim() && !pendingImageBase64) || sendMessageMutation.isPending || isUploadingImage}
             >
-              {sendMessageMutation.isPending ? (
+              {(sendMessageMutation.isPending || isUploadingImage) ? (
                 <ActivityIndicator color="#FFFFFF" size="small" />
               ) : (
                 <Text style={styles.sendIcon}>↑</Text>
@@ -322,6 +435,65 @@ export default function SupportChatScreen() {
         <View style={{ height: insets.bottom }} />
       </View>
 
+      {/* Attach Menu Modal */}
+      <Modal
+        visible={showAttachMenu}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowAttachMenu(false)}
+      >
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowAttachMenu(false)}>
+          <View style={styles.attachMenuSheet}>
+            <Text style={styles.attachMenuTitle}>إرفاق صورة</Text>
+            <TouchableOpacity style={styles.attachMenuOption} onPress={handleOpenCamera}>
+              <Text style={styles.attachMenuOptionIcon}>📷</Text>
+              <View>
+                <Text style={styles.attachMenuOptionText}>التقاط صورة</Text>
+                <Text style={styles.attachMenuOptionSub}>افتح الكاميرا مباشرة</Text>
+              </View>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.attachMenuOption} onPress={handlePickFromGallery}>
+              <Text style={styles.attachMenuOptionIcon}>🖼️</Text>
+              <View>
+                <Text style={styles.attachMenuOptionText}>اختيار من المعرض</Text>
+                <Text style={styles.attachMenuOptionSub}>ارفع صورة من هاتفك</Text>
+              </View>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.attachMenuCancel} onPress={() => setShowAttachMenu(false)}>
+              <Text style={styles.attachMenuCancelText}>إلغاء</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Live Camera Modal */}
+      <Modal
+        visible={showCamera}
+        animationType="slide"
+        onRequestClose={() => setShowCamera(false)}
+      >
+        <View style={styles.cameraContainer}>
+          <CameraView
+            ref={cameraRef}
+            style={styles.cameraView}
+            facing={cameraFacing}
+          />
+          {/* Camera controls */}
+          <View style={styles.cameraControls}>
+            <TouchableOpacity style={styles.cameraCloseBtn} onPress={() => setShowCamera(false)}>
+              <Text style={styles.cameraCloseBtnText}>✕</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.captureBtn} onPress={handleCapturePhoto}>
+              <View style={styles.captureBtnInner} />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.flipBtn} onPress={() => setCameraFacing(f => f === "back" ? "front" : "back")}>
+              <Text style={styles.flipBtnText}>🔄</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.cameraHint}>اضغط الزر الأبيض لالتقاط الصورة</Text>
+        </View>
+      </Modal>
+
       {/* Rating Modal */}
       <Modal
         visible={showRatingModal}
@@ -333,21 +505,13 @@ export default function SupportChatScreen() {
           <View style={styles.ratingModal}>
             <Text style={styles.ratingModalTitle}>قيّم تجربتك مع الدعم الفني</Text>
             <Text style={styles.ratingModalSub}>رأيك يساعدنا على تحسين خدمتنا</Text>
-
-            {/* Stars */}
             <View style={styles.starsRow}>
               {[1, 2, 3, 4, 5].map((star) => (
-                <TouchableOpacity
-                  key={star}
-                  onPress={() => setSelectedRating(star)}
-                  style={styles.starBtn}
-                >
+                <TouchableOpacity key={star} onPress={() => setSelectedRating(star)} style={styles.starBtn}>
                   <Text style={[styles.starIcon, { opacity: star <= selectedRating ? 1 : 0.3 }]}>⭐</Text>
                 </TouchableOpacity>
               ))}
             </View>
-
-            {/* Rating Label */}
             {selectedRating > 0 && (
               <Text style={styles.ratingLabel}>
                 {selectedRating === 1 ? "سيء جداً 😞" :
@@ -356,8 +520,6 @@ export default function SupportChatScreen() {
                  selectedRating === 4 ? "جيد 😊" : "ممتاز 🌟"}
               </Text>
             )}
-
-            {/* Comment */}
             <TextInput
               style={styles.ratingCommentInput}
               value={ratingComment}
@@ -367,13 +529,8 @@ export default function SupportChatScreen() {
               multiline
               maxLength={500}
             />
-
-            {/* Buttons */}
             <View style={styles.ratingBtns}>
-              <TouchableOpacity
-                style={styles.ratingCancelBtn}
-                onPress={() => setShowRatingModal(false)}
-              >
+              <TouchableOpacity style={styles.ratingCancelBtn} onPress={() => setShowRatingModal(false)}>
                 <Text style={styles.ratingCancelText}>إلغاء</Text>
               </TouchableOpacity>
               <TouchableOpacity
@@ -447,24 +604,57 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     gap: 4,
   },
-  userBubble: {
-    borderBottomRightRadius: 4,
-  },
-  adminBubble: {
-    borderBottomLeftRadius: 4,
-    borderWidth: 1,
-  },
+  userBubble: { borderBottomRightRadius: 4 },
+  adminBubble: { borderBottomLeftRadius: 4, borderWidth: 1 },
   senderName: { fontSize: 11, fontWeight: "700", marginBottom: 2 },
+  messageImage: {
+    width: 200,
+    height: 150,
+    borderRadius: 10,
+    marginBottom: 4,
+  },
   messageText: { fontSize: 14, lineHeight: 20 },
   messageTime: { fontSize: 10, alignSelf: "flex-end" },
+  // Pending image preview bar
+  pendingImageRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    gap: 10,
+  },
+  pendingImageThumb: {
+    width: 48,
+    height: 48,
+    borderRadius: 8,
+  },
+  pendingImageLabel: { flex: 1, fontSize: 13 },
+  removePendingBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "#EF444422",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  removePendingText: { color: "#EF4444", fontSize: 14, fontWeight: "700" },
+  // Input row
   inputRow: {
     flexDirection: "row",
     alignItems: "flex-end",
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderTopWidth: 1,
-    gap: 10,
+    gap: 8,
   },
+  attachBtn: {
+    width: 38,
+    height: 38,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  attachIcon: { fontSize: 22 },
   textInput: {
     flex: 1,
     fontSize: 15,
@@ -486,7 +676,100 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   closedText: { fontSize: 14 },
-  // Rating prompt card (inside FlatList footer)
+  // Attach menu
+  attachMenuSheet: {
+    backgroundColor: "#1A0533",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    paddingBottom: 40,
+    gap: 4,
+  },
+  attachMenuTitle: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "700",
+    textAlign: "center",
+    marginBottom: 16,
+  },
+  attachMenuOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 8,
+    borderRadius: 12,
+    backgroundColor: "#2D1B4E",
+    marginBottom: 10,
+  },
+  attachMenuOptionIcon: { fontSize: 28 },
+  attachMenuOptionText: { color: "#FFFFFF", fontSize: 15, fontWeight: "600" },
+  attachMenuOptionSub: { color: "#9B8EC4", fontSize: 12, marginTop: 2 },
+  attachMenuCancel: {
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: "#3D2070",
+    alignItems: "center",
+    marginTop: 6,
+  },
+  attachMenuCancelText: { color: "#9B8EC4", fontSize: 15, fontWeight: "600" },
+  // Camera
+  cameraContainer: { flex: 1, backgroundColor: "#000000" },
+  cameraView: { flex: 1 },
+  cameraControls: {
+    position: "absolute",
+    bottom: 60,
+    left: 0,
+    right: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-around",
+    paddingHorizontal: 40,
+  },
+  cameraCloseBtn: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cameraCloseBtnText: { color: "#FFFFFF", fontSize: 20, fontWeight: "700" },
+  captureBtn: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: "rgba(255,255,255,0.3)",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 3,
+    borderColor: "#FFFFFF",
+  },
+  captureBtnInner: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: "#FFFFFF",
+  },
+  flipBtn: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  flipBtnText: { fontSize: 22 },
+  cameraHint: {
+    position: "absolute",
+    bottom: 20,
+    left: 0,
+    right: 0,
+    textAlign: "center",
+    color: "rgba(255,255,255,0.7)",
+    fontSize: 13,
+  },
+  // Rating prompt card
   ratePromptCard: {
     backgroundColor: "#1E0F4A",
     borderRadius: 16,

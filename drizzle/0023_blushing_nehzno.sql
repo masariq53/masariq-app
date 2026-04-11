@@ -1,0 +1,1 @@
+ALTER TABLE `supportMessages` ADD `imageUrl` varchar(500);
