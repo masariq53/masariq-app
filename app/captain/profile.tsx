@@ -5,7 +5,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  TextInput,
   Alert,
   Image,
   ActivityIndicator,
@@ -20,12 +19,9 @@ import { trpc } from "@/lib/trpc";
 export default function CaptainProfileScreen() {
   const insets = useSafeAreaInsets();
   const { driver, updateDriver, logout } = useDriver();
-  const [isEditing, setIsEditing] = useState(false);
-  const [name, setName] = useState(driver?.name ?? "");
   const [uploading, setUploading] = useState(false);
 
   const uploadPhotoMutation = trpc.driver.uploadDocument.useMutation();
-  const updateProfileMutation = trpc.passenger.updateName.useMutation();
 
   const handlePickPhoto = async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -58,20 +54,6 @@ export default function CaptainProfileScreen() {
       Alert.alert("خطأ", "فشل رفع الصورة، حاول مرة أخرى");
     } finally {
       setUploading(false);
-    }
-  };
-
-  const handleSaveName = async () => {
-    if (!name.trim() || name.trim().length < 2) {
-      Alert.alert("تنبيه", "الاسم يجب أن يكون حرفين على الأقل");
-      return;
-    }
-    try {
-      await updateDriver({ name: name.trim() });
-      setIsEditing(false);
-      Alert.alert("تم", "تم تحديث الاسم بنجاح ✅");
-    } catch (e) {
-      Alert.alert("خطأ", "فشل تحديث الاسم");
     }
   };
 
@@ -122,19 +104,7 @@ export default function CaptainProfileScreen() {
           <Text style={styles.backIcon}>→</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>بروفايل الكابتن</Text>
-        <TouchableOpacity
-          style={styles.editBtn}
-          onPress={() => {
-            if (isEditing) {
-              handleSaveName();
-            } else {
-              setIsEditing(true);
-              setName(driver?.name ?? "");
-            }
-          }}
-        >
-          <Text style={styles.editBtnText}>{isEditing ? "حفظ" : "تعديل"}</Text>
-        </TouchableOpacity>
+        <View style={{ width: 60 }} />
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false}>
@@ -173,20 +143,7 @@ export default function CaptainProfileScreen() {
           <View style={styles.card}>
             <View style={styles.fieldRow}>
               <Text style={styles.fieldLabel}>الاسم</Text>
-              {isEditing ? (
-                <TextInput
-                  style={styles.fieldInput}
-                  value={name}
-                  onChangeText={setName}
-                  placeholder="أدخل اسمك"
-                  placeholderTextColor="#6B7280"
-                  textAlign="right"
-                  returnKeyType="done"
-                  onSubmitEditing={handleSaveName}
-                />
-              ) : (
-                <Text style={styles.fieldValue}>{driver?.name ?? "—"}</Text>
-              )}
+              <Text style={styles.fieldValue}>{driver?.name ?? "—"}</Text>
             </View>
             <View style={styles.fieldDivider} />
             <View style={styles.fieldRow}>
@@ -232,22 +189,7 @@ export default function CaptainProfileScreen() {
           </View>
         </View>
 
-        {/* Wallet Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>المحفظة</Text>
-          <View style={[styles.card, styles.walletCard]}>
-            <View>
-              <Text style={styles.walletLabel}>الرصيد الحالي</Text>
-              <Text style={styles.walletAmount}>
-                {parseFloat(driver?.walletBalance ?? "0").toLocaleString("ar-IQ")}
-              </Text>
-              <Text style={styles.walletCurrency}>دينار عراقي</Text>
-            </View>
-            <TouchableOpacity style={styles.earningsBtn} onPress={() => router.push("/captain/earnings" as any)}>
-              <Text style={styles.earningsBtnText}>📊 الأرباح</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+
 
         {/* Logout */}
         <View style={styles.section}>
