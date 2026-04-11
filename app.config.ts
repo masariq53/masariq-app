@@ -87,6 +87,14 @@ const config: ExpoConfig = {
   plugins: [
     "expo-router",
     [
+      "expo-camera",
+      {
+        "cameraPermission": "السماح لمسار باستخدام الكاميرا لالتقاط وثائق التسجيل.",
+        "microphonePermission": "Allow $(PRODUCT_NAME) to access your microphone.",
+        "recordAudioAndroid": false
+      }
+    ],
+    [
       "expo-image-picker",
       {
         "photosPermission": "السماح لمسار بالوصول إلى صورك لتحديث صورة الملف الشخصي."
