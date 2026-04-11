@@ -314,3 +314,14 @@
 - [x] إضافة addNotificationResponseReceivedListener للتنقل عند الضغط على الإشعار
 - [x] إضافة إشعار Push في bookTripWithPickup (كان مفقوداً)
 - [x] 47 اختبار ناجح (notification-store + notification-handler + masar-api)
+
+## نظام الدعم الفني (2026-04-11)
+- [ ] إضافة جداول قاعدة البيانات: support_tickets + support_messages
+- [ ] إضافة API endpoints: createTicket, sendMessage, getTickets, getMessages, updateTicketStatus
+- [ ] أيقونة دعم فني في شاشة المستخدم الرئيسية
+- [ ] أيقونة دعم فني في شاشة الكابتن الرئيسية
+- [ ] شاشة إنشاء تذكرة دعم فني (اختيار نوع المشكلة + رسالة)
+- [ ] شاشة محادثة الدعم الفني (chat مع الإدارة)
+- [ ] قسم الدعم الفني في لوحة التحكم الإدارية (app/admin/support.tsx)
+- [ ] فلترة التذاكر (مفتوحة/مغلقة/قيد المعالجة + حسب النوع كابتن/مستخدم)
+- [ ] إشعار Push للمستخدم/الكابتن عند رد الإدارة

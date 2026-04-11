@@ -63,7 +63,7 @@ function StatCard({
 export default function AdminDashboard() {
   const insets = useSafeAreaInsets();
   const [refreshing, setRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState<"overview" | "rides" | "drivers" | "passengers" | "pricing" | "intercity">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "rides" | "drivers" | "passengers" | "pricing" | "intercity" | "support">("overview");
 
   const [driversPage, setDriversPage] = useState(0);
   const [passengersPage, setPassengersPage] = useState(0);
@@ -136,9 +136,39 @@ export default function AdminDashboard() {
     onSuccess: () => refetchIntercity(),
   });
 
+  // ─── Support State ───────────────────────────────────────────────────────────
+  const [supportStatusFilter, setSupportStatusFilter] = useState<"all" | "open" | "in_progress" | "resolved" | "closed">("all");
+  const [supportUserTypeFilter, setSupportUserTypeFilter] = useState<"all" | "passenger" | "driver">("all");
+  const [selectedSupportTicketId, setSelectedSupportTicketId] = useState<number | null>(null);
+  const [showSupportChatModal, setShowSupportChatModal] = useState(false);
+  const [adminReplyText, setAdminReplyText] = useState("");
+  const [selectedTicketSubject, setSelectedTicketSubject] = useState("");
+
+  const { data: supportTickets, isLoading: supportLoading, refetch: refetchSupport } = trpc.support.adminGetTickets.useQuery(
+    { status: supportStatusFilter, userType: supportUserTypeFilter, limit: 100, offset: 0 },
+    { enabled: activeTab === "support", refetchInterval: 15000 }
+  );
+  const { data: supportUnreadData } = trpc.support.adminUnreadCount.useQuery(
+    undefined,
+    { refetchInterval: 30000 }
+  );
+  const { data: supportMessages, isLoading: supportMsgsLoading, refetch: refetchSupportMsgs } = trpc.support.getMessages.useQuery(
+    { ticketId: selectedSupportTicketId! },
+    { enabled: !!selectedSupportTicketId && showSupportChatModal, refetchInterval: 5000 }
+  );
+  const sendSupportReplyMutation = trpc.support.sendMessage.useMutation({
+    onSuccess: () => { refetchSupportMsgs(); refetchSupport(); },
+  });
+  const updateSupportStatusMutation = trpc.support.updateStatus.useMutation({
+    onSuccess: () => refetchSupport(),
+  });
+  const markSupportReadMutation = trpc.support.markRead.useMutation();
+
+  const supportUnreadCount = supportUnreadData?.count ?? 0;
+
   const onRefresh = async () => {
     setRefreshing(true);
-    await Promise.all([refetchStats(), refetchRides(), refetchDrivers(), refetchPassengers(), refetchAllRides(), refetchPending(), refetchIntercity()]);
+    await Promise.all([refetchStats(), refetchRides(), refetchDrivers(), refetchPassengers(), refetchAllRides(), refetchPending(), refetchIntercity(), refetchSupport()]);
     setRefreshing(false);
   };
 
@@ -152,7 +182,8 @@ export default function AdminDashboard() {
     { id: "drivers", label: "السائقون", icon: "👨‍✈️" },
     { id: "passengers", label: "المستخدمون", icon: "👥" },
     { id: "pricing", label: "التسعير", icon: "💰" },
-    { id: "intercity", label: "بين المدن", icon: "🗯️" },
+    { id: "intercity", label: "بين المدن", icon: "🗣️" },
+    { id: "support", label: "الدعم الفني", icon: "🎟️" },
   ] as const;
 
   return (
@@ -186,7 +217,14 @@ export default function AdminDashboard() {
             style={[styles.tab, activeTab === tab.id && styles.tabActive]}
             onPress={() => setActiveTab(tab.id)}
           >
-            <Text style={styles.tabIcon}>{tab.icon}</Text>
+            <View style={{ position: "relative" }}>
+              <Text style={styles.tabIcon}>{tab.icon}</Text>
+              {tab.id === "support" && supportUnreadCount > 0 && (
+                <View style={{ position: "absolute", top: -4, right: -4, backgroundColor: "#EF4444", borderRadius: 8, minWidth: 16, height: 16, alignItems: "center", justifyContent: "center", paddingHorizontal: 2 }}>
+                  <Text style={{ color: "#FFFFFF", fontSize: 9, fontWeight: "800" }}>{supportUnreadCount > 99 ? "99+" : supportUnreadCount}</Text>
+                </View>
+              )}
+            </View>
             <Text style={[styles.tabLabel, activeTab === tab.id && styles.tabLabelActive]}>{tab.label}</Text>
           </TouchableOpacity>
         ))}
@@ -1356,8 +1394,236 @@ export default function AdminDashboard() {
           </View>
         )}
 
+        {/* ─── Support Tab ─────────────────────────────────────────────────────────── */}
+        {activeTab === "support" && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>🎟️ إدارة الدعم الفني</Text>
+
+            {/* Filters */}
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
+              {(["all", "open", "in_progress", "resolved", "closed"] as const).map((s) => (
+                <TouchableOpacity
+                  key={s}
+                  style={[styles.filterChip, supportStatusFilter === s && styles.filterChipActive]}
+                  onPress={() => setSupportStatusFilter(s)}
+                >
+                  <Text style={[styles.filterChipText, supportStatusFilter === s && styles.filterChipTextActive]}>
+                    {s === "all" ? "الكل" : s === "open" ? "مفتوحة" : s === "in_progress" ? "قيد المعالجة" : s === "resolved" ? "محلولة" : "مغلقة"}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <View style={{ flexDirection: "row", gap: 8, marginBottom: 16 }}>
+              {(["all", "passenger", "driver"] as const).map((t) => (
+                <TouchableOpacity
+                  key={t}
+                  style={[styles.filterChip, supportUserTypeFilter === t && styles.filterChipActive]}
+                  onPress={() => setSupportUserTypeFilter(t)}
+                >
+                  <Text style={[styles.filterChipText, supportUserTypeFilter === t && styles.filterChipTextActive]}>
+                    {t === "all" ? "الجميع" : t === "passenger" ? "👤 مستخدم" : "🚗 كابتن"}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* Tickets List */}
+            {supportLoading ? (
+              <ActivityIndicator color="#FFD700" style={{ marginTop: 40 }} />
+            ) : !supportTickets || (supportTickets as any).tickets?.length === 0 ? (
+              <View style={{ alignItems: "center", paddingVertical: 40 }}>
+                <Text style={{ fontSize: 48, marginBottom: 12 }}>🎟️</Text>
+                <Text style={{ color: "#9B8EC4", fontSize: 15 }}>لا توجد تذاكر دعم</Text>
+              </View>
+            ) : (
+              ((supportTickets as any).tickets as any[]).map((ticket: any) => (
+                <TouchableOpacity
+                  key={ticket.id}
+                  style={{
+                    backgroundColor: "#1E0F4A",
+                    borderRadius: 12,
+                    padding: 14,
+                    marginBottom: 10,
+                    borderWidth: 1,
+                    borderColor: ticket.unreadByAdmin > 0 ? "#FFD700" : "#2D1B4E",
+                  }}
+                  onPress={() => {
+                    setSelectedSupportTicketId(ticket.id);
+                    setSelectedTicketSubject(ticket.subject);
+                    setShowSupportChatModal(true);
+                    markSupportReadMutation.mutateAsync({ ticketId: ticket.id, readerType: "admin" }).catch(() => {});
+                  }}
+                >
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                    <Text style={{ color: "#FFFFFF", fontSize: 14, fontWeight: "700", flex: 1 }} numberOfLines={1}>{ticket.subject}</Text>
+                    {ticket.unreadByAdmin > 0 && (
+                      <View style={{ backgroundColor: "#EF4444", borderRadius: 10, paddingHorizontal: 6, paddingVertical: 2 }}>
+                        <Text style={{ color: "#FFFFFF", fontSize: 10, fontWeight: "800" }}>{ticket.unreadByAdmin}</Text>
+                      </View>
+                    )}
+                  </View>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <View style={{
+                      paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10,
+                      backgroundColor: ticket.status === "open" ? "#F59E0B22" : ticket.status === "in_progress" ? "#3B82F622" : ticket.status === "resolved" ? "#10B98122" : "#6B728022",
+                    }}>
+                      <Text style={{
+                        fontSize: 11, fontWeight: "600",
+                        color: ticket.status === "open" ? "#F59E0B" : ticket.status === "in_progress" ? "#3B82F6" : ticket.status === "resolved" ? "#10B981" : "#6B7280",
+                      }}>
+                        {ticket.status === "open" ? "مفتوحة" : ticket.status === "in_progress" ? "قيد المعالجة" : ticket.status === "resolved" ? "محلولة" : "مغلقة"}
+                      </Text>
+                    </View>
+                    <Text style={{ color: "#9B8EC4", fontSize: 11 }}>
+                      {ticket.userType === "passenger" ? "👤" : "🚗"} {ticket.userName || ticket.userPhone || ("#" + ticket.userId)}
+                    </Text>
+                    <Text style={{ color: "#6B5A8A", fontSize: 11 }}>
+                      {new Date(ticket.updatedAt || ticket.createdAt).toLocaleDateString("ar-IQ", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              ))
+            )}
+          </View>
+        )}
+
         <View style={{ height: 40 }} />
       </ScrollView>
+
+      {/* Support Chat Modal */}
+      <Modal
+        visible={showSupportChatModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => { setShowSupportChatModal(false); setAdminReplyText(""); }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={{ backgroundColor: "#1A0533", borderRadius: 20, width: "95%", maxHeight: "88%", overflow: "hidden" }}>
+            {/* Modal Header */}
+            <View style={{ backgroundColor: "#2D1B4E", padding: 16, flexDirection: "row", alignItems: "center", gap: 10 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: "#FFD700", fontSize: 15, fontWeight: "800" }} numberOfLines={1}>
+                  💬 {selectedTicketSubject}
+                </Text>
+              </View>
+              {/* Status Buttons */}
+              <View style={{ flexDirection: "row", gap: 6 }}>
+                {(["open", "in_progress", "resolved", "closed"] as const).map((s) => (
+                  <TouchableOpacity
+                    key={s}
+                    style={{
+                      paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8,
+                      backgroundColor: s === "open" ? "#F59E0B22" : s === "in_progress" ? "#3B82F622" : s === "resolved" ? "#10B98122" : "#6B728022",
+                    }}
+                    onPress={() => {
+                      if (selectedSupportTicketId) {
+                        updateSupportStatusMutation.mutate({ ticketId: selectedSupportTicketId, status: s, closedBy: "admin" });
+                      }
+                    }}
+                  >
+                    <Text style={{
+                      fontSize: 10, fontWeight: "700",
+                      color: s === "open" ? "#F59E0B" : s === "in_progress" ? "#3B82F6" : s === "resolved" ? "#10B981" : "#6B7280",
+                    }}>
+                      {s === "open" ? "مفتوح" : s === "in_progress" ? "معالجة" : s === "resolved" ? "محلول" : "مغلق"}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <TouchableOpacity onPress={() => { setShowSupportChatModal(false); setAdminReplyText(""); }}>
+                <Text style={{ color: "#9B8EC4", fontSize: 22 }}>×</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Messages */}
+            <ScrollView style={{ flex: 1, padding: 12 }} showsVerticalScrollIndicator={false}>
+              {supportMsgsLoading ? (
+                <ActivityIndicator color="#FFD700" style={{ marginTop: 20 }} />
+              ) : !supportMessages || (supportMessages as any[]).length === 0 ? (
+                <Text style={{ color: "#9B8EC4", textAlign: "center", marginTop: 20 }}>لا توجد رسائل</Text>
+              ) : (
+                (supportMessages as any[]).map((msg: any) => (
+                  <View
+                    key={msg.id}
+                    style={{
+                      flexDirection: "row",
+                      justifyContent: msg.senderType === "admin" ? "flex-end" : "flex-start",
+                      marginBottom: 10,
+                    }}
+                  >
+                    <View
+                      style={{
+                        maxWidth: "75%",
+                        backgroundColor: msg.senderType === "admin" ? "#7C3AED" : "#2D1B4E",
+                        borderRadius: 14,
+                        padding: 10,
+                        borderBottomRightRadius: msg.senderType === "admin" ? 4 : 14,
+                        borderBottomLeftRadius: msg.senderType === "admin" ? 14 : 4,
+                      }}
+                    >
+                      {msg.senderType !== "admin" && (
+                        <Text style={{ color: "#FFD700", fontSize: 11, fontWeight: "700", marginBottom: 3 }}>
+                          {msg.senderName || "المستخدم"}
+                        </Text>
+                      )}
+                      <Text style={{ color: "#FFFFFF", fontSize: 13, lineHeight: 19 }}>{msg.message}</Text>
+                      <Text style={{ color: "rgba(255,255,255,0.5)", fontSize: 10, alignSelf: "flex-end", marginTop: 3 }}>
+                        {new Date(msg.createdAt).toLocaleTimeString("ar-IQ", { hour: "2-digit", minute: "2-digit" })}
+                      </Text>
+                    </View>
+                  </View>
+                ))
+              )}
+            </ScrollView>
+
+            {/* Reply Input */}
+            <View style={{ flexDirection: "row", padding: 12, gap: 10, borderTopWidth: 1, borderTopColor: "#2D1B4E" }}>
+              <TextInput
+                style={{
+                  flex: 1, backgroundColor: "#2D1B4E", borderRadius: 20,
+                  paddingHorizontal: 14, paddingVertical: 10, color: "#FFFFFF", fontSize: 14,
+                }}
+                value={adminReplyText}
+                onChangeText={setAdminReplyText}
+                placeholder="اكتب ردك..."
+                placeholderTextColor="#6B5A8A"
+                multiline
+                maxLength={1000}
+              />
+              <TouchableOpacity
+                style={{
+                  width: 44, height: 44, borderRadius: 22,
+                  backgroundColor: adminReplyText.trim() ? "#7C3AED" : "#2D1B4E",
+                  alignItems: "center", justifyContent: "center",
+                }}
+                disabled={!adminReplyText.trim() || sendSupportReplyMutation.isPending}
+                onPress={async () => {
+                  if (!selectedSupportTicketId || !adminReplyText.trim()) return;
+                  const text = adminReplyText.trim();
+                  setAdminReplyText("");
+                  try {
+                    await sendSupportReplyMutation.mutateAsync({
+                      ticketId: selectedSupportTicketId,
+                      senderType: "admin",
+                      senderName: "فريق الدعم",
+                      message: text,
+                    });
+                  } catch (e) {
+                    setAdminReplyText(text);
+                    Alert.alert("خطأ", "فشل إرسال الرسالة");
+                  }
+                }}
+              >
+                {sendSupportReplyMutation.isPending ? (
+                  <ActivityIndicator color="#FFFFFF" size="small" />
+                ) : (
+                  <Text style={{ color: "#FFFFFF", fontSize: 18, fontWeight: "700" }}>↑</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Driver Documents Modal */}
       <Modal visible={!!docsDriver} transparent animationType="slide" onRequestClose={() => setDocsDriver(null)}>

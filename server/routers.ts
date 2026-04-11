@@ -82,6 +82,15 @@ import {
   markIntercityMessagesRead,
   countUnreadIntercityMessages,
   getIntercityTripMessages,
+  createSupportTicket,
+  getSupportTickets,
+  getUserSupportTickets,
+  getSupportTicketById,
+  updateSupportTicketStatus,
+  addSupportMessage,
+  getSupportMessages,
+  markSupportMessagesRead,
+  getAdminUnreadSupportCount,
 } from "./db";
 import { storagePut } from "./storage";
 
@@ -2427,6 +2436,160 @@ export const appRouter = router({
           }
         } catch (e) { console.warn("[Push] Error sending passenger cancellation notification:", e); }
         return { success: true };
+      }),
+  }),
+
+  // ─── Support ──────────────────────────────────────────────────────────────────
+  support: router({
+    // إنشاء تذكرة دعم جديدة
+    createTicket: publicProcedure
+      .input(z.object({
+        userId: z.number(),
+        userType: z.enum(["passenger", "driver"]),
+        userName: z.string().optional(),
+        userPhone: z.string().optional(),
+        category: z.enum(["payment", "ride", "account", "driver", "passenger", "app", "other"]).default("other"),
+        subject: z.string().min(3).max(200),
+        message: z.string().min(5), // الرسالة الأولى
+        rideId: z.number().optional(),
+        tripId: z.number().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const ticketId = await createSupportTicket({
+          userId: input.userId,
+          userType: input.userType,
+          userName: input.userName,
+          userPhone: input.userPhone,
+          category: input.category,
+          subject: input.subject,
+          rideId: input.rideId,
+          tripId: input.tripId,
+          status: "open",
+          priority: "medium",
+          unreadByAdmin: 1,
+          unreadByUser: 0,
+        });
+        if (ticketId) {
+          await addSupportMessage({
+            ticketId,
+            senderType: "user",
+            senderName: input.userName,
+            message: input.message,
+          });
+        }
+        return { success: true, ticketId };
+      }),
+
+    // جلب تذاكر مستخدم معين
+    getUserTickets: publicProcedure
+      .input(z.object({
+        userId: z.number(),
+        userType: z.enum(["passenger", "driver"]),
+      }))
+      .query(async ({ input }) => {
+        return getUserSupportTickets(input.userId, input.userType);
+      }),
+
+    // جلب رسائل تذكرة
+    getMessages: publicProcedure
+      .input(z.object({ ticketId: z.number() }))
+      .query(async ({ input }) => {
+        return getSupportMessages(input.ticketId);
+      }),
+
+    // إرسال رسالة من المستخدم
+    sendMessage: publicProcedure
+      .input(z.object({
+        ticketId: z.number(),
+        senderType: z.enum(["user", "admin"]),
+        senderName: z.string().optional(),
+        message: z.string().min(1),
+      }))
+      .mutation(async ({ input }) => {
+        const msgId = await addSupportMessage({
+          ticketId: input.ticketId,
+          senderType: input.senderType,
+          senderName: input.senderName,
+          message: input.message,
+        });
+        // إرسال إشعار Push للمستخدم عند رد الإدارة
+        if (input.senderType === "admin") {
+          try {
+            const ticket = await getSupportTicketById(input.ticketId);
+            if (ticket) {
+              let pushToken: string | null = null;
+              if (ticket.userType === "passenger") {
+                pushToken = await getPassengerPushToken(ticket.userId);
+              } else {
+                pushToken = await getDriverPushToken(ticket.userId);
+              }
+              if (pushToken && pushToken.startsWith("ExponentPushToken[")) {
+                fetch("https://exp.host/--/api/v2/push/send", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", "Accept": "application/json" },
+                  body: JSON.stringify({
+                    to: pushToken,
+                    sound: "default",
+                    title: "💬 رد من الدعم الفني",
+                    body: input.message.length > 80 ? input.message.substring(0, 80) + "..." : input.message,
+                    data: { type: "support_reply", ticketId: input.ticketId },
+                    priority: "high",
+                  }),
+                }).catch((err) => console.warn("[Push] Failed to notify user of support reply:", err));
+              }
+            }
+          } catch (e) { console.warn("[Push] Error sending support reply notification:", e); }
+        }
+        return { success: true, messageId: msgId };
+      }),
+
+    // تحديد الرسائل كمقروءة
+    markRead: publicProcedure
+      .input(z.object({
+        ticketId: z.number(),
+        readerType: z.enum(["admin", "user"]),
+      }))
+      .mutation(async ({ input }) => {
+        await markSupportMessagesRead(input.ticketId, input.readerType);
+        return { success: true };
+      }),
+
+    // ─── Admin only ───────────────────────────────────────────────────────────
+    // جلب جميع التذاكر (لوحة التحكم)
+    adminGetTickets: publicProcedure
+      .input(z.object({
+        status: z.enum(["open", "in_progress", "resolved", "closed", "all"]).default("all"),
+        userType: z.enum(["passenger", "driver", "all"]).default("all"),
+        limit: z.number().default(20),
+        offset: z.number().default(0),
+      }))
+      .query(async ({ input }) => {
+        return getSupportTickets(input);
+      }),
+
+    // تحديث حالة التذكرة
+    updateStatus: publicProcedure
+      .input(z.object({
+        ticketId: z.number(),
+        status: z.enum(["open", "in_progress", "resolved", "closed"]),
+        closedBy: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        await updateSupportTicketStatus(input.ticketId, input.status, input.closedBy);
+        return { success: true };
+      }),
+
+    // عدد الرسائل غير المقروءة للإدارة
+    adminUnreadCount: publicProcedure
+      .query(async () => {
+        return { count: await getAdminUnreadSupportCount() };
+      }),
+
+    // جلب تذكرة واحدة
+    getTicket: publicProcedure
+      .input(z.object({ ticketId: z.number() }))
+      .query(async ({ input }) => {
+        return getSupportTicketById(input.ticketId);
       }),
   }),
 });

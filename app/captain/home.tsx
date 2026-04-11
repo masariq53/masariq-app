@@ -485,7 +485,12 @@ export default function CaptainHomeScreen() {
             </View>
           </View>
         </TouchableOpacity>
-        <View style={{ width: 8 }} />
+        <TouchableOpacity
+          style={styles.supportBtn}
+          onPress={() => router.push("/support" as any)}
+        >
+          <Text style={styles.supportBtnIcon}>💬</Text>
+        </TouchableOpacity>
       </View>
 
       {/* زر الحالة */}
@@ -886,5 +891,16 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: 13,
     fontWeight: "600",
+  },
+  supportBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  supportBtnIcon: {
+    fontSize: 20,
   },
 });

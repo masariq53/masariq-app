@@ -17,6 +17,12 @@ import {
   intercityDriverLocations,
   intercityMessages,
   IntercityMessage,
+  supportTickets,
+  supportMessages,
+  SupportTicket,
+  SupportMessage,
+  InsertSupportTicket,
+  InsertSupportMessage,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
@@ -1962,4 +1968,158 @@ export async function getIntercityTripMessages(tripId: number) {
     .from(intercityMessages)
     .where(eq(intercityMessages.tripId, tripId))
     .orderBy(intercityMessages.bookingId, intercityMessages.createdAt);
+}
+
+// ─── Support Tickets ──────────────────────────────────────────────────────────
+
+/**
+ * Create a new support ticket
+ */
+export async function createSupportTicket(data: InsertSupportTicket): Promise<number | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db.insert(supportTickets).values(data);
+  return (result[0] as any).insertId ?? null;
+}
+
+/**
+ * Get all support tickets (admin view) with optional filters
+ */
+export async function getSupportTickets(opts?: {
+  status?: "open" | "in_progress" | "resolved" | "closed" | "all";
+  userType?: "passenger" | "driver" | "all";
+  category?: string;
+  limit?: number;
+  offset?: number;
+}) {
+  const db = await getDb();
+  if (!db) return { tickets: [], total: 0 };
+  const conditions = [];
+  if (opts?.status && opts.status !== "all") {
+    conditions.push(eq(supportTickets.status, opts.status));
+  }
+  if (opts?.userType && opts.userType !== "all") {
+    conditions.push(eq(supportTickets.userType, opts.userType));
+  }
+  const limit = opts?.limit ?? 20;
+  const offset = opts?.offset ?? 0;
+  const query = db.select().from(supportTickets);
+  const filtered = conditions.length > 0 ? query.where(and(...conditions)) : query;
+  const tickets = await filtered.orderBy(desc(supportTickets.createdAt)).limit(limit).offset(offset);
+  const countQuery = db.select({ count: sql<number>`count(*)` }).from(supportTickets);
+  const countFiltered = conditions.length > 0 ? countQuery.where(and(...conditions)) : countQuery;
+  const countResult = await countFiltered;
+  return { tickets, total: Number(countResult[0]?.count ?? 0) };
+}
+
+/**
+ * Get tickets for a specific user (passenger or driver)
+ */
+export async function getUserSupportTickets(userId: number, userType: "passenger" | "driver") {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(supportTickets)
+    .where(and(eq(supportTickets.userId, userId), eq(supportTickets.userType, userType)))
+    .orderBy(desc(supportTickets.createdAt));
+}
+
+/**
+ * Get a single support ticket by ID
+ */
+export async function getSupportTicketById(ticketId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db.select().from(supportTickets).where(eq(supportTickets.id, ticketId)).limit(1);
+  return result[0] ?? null;
+}
+
+/**
+ * Update support ticket status
+ */
+export async function updateSupportTicketStatus(
+  ticketId: number,
+  status: "open" | "in_progress" | "resolved" | "closed",
+  closedBy?: string
+) {
+  const db = await getDb();
+  if (!db) return;
+  const updateData: Partial<InsertSupportTicket> = { status };
+  if (status === "closed" || status === "resolved") {
+    updateData.closedAt = new Date();
+    updateData.closedBy = closedBy ?? "admin";
+  }
+  await db.update(supportTickets).set(updateData).where(eq(supportTickets.id, ticketId));
+}
+
+/**
+ * Add a message to a support ticket
+ */
+export async function addSupportMessage(data: InsertSupportMessage): Promise<number | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db.insert(supportMessages).values(data);
+  const insertId = (result[0] as any).insertId ?? null;
+  // Update ticket: lastRepliedAt, lastRepliedBy, unread count
+  const updateData: Partial<InsertSupportTicket> = {
+    lastRepliedAt: new Date(),
+    lastRepliedBy: data.senderType,
+  };
+  if (data.senderType === "user") {
+    // رسالة من المستخدم → زيادة عداد الإدارة
+    await db.update(supportTickets)
+      .set({ ...updateData, unreadByAdmin: sql`unreadByAdmin + 1` })
+      .where(eq(supportTickets.id, data.ticketId));
+  } else {
+    // رسالة من الإدارة → زيادة عداد المستخدم
+    await db.update(supportTickets)
+      .set({ ...updateData, unreadByUser: sql`unreadByUser + 1` })
+      .where(eq(supportTickets.id, data.ticketId));
+  }
+  return insertId;
+}
+
+/**
+ * Get all messages for a ticket
+ */
+export async function getSupportMessages(ticketId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(supportMessages)
+    .where(eq(supportMessages.ticketId, ticketId))
+    .orderBy(supportMessages.createdAt);
+}
+
+/**
+ * Mark all messages in a ticket as read (by admin or user)
+ */
+export async function markSupportMessagesRead(ticketId: number, readerType: "admin" | "user") {
+  const db = await getDb();
+  if (!db) return;
+  const senderType = readerType === "admin" ? "user" : "admin";
+  await db.update(supportMessages)
+    .set({ isRead: true })
+    .where(and(eq(supportMessages.ticketId, ticketId), eq(supportMessages.senderType, senderType as any)));
+  // إعادة تعيين عداد الرسائل غير المقروءة
+  if (readerType === "admin") {
+    await db.update(supportTickets).set({ unreadByAdmin: 0 }).where(eq(supportTickets.id, ticketId));
+  } else {
+    await db.update(supportTickets).set({ unreadByUser: 0 }).where(eq(supportTickets.id, ticketId));
+  }
+}
+
+/**
+ * Get unread count for admin (total unread messages from users)
+ */
+export async function getAdminUnreadSupportCount() {
+  const db = await getDb();
+  if (!db) return 0;
+  const result = await db
+    .select({ total: sql<number>`SUM(unreadByAdmin)` })
+    .from(supportTickets)
+    .where(ne(supportTickets.status, "closed"));
+  return Number(result[0]?.total ?? 0);
 }

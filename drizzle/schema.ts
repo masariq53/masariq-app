@@ -329,3 +329,60 @@ export const intercityMessages = mysqlTable("intercityMessages", {
 });
 export type IntercityMessage = typeof intercityMessages.$inferSelect;
 export type InsertIntercityMessage = typeof intercityMessages.$inferInsert;
+
+// ─── Support Tickets ──────────────────────────────────────────────────────────
+/**
+ * Support tickets - created by passengers or drivers when they need help
+ */
+export const supportTickets = mysqlTable("supportTickets", {
+  id: int("id").autoincrement().primaryKey(),
+  // من أنشأ التذكرة
+  userType: mysqlEnum("userType", ["passenger", "driver"]).notNull(),
+  userId: int("userId").notNull(), // passenger.id أو driver.id
+  userName: varchar("userName", { length: 100 }),
+  userPhone: varchar("userPhone", { length: 20 }),
+  // تفاصيل التذكرة
+  category: mysqlEnum("category", [
+    "payment",       // مشكلة في الدفع
+    "ride",          // مشكلة في الرحلة
+    "account",       // مشكلة في الحساب
+    "driver",        // شكوى على السائق
+    "passenger",     // شكوى على الراكب
+    "app",           // مشكلة في التطبيق
+    "other",         // أخرى
+  ]).notNull().default("other"),
+  subject: varchar("subject", { length: 200 }).notNull(),
+  status: mysqlEnum("status", ["open", "in_progress", "resolved", "closed"]).default("open").notNull(),
+  priority: mysqlEnum("priority", ["low", "medium", "high", "urgent"]).default("medium").notNull(),
+  // مرجع اختياري للرحلة
+  rideId: int("rideId"),
+  tripId: int("tripId"),
+  // آخر رد
+  lastRepliedAt: timestamp("lastRepliedAt"),
+  lastRepliedBy: mysqlEnum("lastRepliedBy", ["user", "admin"]),
+  // عدد الرسائل غير المقروءة من جانب الإدارة
+  unreadByAdmin: int("unreadByAdmin").default(0).notNull(),
+  // عدد الرسائل غير المقروءة من جانب المستخدم
+  unreadByUser: int("unreadByUser").default(0).notNull(),
+  closedAt: timestamp("closedAt"),
+  closedBy: varchar("closedBy", { length: 100 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type SupportTicket = typeof supportTickets.$inferSelect;
+export type InsertSupportTicket = typeof supportTickets.$inferInsert;
+
+/**
+ * Support messages - chat messages within a support ticket
+ */
+export const supportMessages = mysqlTable("supportMessages", {
+  id: int("id").autoincrement().primaryKey(),
+  ticketId: int("ticketId").notNull(),
+  senderType: mysqlEnum("senderType", ["user", "admin"]).notNull(),
+  senderName: varchar("senderName", { length: 100 }),
+  message: text("message").notNull(),
+  isRead: boolean("isRead").default(false).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type SupportMessage = typeof supportMessages.$inferSelect;
+export type InsertSupportMessage = typeof supportMessages.$inferInsert;

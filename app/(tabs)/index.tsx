@@ -101,14 +101,19 @@ export default function HomeScreen() {
             <Text style={styles.userName}>{passenger?.name || passenger?.phone || t.home.masarUser}</Text>
           </View>
         </View>
-        <TouchableOpacity style={styles.notifBtn} onPress={() => router.push("/notifications" as any)}>
-          <Text style={styles.notifIcon}>🔔</Text>
-          {unreadCount > 0 && (
-            <View style={styles.notifBadge}>
-              {unreadCount <= 9 && <Text style={styles.notifBadgeText}>{unreadCount}</Text>}
-            </View>
-          )}
-        </TouchableOpacity>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <TouchableOpacity style={styles.notifBtn} onPress={() => router.push("/support" as any)}>
+            <Text style={styles.notifIcon}>💬</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.notifBtn} onPress={() => router.push("/notifications" as any)}>
+            <Text style={styles.notifIcon}>🔔</Text>
+            {unreadCount > 0 && (
+              <View style={styles.notifBadge}>
+                {unreadCount <= 9 && <Text style={styles.notifBadgeText}>{unreadCount}</Text>}
+              </View>
+            )}
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView
