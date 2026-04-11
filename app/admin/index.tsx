@@ -108,6 +108,8 @@ export default function AdminDashboard() {
   });
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [blockReasonInput, setBlockReasonInput] = useState("");
+  const [showBlockModal, setShowBlockModal] = useState(false);
+  const [blockTargetDriver, setBlockTargetDriver] = useState<{ id: number; name: string } | null>(null);
 
   // ──  // ─── Intercity Trips ─────────────────────────────────────────────
   const [intercityStatusFilter, setIntercityStatusFilter] = useState<"all" | "scheduled" | "in_progress" | "completed" | "cancelled">("all");
@@ -667,12 +669,9 @@ export default function AdminDashboard() {
                                 { text: "تفعيل", onPress: () => blockDriver.mutate({ driverId: driver.id, isBlocked: false }) },
                               ]);
                             } else {
-                              Alert.prompt(
-                                "تعطيل الحساب",
-                                `سبب تعطيل حساب ${driver.name} (اختياري):`,
-                                (reason) => blockDriver.mutate({ driverId: driver.id, isBlocked: true, blockReason: reason || undefined }),
-                                "plain-text"
-                              );
+                              setBlockTargetDriver({ id: driver.id, name: driver.name });
+                              setBlockReasonInput("");
+                              setShowBlockModal(true);
                             }
                           }}
                         >
@@ -1691,6 +1690,44 @@ export default function AdminDashboard() {
                 ) : (
                   <Text style={{ color: "#FFFFFF", fontSize: 18, fontWeight: "700" }}>↑</Text>
                 )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Block Driver Modal */}
+      <Modal visible={showBlockModal} transparent animationType="fade" onRequestClose={() => setShowBlockModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={{ backgroundColor: '#1e0a3c', borderRadius: 16, padding: 24, width: '85%', maxWidth: 400 }}>
+            <Text style={{ color: '#fff', fontSize: 18, fontWeight: '800', marginBottom: 8, textAlign: 'right' }}>🚫 تعطيل الحساب</Text>
+            <Text style={{ color: '#ccc', fontSize: 14, marginBottom: 16, textAlign: 'right' }}>سبب تعطيل حساب {blockTargetDriver?.name} (اختياري):</Text>
+            <TextInput
+              value={blockReasonInput}
+              onChangeText={setBlockReasonInput}
+              placeholder="اكتب سبب التعطيل..."
+              placeholderTextColor="#888"
+              style={{ backgroundColor: '#2a1050', color: '#fff', borderRadius: 10, padding: 12, fontSize: 14, textAlign: 'right', marginBottom: 20, borderWidth: 1, borderColor: '#4a2080' }}
+              multiline
+              numberOfLines={3}
+            />
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <TouchableOpacity
+                style={{ flex: 1, backgroundColor: '#EF4444', borderRadius: 10, padding: 12, alignItems: 'center' }}
+                onPress={() => {
+                  if (blockTargetDriver) {
+                    blockDriver.mutate({ driverId: blockTargetDriver.id, isBlocked: true, blockReason: blockReasonInput || undefined });
+                  }
+                  setShowBlockModal(false);
+                }}
+              >
+                <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>تعطيل</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{ flex: 1, backgroundColor: '#333', borderRadius: 10, padding: 12, alignItems: 'center' }}
+                onPress={() => setShowBlockModal(false)}
+              >
+                <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>إلغاء</Text>
               </TouchableOpacity>
             </View>
           </View>
