@@ -207,7 +207,7 @@ export default function DriverRegisterScreen() {
       if (!photoUri) { Alert.alert("خطأ", "يرجى التقاط صورة شخصية حية من الكاميرا"); return false; }
       if (!nationalIdPhotoUri) { Alert.alert("خطأ", "يرجى رفع صورة الواجهة الأمامية للهوية الوطنية"); return false; }
       if (!nationalIdPhotoBackUri) { Alert.alert("خطأ", "يرجى رفع صورة الواجهة الخلفية للهوية الوطنية"); return false; }
-      if (!licensePhotoUri) { Alert.alert("خطأ", "يرجى رفع صورة رخصة القيادة"); return false; }
+      if (!licensePhotoUri) { Alert.alert("خطأ", "يرجى رفع صورة إجازة السوق"); return false; }
       if (!vehiclePhotoUri) { Alert.alert("خطأ", "يرجى رفع صورة السيارة"); return false; }
     }
     return true;
@@ -561,8 +561,8 @@ export default function DriverRegisterScreen() {
             />
 
             <DocUploadCard
-              label="صورة رخصة القيادة"
-              icon="🚗"
+              label="إجازة السوق"
+              icon="📝"
               uri={licensePhotoUri}
               onPress={() => pickImage(setLicensePhotoUri, setLicensePhotoUrl, "license")}
             />
