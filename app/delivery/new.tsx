@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import {
 import { router, useLocalSearchParams } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import * as Location from "expo-location";
 import { trpc } from "@/lib/trpc";
 import { usePassenger } from "@/lib/passenger-context";
 
@@ -29,7 +30,24 @@ const IRAQI_CITIES = [
   "الناصرية", "العمارة", "الديوانية", "سامراء", "بعقوبة",
 ];
 
-type DeliveryType = "instant" | "scheduled" | "intercity";
+type DeliveryType = "instant" | "intercity";
+
+type GpsCoords = { latitude: number; longitude: number } | null;
+
+async function reverseGeocodeNominatim(lat: number, lon: number): Promise<string> {
+  try {
+    const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=ar`;
+    const res = await fetch(url, { headers: { "User-Agent": "MasarApp/1.0" } });
+    if (!res.ok) return "";
+    const data = await res.json();
+    const addr = data.address;
+    if (!addr) return data.display_name ?? "";
+    const parts = [addr.road, addr.neighbourhood || addr.suburb, addr.city || addr.town || addr.village].filter(Boolean);
+    return parts.length > 0 ? parts.join("، ") : (data.display_name ?? "");
+  } catch {
+    return "";
+  }
+}
 
 export default function NewDeliveryScreen() {
   const insets = useSafeAreaInsets();
@@ -40,10 +58,13 @@ export default function NewDeliveryScreen() {
   const [parcelSize, setParcelSize] = useState("small");
   const [pickupAddress, setPickupAddress] = useState("");
   const [dropoffAddress, setDropoffAddress] = useState("");
+  const [pickupCoords, setPickupCoords] = useState<GpsCoords>(null);
+  const [dropoffCoords, setDropoffCoords] = useState<GpsCoords>(null);
+  const [loadingPickupGps, setLoadingPickupGps] = useState(false);
+  const [loadingDropoffGps, setLoadingDropoffGps] = useState(false);
   const [recipientName, setRecipientName] = useState("");
   const [recipientPhone, setRecipientPhone] = useState("");
   const [notes, setNotes] = useState("");
-  const [scheduledTime, setScheduledTime] = useState("");
   const [destinationCity, setDestinationCity] = useState("");
   const [originCity, setOriginCity] = useState("الموصل");
   const [showCityPicker, setShowCityPicker] = useState<"origin" | "destination" | null>(null);
@@ -57,18 +78,117 @@ export default function NewDeliveryScreen() {
     },
   });
 
+  // جلب موقع الاستلام تلقائياً عند فتح الشاشة
+  useEffect(() => {
+    fetchGpsForPickup();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const requestLocationPermission = async (): Promise<boolean> => {
+    if (Platform.OS === "web") {
+      return new Promise((resolve) => {
+        if (!navigator.geolocation) { resolve(false); return; }
+        navigator.geolocation.getCurrentPosition(() => resolve(true), () => resolve(false));
+      });
+    }
+    const { status } = await Location.requestForegroundPermissionsAsync();
+    return status === "granted";
+  };
+
+  const fetchGpsForPickup = async () => {
+    setLoadingPickupGps(true);
+    try {
+      const granted = await requestLocationPermission();
+      if (!granted) {
+        Alert.alert("تنبيه", "يرجى السماح للتطبيق بالوصول إلى موقعك لتحديد عنوان الاستلام");
+        setLoadingPickupGps(false);
+        return;
+      }
+      let lat: number, lon: number;
+      if (Platform.OS === "web") {
+        const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
+          navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 10000 })
+        );
+        lat = pos.coords.latitude;
+        lon = pos.coords.longitude;
+      } else {
+        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+        lat = loc.coords.latitude;
+        lon = loc.coords.longitude;
+      }
+      setPickupCoords({ latitude: lat, longitude: lon });
+      const address = await reverseGeocodeNominatim(lat, lon);
+      if (address) {
+        setPickupAddress(address);
+      } else {
+        const results = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lon });
+        if (results?.[0]) {
+          const r = results[0];
+          const parts = [r.street, r.district, r.city].filter(Boolean);
+          setPickupAddress(parts.length > 0 ? parts.join("، ") : "موقعي الحالي");
+        } else {
+          setPickupAddress(`${lat.toFixed(5)}, ${lon.toFixed(5)}`);
+        }
+      }
+    } catch {
+      Alert.alert("خطأ", "تعذّر تحديد موقعك. تأكد من تفعيل GPS.");
+    }
+    setLoadingPickupGps(false);
+  };
+
+  const fetchGpsForDropoff = async () => {
+    setLoadingDropoffGps(true);
+    try {
+      const granted = await requestLocationPermission();
+      if (!granted) {
+        Alert.alert("تنبيه", "يرجى السماح للتطبيق بالوصول إلى موقعك");
+        setLoadingDropoffGps(false);
+        return;
+      }
+      let lat: number, lon: number;
+      if (Platform.OS === "web") {
+        const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
+          navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 10000 })
+        );
+        lat = pos.coords.latitude;
+        lon = pos.coords.longitude;
+      } else {
+        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+        lat = loc.coords.latitude;
+        lon = loc.coords.longitude;
+      }
+      setDropoffCoords({ latitude: lat, longitude: lon });
+      const address = await reverseGeocodeNominatim(lat, lon);
+      if (address) {
+        setDropoffAddress(address);
+      } else {
+        const results = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lon });
+        if (results?.[0]) {
+          const r = results[0];
+          const parts = [r.street, r.district, r.city].filter(Boolean);
+          setDropoffAddress(parts.length > 0 ? parts.join("، ") : "موقعي الحالي");
+        } else {
+          setDropoffAddress(`${lat.toFixed(5)}, ${lon.toFixed(5)}`);
+        }
+      }
+    } catch {
+      Alert.alert("خطأ", "تعذّر تحديد موقعك. تأكد من تفعيل GPS.");
+    }
+    setLoadingDropoffGps(false);
+  };
+
   const TITLE_MAP: Record<DeliveryType, string> = {
     instant: "⚡ توصيل فوري",
-    scheduled: "📅 توصيل مجدول",
     intercity: "🚚 توصيل بين المدن",
   };
 
   const handleSubmit = () => {
-    if (!pickupAddress.trim()) { Alert.alert("تنبيه", "أدخل عنوان الاستلام"); return; }
-    if (!dropoffAddress.trim()) { Alert.alert("تنبيه", "أدخل عنوان التسليم"); return; }
+    if (!pickupAddress.trim()) { Alert.alert("تنبيه", "أدخل عنوان الاستلام أو استخدم GPS"); return; }
+    if (!pickupCoords) { Alert.alert("تنبيه", "يجب تحديد موقع الاستلام عبر GPS"); return; }
+    if (!dropoffAddress.trim()) { Alert.alert("تنبيه", "أدخل عنوان التسليم أو استخدم GPS"); return; }
+    if (!dropoffCoords) { Alert.alert("تنبيه", "يجب تحديد موقع التسليم عبر GPS"); return; }
     if (!recipientName.trim()) { Alert.alert("تنبيه", "أدخل اسم المستلم"); return; }
     if (!recipientPhone.trim()) { Alert.alert("تنبيه", "أدخل رقم هاتف المستلم"); return; }
-    if (deliveryType === "scheduled" && !scheduledTime.trim()) { Alert.alert("تنبيه", "حدد وقت التوصيل المطلوب"); return; }
     if (deliveryType === "intercity" && !destinationCity) { Alert.alert("تنبيه", "اختر مدينة الوجهة"); return; }
 
     createParcel.mutate({
@@ -79,10 +199,13 @@ export default function NewDeliveryScreen() {
       parcelSize: parcelSize as "small" | "medium" | "large",
       pickupAddress,
       dropoffAddress,
+      pickupLat: pickupCoords.latitude,
+      pickupLng: pickupCoords.longitude,
+      dropoffLat: dropoffCoords.latitude,
+      dropoffLng: dropoffCoords.longitude,
       recipientName,
       recipientPhone,
       parcelDescription: notes || undefined,
-      scheduledTimeSlot: scheduledTime || undefined,
       fromCity: deliveryType === "intercity" ? originCity : undefined,
       toCity: deliveryType === "intercity" ? destinationCity : undefined,
     });
@@ -180,32 +303,107 @@ export default function NewDeliveryScreen() {
 
         {/* Addresses */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>العناوين</Text>
-          <View style={styles.addressCard}>
-            <View style={styles.addressRow}>
+          <Text style={styles.sectionTitle}>
+            العناوين <Text style={styles.required}>* إلزامي</Text>
+          </Text>
+
+          {/* Pickup Address */}
+          <View style={[styles.addressCard, !pickupCoords && styles.addressCardWarning]}>
+            <View style={styles.addressLabelRow}>
               <View style={[styles.dot, { backgroundColor: "#22C55E" }]} />
-              <TextInput
-                style={styles.addressInput}
-                placeholder="عنوان الاستلام (من أين؟)"
-                placeholderTextColor="#6B5B8A"
-                value={pickupAddress}
-                onChangeText={setPickupAddress}
-                textAlign="right"
-              />
+              <Text style={styles.addressLabel}>عنوان الاستلام</Text>
+              <View style={{ flex: 1 }} />
+              <TouchableOpacity
+                style={[styles.gpsBtn, loadingPickupGps && styles.gpsBtnLoading]}
+                onPress={fetchGpsForPickup}
+                disabled={loadingPickupGps}
+              >
+                {loadingPickupGps ? (
+                  <ActivityIndicator size="small" color="#FFD700" />
+                ) : (
+                  <>
+                    <Text style={styles.gpsBtnIcon}>📍</Text>
+                    <Text style={styles.gpsBtnText}>موقعي</Text>
+                  </>
+                )}
+              </TouchableOpacity>
             </View>
-            <View style={styles.addressDivider} />
-            <View style={styles.addressRow}>
-              <View style={[styles.dot, { backgroundColor: "#EF4444" }]} />
-              <TextInput
-                style={styles.addressInput}
-                placeholder="عنوان التسليم (إلى أين؟)"
-                placeholderTextColor="#6B5B8A"
-                value={dropoffAddress}
-                onChangeText={setDropoffAddress}
-                textAlign="right"
-              />
-            </View>
+            <TextInput
+              style={[styles.addressInput, !pickupAddress && styles.addressInputEmpty]}
+              placeholder="اكتب العنوان أو اضغط موقعي ↑"
+              placeholderTextColor="#6B5B8A"
+              value={pickupAddress}
+              onChangeText={(text) => {
+                setPickupAddress(text);
+                if (!text) setPickupCoords(null);
+              }}
+              textAlign="right"
+              multiline
+            />
+            {pickupCoords && (
+              <View style={styles.coordsBadge}>
+                <Text style={styles.coordsText}>
+                  ✅ GPS: {pickupCoords.latitude.toFixed(4)}, {pickupCoords.longitude.toFixed(4)}
+                </Text>
+              </View>
+            )}
+            {!pickupCoords && pickupAddress.length > 0 && (
+              <View style={styles.coordsWarning}>
+                <Text style={styles.coordsWarningText}>⚠️ يجب تأكيد الموقع عبر GPS</Text>
+              </View>
+            )}
           </View>
+
+          {/* Dropoff Address */}
+          <View style={[styles.addressCard, styles.addressCardMarginTop, !dropoffCoords && dropoffAddress.length > 0 && styles.addressCardWarning]}>
+            <View style={styles.addressLabelRow}>
+              <View style={[styles.dot, { backgroundColor: "#EF4444" }]} />
+              <Text style={styles.addressLabel}>عنوان التسليم</Text>
+              <View style={{ flex: 1 }} />
+              <TouchableOpacity
+                style={[styles.gpsBtn, loadingDropoffGps && styles.gpsBtnLoading]}
+                onPress={fetchGpsForDropoff}
+                disabled={loadingDropoffGps}
+              >
+                {loadingDropoffGps ? (
+                  <ActivityIndicator size="small" color="#FFD700" />
+                ) : (
+                  <>
+                    <Text style={styles.gpsBtnIcon}>📍</Text>
+                    <Text style={styles.gpsBtnText}>موقعي</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+            <TextInput
+              style={[styles.addressInput, !dropoffAddress && styles.addressInputEmpty]}
+              placeholder="اكتب عنوان التسليم أو اضغط موقعي ↑"
+              placeholderTextColor="#6B5B8A"
+              value={dropoffAddress}
+              onChangeText={(text) => {
+                setDropoffAddress(text);
+                if (!text) setDropoffCoords(null);
+              }}
+              textAlign="right"
+              multiline
+            />
+            {dropoffCoords && (
+              <View style={styles.coordsBadge}>
+                <Text style={styles.coordsText}>
+                  ✅ GPS: {dropoffCoords.latitude.toFixed(4)}, {dropoffCoords.longitude.toFixed(4)}
+                </Text>
+              </View>
+            )}
+            {!dropoffCoords && dropoffAddress.length > 0 && (
+              <View style={styles.coordsWarning}>
+                <Text style={styles.coordsWarningText}>⚠️ يجب تأكيد الموقع عبر GPS</Text>
+              </View>
+            )}
+          </View>
+
+          <Text style={styles.gpsHint}>
+            💡 اضغط "موقعي" لتحديد موقعك الحالي تلقائياً عبر GPS — أو اكتب العنوان يدوياً ثم اضغط GPS للتأكيد
+          </Text>
         </View>
 
         {/* Recipient */}
@@ -214,7 +412,7 @@ export default function NewDeliveryScreen() {
           <View style={styles.inputGroup}>
             <TextInput
               style={styles.input}
-              placeholder="اسم المستلم"
+              placeholder="اسم المستلم *"
               placeholderTextColor="#6B5B8A"
               value={recipientName}
               onChangeText={setRecipientName}
@@ -222,7 +420,7 @@ export default function NewDeliveryScreen() {
             />
             <TextInput
               style={styles.input}
-              placeholder="رقم هاتف المستلم"
+              placeholder="رقم هاتف المستلم *"
               placeholderTextColor="#6B5B8A"
               value={recipientPhone}
               onChangeText={setRecipientPhone}
@@ -231,22 +429,6 @@ export default function NewDeliveryScreen() {
             />
           </View>
         </View>
-
-        {/* Scheduled time */}
-        {deliveryType === "scheduled" && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>وقت التوصيل المطلوب</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="مثال: بعد الظهر بين 2-4 عصراً"
-              placeholderTextColor="#6B5B8A"
-              value={scheduledTime}
-              onChangeText={setScheduledTime}
-              textAlign="right"
-            />
-            <Text style={styles.hint}>سيتواصل معك المندوب لتأكيد الموعد</Text>
-          </View>
-        )}
 
         {/* Notes */}
         <View style={styles.section}>
@@ -272,8 +454,7 @@ export default function NewDeliveryScreen() {
             <ActivityIndicator color="#1A0533" />
           ) : (
             <Text style={styles.submitBtnText}>
-              {deliveryType === "instant" ? "⚡ إرسال الطلب الآن" :
-               deliveryType === "scheduled" ? "📅 تأكيد الموعد" : "🚚 إرسال الطرد"}
+              {deliveryType === "instant" ? "⚡ إرسال الطلب الآن" : "🚚 إرسال الطرد"}
             </Text>
           )}
         </TouchableOpacity>
@@ -302,6 +483,7 @@ const styles = StyleSheet.create({
   scrollContent: { paddingBottom: 20 },
   section: { paddingHorizontal: 20, marginTop: 20 },
   sectionTitle: { color: "#FFFFFF", fontSize: 15, fontWeight: "800", textAlign: "right", marginBottom: 12 },
+  required: { color: "#EF4444", fontSize: 12, fontWeight: "600" },
   sizesRow: { flexDirection: "row", gap: 10 },
   sizeCard: {
     flex: 1, backgroundColor: "#2D1B69", borderRadius: 14, padding: 12,
@@ -337,18 +519,53 @@ const styles = StyleSheet.create({
   cityPickerModalTitle: { color: "#FFFFFF", fontSize: 13, fontWeight: "700", textAlign: "right", marginBottom: 8 },
   cityOption: { paddingVertical: 10, paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: "#3D2580" },
   cityOptionText: { color: "#C4B5D4", fontSize: 14, textAlign: "right" },
-  addressCard: { backgroundColor: "#2D1B69", borderRadius: 16, padding: 16 },
-  addressRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  // Address cards
+  addressCard: {
+    backgroundColor: "#2D1B69", borderRadius: 16, padding: 14,
+    borderWidth: 1.5, borderColor: "#3D2580",
+  },
+  addressCardWarning: { borderColor: "#F59E0B" },
+  addressCardMarginTop: { marginTop: 10 },
+  addressLabelRow: {
+    flexDirection: "row", alignItems: "center", marginBottom: 8, gap: 8,
+  },
   dot: { width: 10, height: 10, borderRadius: 5 },
-  addressInput: { flex: 1, color: "#FFFFFF", fontSize: 14, paddingVertical: 8 },
-  addressDivider: { height: 1, backgroundColor: "#3D2580", marginVertical: 8, marginLeft: 22 },
+  addressLabel: { color: "#C4B5D4", fontSize: 13, fontWeight: "700" },
+  gpsBtn: {
+    flexDirection: "row", alignItems: "center", gap: 4,
+    backgroundColor: "rgba(255,215,0,0.15)", borderRadius: 20,
+    paddingHorizontal: 10, paddingVertical: 5,
+    borderWidth: 1, borderColor: "rgba(255,215,0,0.3)",
+  },
+  gpsBtnLoading: { opacity: 0.7 },
+  gpsBtnIcon: { fontSize: 13 },
+  gpsBtnText: { color: "#FFD700", fontSize: 12, fontWeight: "700" },
+  addressInput: {
+    color: "#FFFFFF", fontSize: 14, textAlign: "right",
+    paddingVertical: 6, minHeight: 36,
+  },
+  addressInputEmpty: { color: "#9B8AB0" },
+  coordsBadge: {
+    backgroundColor: "rgba(34,197,94,0.12)", borderRadius: 8,
+    paddingHorizontal: 10, paddingVertical: 5, marginTop: 6,
+    borderWidth: 1, borderColor: "rgba(34,197,94,0.3)",
+  },
+  coordsText: { color: "#22C55E", fontSize: 11, textAlign: "right" },
+  coordsWarning: {
+    backgroundColor: "rgba(245,158,11,0.12)", borderRadius: 8,
+    paddingHorizontal: 10, paddingVertical: 5, marginTop: 6,
+    borderWidth: 1, borderColor: "rgba(245,158,11,0.3)",
+  },
+  coordsWarningText: { color: "#F59E0B", fontSize: 11, textAlign: "right" },
+  gpsHint: {
+    color: "#6B5B8A", fontSize: 11, textAlign: "right", marginTop: 8, lineHeight: 16,
+  },
   inputGroup: { gap: 10 },
   input: {
     backgroundColor: "#2D1B69", borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14,
     color: "#FFFFFF", fontSize: 14, borderWidth: 1, borderColor: "#3D2580",
   },
   notesInput: { height: 80, textAlignVertical: "top", paddingTop: 14 },
-  hint: { color: "#9B8AB0", fontSize: 11, textAlign: "right", marginTop: 6 },
   submitBtn: {
     marginHorizontal: 20, marginTop: 24, backgroundColor: "#FFD700",
     paddingVertical: 18, borderRadius: 16, alignItems: "center",

@@ -411,3 +411,4 @@
 - [x] إضافة شاشة my-parcels.tsx للكابتن - سجل الطرود مع إحصائيات وفلتر
 - [x] إضافة endpoint getDriverAll في routers.ts وgetDriverAllParcels في db.ts
 - [x] إضافة زر "طرودي 📦" في شاشة الكابتن الرئيسية
+- [ ] إضافة حقل عنوان إلزامي مع GPS في نموذج طلب توصيل الطرد (pickup + dropoff)
