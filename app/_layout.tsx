@@ -113,7 +113,7 @@ function NotificationHandler() {
         Alert.alert(
           "🚫 تم تعطيل حسابك",
           `سيتم تسجيل خروجك من وضع الكابتن.\n\nالسبب: ${reason}\n\nللاستفسار تواصل مع الدعم.`,
-          [{ text: "حسناً", onPress: async () => { await logout(); router.replace("/(tabs)/profile" as any); } }],
+          [{ text: "حسناً", onPress: async () => { await logout(); router.dismissAll(); router.replace("/(tabs)/profile" as any); } }],
           { cancelable: false }
         );
       } else if (notifType === "account_unblocked") {
@@ -253,18 +253,20 @@ export default function RootLayout() {
             <Stack.Screen name="subscription" />
             <Stack.Screen name="wallet" />
             <Stack.Screen name="driver/register" />
-            <Stack.Screen name="captain/home" options={{ headerShown: false, gestureEnabled: false }} />
-            <Stack.Screen name="captain/earnings" options={{ gestureEnabled: false }} />
-            <Stack.Screen name="captain/active-trip" options={{ gestureEnabled: false }} />
-            <Stack.Screen name="captain/trip-summary" options={{ gestureEnabled: false }} />
-            <Stack.Screen name="captain/profile" options={{ gestureEnabled: false }} />
-            <Stack.Screen name="captain/rate-passenger" options={{ gestureEnabled: false }} />
-            <Stack.Screen name="captain/trips" options={{ gestureEnabled: false }} />
-            <Stack.Screen name="captain/documents" options={{ gestureEnabled: false }} />
-            <Stack.Screen name="captain/support" options={{ gestureEnabled: false }} />
-            <Stack.Screen name="captain/wallet" options={{ gestureEnabled: false }} />
-            <Stack.Screen name="captain/intercity-trips" options={{ gestureEnabled: false }} />
-            <Stack.Screen name="captain/intercity-schedule" options={{ gestureEnabled: false }} />
+            {/* شاشات الكابتن: fullScreenModal يعزلها بـ stack منفصل تماماً عن التطبيق الرئيسي،
+                 وعند dismissAll() يُمسح كل شيء دفعة واحدة بدون أي تاريخ متبقٍ */}
+            <Stack.Screen name="captain/home" options={{ headerShown: false, gestureEnabled: false, presentation: "fullScreenModal" }} />
+            <Stack.Screen name="captain/earnings" options={{ gestureEnabled: false, presentation: "fullScreenModal" }} />
+            <Stack.Screen name="captain/active-trip" options={{ gestureEnabled: false, presentation: "fullScreenModal" }} />
+            <Stack.Screen name="captain/trip-summary" options={{ gestureEnabled: false, presentation: "fullScreenModal" }} />
+            <Stack.Screen name="captain/profile" options={{ gestureEnabled: false, presentation: "fullScreenModal" }} />
+            <Stack.Screen name="captain/rate-passenger" options={{ gestureEnabled: false, presentation: "fullScreenModal" }} />
+            <Stack.Screen name="captain/trips" options={{ gestureEnabled: false, presentation: "fullScreenModal" }} />
+            <Stack.Screen name="captain/documents" options={{ gestureEnabled: false, presentation: "fullScreenModal" }} />
+            <Stack.Screen name="captain/support" options={{ gestureEnabled: false, presentation: "fullScreenModal" }} />
+            <Stack.Screen name="captain/wallet" options={{ gestureEnabled: false, presentation: "fullScreenModal" }} />
+            <Stack.Screen name="captain/intercity-trips" options={{ gestureEnabled: false, presentation: "fullScreenModal" }} />
+            <Stack.Screen name="captain/intercity-schedule" options={{ gestureEnabled: false, presentation: "fullScreenModal" }} />
             <Stack.Screen name="oauth/callback" />
             <Stack.Screen name="privacy" />
             <Stack.Screen name="about" />
