@@ -67,11 +67,9 @@ export default function AdminDashboard() {
   // Parcel filters
   const [parcelSearch, setParcelSearch] = useState("");
   const [parcelStatusFilter, setParcelStatusFilter] = useState<"all" | "pending" | "accepted" | "picked_up" | "in_transit" | "delivered" | "cancelled" | "returned">("all");
-  const [parcelTypeFilter, setParcelTypeFilter] = useState<"all" | "instant" | "scheduled" | "intercity">("all");
-  const [parcelFromDate, setParcelFromDate] = useState("");
-  const [parcelToDate, setParcelToDate] = useState("");
+  const [parcelTypeFilter, setParcelTypeFilter] = useState<"all" | "instant" | "intercity">("all");
   const [parcelPage, setParcelPage] = useState(0);
-  const PARCEL_PAGE_SIZE = 20;
+  const PARCEL_PAGE_SIZE = 10;
 
   const [driversPage, setDriversPage] = useState(0);
   const [passengersPage, setPassengersPage] = useState(0);
@@ -206,8 +204,6 @@ export default function AdminDashboard() {
       deliveryType: parcelTypeFilter === "all" ? undefined : parcelTypeFilter,
       status: parcelStatusFilter === "all" ? undefined : parcelStatusFilter,
       search: parcelSearch || undefined,
-      fromDate: parcelFromDate || undefined,
-      toDate: parcelToDate || undefined,
       page: parcelPage,
       limit: PARCEL_PAGE_SIZE,
     },
@@ -1750,7 +1746,6 @@ export default function AdminDashboard() {
                 {([
                   { id: 'all', label: '🔖 الكل' },
                   { id: 'instant', label: '⚡ فوري' },
-                  { id: 'scheduled', label: '📅 مجدول' },
                   { id: 'intercity', label: '🚚 بين المدن' },
                 ] as const).map(t => (
                   <TouchableOpacity
@@ -1764,37 +1759,7 @@ export default function AdminDashboard() {
               </View>
             </ScrollView>
 
-            {/* Date Range */}
-            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
-              <View style={{ flex: 1, backgroundColor: '#1E1035', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1, borderColor: '#2D1B4E' }}>
-                <Text style={{ color: '#9B8EC4', fontSize: 10, marginBottom: 2 }}>من تاريخ</Text>
-                <TextInput
-                  value={parcelFromDate}
-                  onChangeText={setParcelFromDate}
-                  placeholder="YYYY-MM-DD"
-                  placeholderTextColor="#4A3B6A"
-                  style={{ color: '#FFFFFF', fontSize: 12, paddingVertical: 0 }}
-                />
-              </View>
-              <View style={{ flex: 1, backgroundColor: '#1E1035', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1, borderColor: '#2D1B4E' }}>
-                <Text style={{ color: '#9B8EC4', fontSize: 10, marginBottom: 2 }}>إلى تاريخ</Text>
-                <TextInput
-                  value={parcelToDate}
-                  onChangeText={setParcelToDate}
-                  placeholder="YYYY-MM-DD"
-                  placeholderTextColor="#4A3B6A"
-                  style={{ color: '#FFFFFF', fontSize: 12, paddingVertical: 0 }}
-                />
-              </View>
-              {(parcelFromDate || parcelToDate) && (
-                <TouchableOpacity
-                  style={{ backgroundColor: '#3D2580', borderRadius: 10, paddingHorizontal: 10, justifyContent: 'center' }}
-                  onPress={() => { setParcelFromDate(''); setParcelToDate(''); }}
-                >
-                  <Text style={{ color: '#9B8EC4', fontSize: 12 }}>مسح</Text>
-                </TouchableOpacity>
-              )}
-            </View>
+
 
             {/* Parcels List */}
             {parcelsLoading ? (
@@ -1903,7 +1868,7 @@ export default function AdminDashboard() {
                   >
                     <Text style={{ color: parcelPage > 0 ? '#FFD700' : '#4A3B6A', fontWeight: '700' }}>→ السابق</Text>
                   </TouchableOpacity>
-                  <Text style={{ color: '#9B8EC4', fontSize: 13 }}>صفحة {parcelPage + 1}</Text>
+                  <Text style={{ color: '#9B8EC4', fontSize: 13 }}>صفحة {parcelPage + 1} / {adminParcelsData?.total ? Math.ceil(adminParcelsData.total / PARCEL_PAGE_SIZE) : 1}</Text>
                   <TouchableOpacity
                     style={{ backgroundColor: adminParcelsData.parcels.length >= PARCEL_PAGE_SIZE ? '#2D1B69' : '#1E0F4A', borderRadius: 10, paddingHorizontal: 16, paddingVertical: 8 }}
                     onPress={() => setParcelPage(p => p + 1)}

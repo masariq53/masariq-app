@@ -659,6 +659,14 @@ export default function CaptainHomeScreen() {
           <Text style={styles.statValue}>🛣️</Text>
           <Text style={styles.statLabel}>{t.captain.intercityTrips}</Text>
         </TouchableOpacity>
+        <View style={styles.statDivider} />
+        <TouchableOpacity
+          style={styles.statItem}
+          onPress={() => router.push("/captain/my-parcels" as any)}
+        >
+          <Text style={styles.statValue}>📦</Text>
+          <Text style={styles.statLabel}>طرودي</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Modal طلب طرد فوري */}

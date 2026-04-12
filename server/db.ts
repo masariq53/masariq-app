@@ -2657,7 +2657,19 @@ export async function getDriverActiveParcels(driverId: number) {
   if (!db) return [];
   return db.select().from(parcels).where(and(eq(parcels.driverId, driverId), sql`${parcels.status} IN ('accepted', 'picked_up', 'in_transit')`)).orderBy(sql`${parcels.createdAt} DESC`);
 }
-
+export async function getDriverAllParcels(driverId: number, page = 0, limit = 20) {
+  const db = await getDb();
+  if (!db) return { parcels: [], total: 0, stats: { total: 0, delivered: 0, active: 0, cancelled: 0, totalEarnings: 0 } };
+  const offset = page * limit;
+  const allParcels = await db.select().from(parcels).where(eq(parcels.driverId, driverId)).orderBy(sql`${parcels.createdAt} DESC`);
+  const total = allParcels.length;
+  const delivered = allParcels.filter(p => p.status === 'delivered').length;
+  const active = allParcels.filter(p => ['accepted', 'picked_up', 'in_transit'].includes(p.status)).length;
+  const cancelled = allParcels.filter(p => p.status === 'cancelled').length;
+  const totalEarnings = allParcels.filter(p => p.status === 'delivered').reduce((sum, p) => sum + (Number(p.price) || 0), 0);
+  const paged = allParcels.slice(offset, offset + limit);
+  return { parcels: paged, total, stats: { total, delivered, active, cancelled, totalEarnings } };
+}
 export async function acceptParcel(parcelId: number, driverId: number, price: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");

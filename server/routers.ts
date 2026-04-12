@@ -110,6 +110,7 @@ import {
   getSenderParcels,
   getPendingInstantParcels,
   getDriverActiveParcels,
+  getDriverAllParcels,
   acceptParcel,
   updateParcelStatus,
   verifyParcelDeliveryOtp,
@@ -2894,7 +2895,9 @@ export const appRouter = router({
     getDriverActive: publicProcedure
       .input(z.object({ driverId: z.number() }))
       .query(async ({ input }) => getDriverActiveParcels(input.driverId)),
-
+    getDriverAll: publicProcedure
+      .input(z.object({ driverId: z.number(), page: z.number().optional(), limit: z.number().optional() }))
+      .query(async ({ input }) => getDriverAllParcels(input.driverId, input.page ?? 0, input.limit ?? 20)),
     accept: publicProcedure
       .input(z.object({ parcelId: z.number(), driverId: z.number(), price: z.number() }))
       .mutation(async ({ input }) => { await acceptParcel(input.parcelId, input.driverId, input.price); return { success: true }; }),

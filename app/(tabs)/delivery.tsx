@@ -20,20 +20,10 @@ const DELIVERY_TYPES = [
     icon: "⚡",
     title: "توصيل فوري",
     subtitle: "داخل المدينة",
-    desc: "يصلك كابتن خلال دقائق — نفس تسعيرة الأجرة",
+    desc: "يصلك أقرب كابتن متاح خلال دقائق — نفس تسعيرة الأجرة",
     color: "#FFD700",
     bg: "#FFF8E1",
     border: "#FFD700",
-  },
-  {
-    id: "scheduled",
-    icon: "📅",
-    title: "توصيل مجدول",
-    subtitle: "داخل المدينة",
-    desc: "حدد موعدك — يصلك المندوب في نفس اليوم",
-    color: "#22C55E",
-    bg: "#F0FDF4",
-    border: "#86EFAC",
   },
   {
     id: "intercity",
@@ -52,6 +42,7 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   accepted: { label: "تم القبول", color: "#3B82F6" },
   picked_up: { label: "تم الاستلام", color: "#8B5CF6" },
   in_transit: { label: "في الطريق", color: "#6366F1" },
+  inTransit: { label: "في الطريق", color: "#6366F1" },
   delivered: { label: "تم التسليم ✓", color: "#22C55E" },
   cancelled: { label: "ملغي", color: "#EF4444" },
   returned: { label: "مُعاد", color: "#6B7280" },
@@ -124,11 +115,21 @@ export default function DeliveryScreen() {
           ))}
 
           <View style={styles.infoBanner}>
-            <Text style={styles.infoBannerIcon}>💡</Text>
+            <Text style={styles.infoBannerIcon}>⚡</Text>
             <View style={{ flex: 1 }}>
               <Text style={styles.infoBannerTitle}>كيف يعمل التوصيل الفوري؟</Text>
               <Text style={styles.infoBannerText}>
                 يذهب طلبك لأقرب كابتن متاح — نفس كباتن الأجرة — يستلم طردك ويوصله فوراً بنفس تسعيرة الرحلة.
+              </Text>
+            </View>
+          </View>
+
+          <View style={[styles.infoBanner, { backgroundColor: "#EEF2FF", borderColor: "#A5B4FC" }]}>
+            <Text style={styles.infoBannerIcon}>🚚</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.infoBannerTitle, { color: "#4338CA" }]}>كيف يعمل التوصيل بين المدن؟</Text>
+              <Text style={[styles.infoBannerText, { color: "#6366F1" }]}>
+                يُرسل طردك عبر شبكة وكلائنا المعتمدين في جميع أنحاء العراق مع رقم تتبع خاص.
               </Text>
             </View>
           </View>
