@@ -1,264 +1,292 @@
-import React, { useState, useEffect } from "react";
+import React from "react";
 import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  Animated,
+  View, Text, TouchableOpacity, StyleSheet,
+  ScrollView, ActivityIndicator, Linking,
 } from "react-native";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { trpc } from "@/lib/trpc";
 
-const deliverySteps = [
-  { id: 0, label: "جاري البحث عن مندوب توصيل", icon: "🔍", done: false },
-  { id: 1, label: "تم تعيين المندوب", icon: "✅", done: false },
-  { id: 2, label: "المندوب في طريقه لاستلام الطرد", icon: "🚗", done: false },
-  { id: 3, label: "تم استلام الطرد", icon: "📦", done: false },
-  { id: 4, label: "الطرد في الطريق إلى المستلم", icon: "🛣️", done: false },
-  { id: 5, label: "تم التسليم بنجاح! 🎉", icon: "✅", done: false },
+const STATUS_STEPS = [
+  { key: "pending", label: "بانتظار الكابتن", icon: "⏳" },
+  { key: "accepted", label: "تم قبول الطلب", icon: "✅" },
+  { key: "picked_up", label: "تم استلام الطرد", icon: "📦" },
+  { key: "in_transit", label: "في الطريق", icon: "🚗" },
+  { key: "delivered", label: "تم التسليم", icon: "🎉" },
 ];
 
-export default function DeliveryTrackingScreen() {
+const DELIVERY_TYPE_LABELS: Record<string, string> = {
+  instant: "⚡ توصيل فوري",
+  scheduled: "📅 توصيل مجدول",
+  intercity: "🚚 توصيل بين المدن",
+};
+
+const SIZE_LABELS: Record<string, string> = {
+  small: "📦 صغير",
+  medium: "🗃️ متوسط",
+  large: "📫 كبير",
+};
+
+export default function ParcelTrackingScreen() {
   const insets = useSafeAreaInsets();
-  const [currentStep, setCurrentStep] = useState(0);
-  const pulseAnim = new Animated.Value(1);
+  const params = useLocalSearchParams<{ parcelId: string }>();
+  const parcelId = parseInt(params.parcelId ?? "0");
 
-  useEffect(() => {
-    const timers = [
-      setTimeout(() => setCurrentStep(1), 2000),
-      setTimeout(() => setCurrentStep(2), 5000),
-      setTimeout(() => setCurrentStep(3), 9000),
-      setTimeout(() => setCurrentStep(4), 13000),
-    ];
+  const { data: parcel, isLoading, refetch } = trpc.parcel.getById.useQuery(
+    { parcelId },
+    { enabled: !!parcelId, refetchInterval: 10000 }
+  );
 
-    const pulse = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, { toValue: 1.15, duration: 900, useNativeDriver: true }),
-        Animated.timing(pulseAnim, { toValue: 1, duration: 900, useNativeDriver: true }),
-      ])
+  const currentStepIndex = parcel
+    ? STATUS_STEPS.findIndex((s) => s.key === parcel.status)
+    : 0;
+
+  if (isLoading) {
+    return (
+      <View style={[styles.centered, { paddingTop: insets.top }]}>
+        <StatusBar style="light" />
+        <ActivityIndicator size="large" color="#FFD700" />
+      </View>
     );
-    pulse.start();
+  }
 
-    return () => {
-      timers.forEach(clearTimeout);
-      pulse.stop();
-    };
-  }, []);
+  if (!parcel) {
+    return (
+      <View style={[styles.centered, { paddingTop: insets.top }]}>
+        <StatusBar style="light" />
+        <Text style={styles.errorText}>لم يتم العثور على الطرد</Text>
+        <TouchableOpacity style={styles.backBtnAlt} onPress={() => router.back()}>
+          <Text style={styles.backBtnAltText}>رجوع</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  const isCancelled = parcel.status === "cancelled";
+  const isDelivered = parcel.status === "delivered";
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <StatusBar style="light" />
-
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
-          <Text style={styles.backText}>→</Text>
+          <Text style={styles.backIcon}>✕</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>تتبع الطرد</Text>
-        <View style={{ width: 44 }} />
+        <View style={{ alignItems: "center" }}>
+          <Text style={styles.headerTitle}>تتبع الطرد</Text>
+          <Text style={styles.trackingNum}>#{parcel.trackingNumber}</Text>
+        </View>
+        <TouchableOpacity style={styles.refreshBtn} onPress={() => refetch()}>
+          <Text style={styles.refreshIcon}>↻</Text>
+        </TouchableOpacity>
       </View>
 
-      {/* Map Area */}
-      <View style={styles.mapArea}>
-        <Text style={styles.mapEmoji}>🗺️</Text>
-        <Animated.View style={[styles.deliveryMarker, { transform: [{ scale: pulseAnim }] }]}>
-          <Text style={styles.deliveryEmoji}>🚗</Text>
-        </Animated.View>
-      </View>
-
-      {/* Steps */}
-      <View style={styles.stepsContainer}>
-        <View style={styles.stepsHandle} />
-        <Text style={styles.stepsTitle}>مراحل التوصيل</Text>
-
-        {deliverySteps.map((step, index) => (
-          <View key={step.id} style={styles.stepRow}>
-            <View style={styles.stepRight}>
-              <View
-                style={[
-                  styles.stepCircle,
-                  index < currentStep && styles.stepCircleDone,
-                  index === currentStep && styles.stepCircleActive,
-                ]}
-              >
-                <Text style={styles.stepCircleText}>
-                  {index < currentStep ? "✓" : step.icon}
-                </Text>
-              </View>
-              {index < deliverySteps.length - 1 && (
-                <View
-                  style={[
-                    styles.stepLine,
-                    index < currentStep && styles.stepLineDone,
-                  ]}
-                />
-              )}
-            </View>
-            <Text
-              style={[
-                styles.stepLabel,
-                index === currentStep && styles.stepLabelActive,
-                index < currentStep && styles.stepLabelDone,
-              ]}
-            >
-              {step.label}
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+        {/* Status Banner */}
+        <View style={[
+          styles.statusBanner,
+          isCancelled && styles.statusBannerCancelled,
+          isDelivered && styles.statusBannerDelivered,
+        ]}>
+          <Text style={styles.statusBannerIcon}>
+            {isCancelled ? "❌" : isDelivered ? "🎉" : STATUS_STEPS[currentStepIndex]?.icon ?? "📦"}
+          </Text>
+          <View>
+            <Text style={styles.statusBannerLabel}>
+              {isCancelled ? "تم إلغاء الطلب" : isDelivered ? "تم التسليم بنجاح!" : STATUS_STEPS[currentStepIndex]?.label ?? ""}
+            </Text>
+            <Text style={styles.statusBannerSub}>
+              {DELIVERY_TYPE_LABELS[parcel.deliveryType] ?? parcel.deliveryType}
             </Text>
           </View>
-        ))}
-
-        {/* Tracking ID */}
-        <View style={styles.trackingId}>
-          <Text style={styles.trackingIdLabel}>رقم التتبع</Text>
-          <Text style={styles.trackingIdValue}>#MR-2026-0042</Text>
         </View>
-      </View>
+
+        {/* Progress Steps */}
+        {!isCancelled && (
+          <View style={styles.stepsCard}>
+            <Text style={styles.cardTitle}>مراحل التوصيل</Text>
+            {STATUS_STEPS.map((step, idx) => {
+              const isCompleted = idx <= currentStepIndex;
+              const isCurrent = idx === currentStepIndex;
+              return (
+                <View key={step.key} style={styles.stepRow}>
+                  <View style={styles.stepLineCol}>
+                    <View style={[styles.stepDot, isCompleted && styles.stepDotCompleted, isCurrent && styles.stepDotCurrent]}>
+                      {isCompleted && !isCurrent && <Text style={styles.stepCheck}>✓</Text>}
+                      {isCurrent && <View style={styles.stepDotInner} />}
+                    </View>
+                    {idx < STATUS_STEPS.length - 1 && (
+                      <View style={[styles.stepLine, isCompleted && idx < currentStepIndex && styles.stepLineCompleted]} />
+                    )}
+                  </View>
+                  <View style={styles.stepContent}>
+                    <Text style={[styles.stepLabel, isCompleted && styles.stepLabelCompleted, isCurrent && styles.stepLabelCurrent]}>
+                      {step.icon} {step.label}
+                    </Text>
+                    {isCurrent && !isDelivered && <Text style={styles.stepCurrentHint}>الحالة الحالية</Text>}
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        )}
+
+        {/* Details */}
+        <View style={styles.detailsCard}>
+          <Text style={styles.cardTitle}>تفاصيل الطرد</Text>
+          <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>الحجم</Text>
+            <Text style={styles.detailValue}>{SIZE_LABELS[parcel.parcelSize] ?? parcel.parcelSize}</Text>
+          </View>
+          <View style={styles.detailDivider} />
+          <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>المستلم</Text>
+            <Text style={styles.detailValue}>{parcel.recipientName}</Text>
+          </View>
+          <View style={styles.detailDivider} />
+          <View style={styles.detailRow}>
+            <Text style={styles.detailLabel}>هاتف المستلم</Text>
+            <TouchableOpacity onPress={() => Linking.openURL(`tel:${parcel.recipientPhone}`)}>
+              <Text style={[styles.detailValue, styles.phoneLink]}>{parcel.recipientPhone}</Text>
+            </TouchableOpacity>
+          </View>
+          {parcel.deliveryType === "intercity" && parcel.toCity && (
+            <>
+              <View style={styles.detailDivider} />
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>من → إلى</Text>
+                <Text style={styles.detailValue}>{parcel.fromCity} ← {parcel.toCity}</Text>
+              </View>
+            </>
+          )}
+          {parcel.scheduledDate && (
+            <>
+              <View style={styles.detailDivider} />
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>الموعد</Text>
+                <Text style={styles.detailValue}>{parcel.scheduledDate}{parcel.scheduledTimeSlot ? ` - ${parcel.scheduledTimeSlot}` : ""}</Text>
+              </View>
+            </>
+          )}
+          {parcel.parcelDescription && (
+            <>
+              <View style={styles.detailDivider} />
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>الوصف</Text>
+                <Text style={[styles.detailValue, { flex: 1, textAlign: "right" }]}>{parcel.parcelDescription}</Text>
+              </View>
+            </>
+          )}
+        </View>
+
+        {/* Addresses */}
+        <View style={styles.addressesCard}>
+          <Text style={styles.cardTitle}>العناوين</Text>
+          <View style={styles.addressRow}>
+            <View style={[styles.addrDot, { backgroundColor: "#22C55E" }]} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.addrLabel}>من</Text>
+              <Text style={styles.addrText}>{parcel.pickupAddress}</Text>
+            </View>
+          </View>
+          <View style={styles.addrConnector} />
+          <View style={styles.addressRow}>
+            <View style={[styles.addrDot, { backgroundColor: "#EF4444" }]} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.addrLabel}>إلى</Text>
+              <Text style={styles.addrText}>{parcel.dropoffAddress}</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Driver */}
+        {parcel.driverName && (
+          <View style={styles.driverCard}>
+            <Text style={styles.cardTitle}>الكابتن</Text>
+            <View style={styles.driverRow}>
+              <View style={styles.driverAvatar}>
+                <Text style={styles.driverAvatarText}>{parcel.driverName.charAt(0)}</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.driverName}>{parcel.driverName}</Text>
+                {parcel.driverPhone && (
+                  <TouchableOpacity onPress={() => Linking.openURL(`tel:${parcel.driverPhone}`)}>
+                    <Text style={styles.driverPhone}>📞 {parcel.driverPhone}</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+          </View>
+        )}
+
+        <TouchableOpacity style={styles.doneBtn} onPress={() => router.back()}>
+          <Text style={styles.doneBtnText}>{isDelivered ? "🎉 رائع!" : "رجوع للرئيسية"}</Text>
+        </TouchableOpacity>
+        <View style={{ height: 40 }} />
+      </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#1A2E4A",
+  container: { flex: 1, backgroundColor: "#1A0533" },
+  centered: { flex: 1, backgroundColor: "#1A0533", alignItems: "center", justifyContent: "center", gap: 16 },
+  errorText: { color: "#FFFFFF", fontSize: 16 },
+  backBtnAlt: { backgroundColor: "#FFD700", paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 },
+  backBtnAltText: { color: "#1A0533", fontWeight: "700" },
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 20, paddingBottom: 16 },
+  backBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: "#2D1B69", alignItems: "center", justifyContent: "center" },
+  backIcon: { color: "#FFD700", fontSize: 16, fontWeight: "bold" },
+  headerTitle: { color: "#FFFFFF", fontSize: 18, fontWeight: "800" },
+  trackingNum: { color: "rgba(255,255,255,0.5)", fontSize: 12, marginTop: 2 },
+  refreshBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: "#2D1B69", alignItems: "center", justifyContent: "center" },
+  refreshIcon: { color: "#FFD700", fontSize: 20, fontWeight: "bold" },
+  scrollContent: { paddingBottom: 20 },
+  statusBanner: {
+    marginHorizontal: 20, marginBottom: 16, backgroundColor: "#2D1B69",
+    borderRadius: 18, padding: 20, flexDirection: "row", alignItems: "center", gap: 16,
+    borderWidth: 1.5, borderColor: "#FFD700",
   },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-  },
-  backBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: "rgba(255,255,255,0.1)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  backText: {
-    color: "#FFFFFF",
-    fontSize: 20,
-    fontWeight: "700",
-  },
-  headerTitle: {
-    color: "#FFFFFF",
-    fontSize: 20,
-    fontWeight: "800",
-  },
-  mapArea: {
-    height: 200,
-    backgroundColor: "#C8DDE8",
-    alignItems: "center",
-    justifyContent: "center",
-    position: "relative",
-  },
-  mapEmoji: {
-    fontSize: 60,
-    opacity: 0.3,
-  },
-  deliveryMarker: {
-    position: "absolute",
-    top: "40%",
-    left: "45%",
-  },
-  deliveryEmoji: {
-    fontSize: 32,
-  },
-  stepsContainer: {
-    flex: 1,
-    backgroundColor: "#FFFFFF",
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    padding: 20,
-  },
-  stepsHandle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: "#E2E8F0",
-    alignSelf: "center",
-    marginBottom: 16,
-  },
-  stepsTitle: {
-    color: "#1A2E4A",
-    fontSize: 18,
-    fontWeight: "800",
-    textAlign: "right",
-    marginBottom: 20,
-  },
-  stepRow: {
-    flexDirection: "row-reverse",
-    alignItems: "flex-start",
-    gap: 14,
-    marginBottom: 4,
-  },
-  stepRight: {
-    alignItems: "center",
-    width: 36,
-  },
-  stepCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "#F5F7FA",
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 2,
-    borderColor: "#E2E8F0",
-  },
-  stepCircleDone: {
-    backgroundColor: "#22C55E",
-    borderColor: "#22C55E",
-  },
-  stepCircleActive: {
-    backgroundColor: "#F5A623",
-    borderColor: "#F5A623",
-  },
-  stepCircleText: {
-    fontSize: 14,
-  },
-  stepLine: {
-    width: 2,
-    height: 24,
-    backgroundColor: "#E2E8F0",
-    marginTop: 2,
-  },
-  stepLineDone: {
-    backgroundColor: "#22C55E",
-  },
-  stepLabel: {
-    color: "#9BA1A6",
-    fontSize: 14,
-    flex: 1,
-    textAlign: "right",
-    paddingTop: 8,
-  },
-  stepLabelActive: {
-    color: "#1A2E4A",
-    fontWeight: "700",
-  },
-  stepLabelDone: {
-    color: "#22C55E",
-    fontWeight: "600",
-  },
-  trackingId: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    backgroundColor: "#F5F7FA",
-    borderRadius: 14,
-    padding: 14,
-    marginTop: 16,
-  },
-  trackingIdLabel: {
-    color: "#6B7A8D",
-    fontSize: 13,
-  },
-  trackingIdValue: {
-    color: "#1A2E4A",
-    fontSize: 14,
-    fontWeight: "800",
-  },
+  statusBannerCancelled: { borderColor: "#EF4444", backgroundColor: "#2D1B1B" },
+  statusBannerDelivered: { borderColor: "#22C55E", backgroundColor: "#1B2D1B" },
+  statusBannerIcon: { fontSize: 36 },
+  statusBannerLabel: { color: "#FFFFFF", fontSize: 16, fontWeight: "800" },
+  statusBannerSub: { color: "rgba(255,255,255,0.5)", fontSize: 12, marginTop: 4 },
+  stepsCard: { marginHorizontal: 20, marginBottom: 16, backgroundColor: "#2D1B69", borderRadius: 18, padding: 20 },
+  cardTitle: { color: "#FFFFFF", fontSize: 15, fontWeight: "800", textAlign: "right", marginBottom: 16 },
+  stepRow: { flexDirection: "row", gap: 14, minHeight: 50 },
+  stepLineCol: { alignItems: "center", width: 24 },
+  stepDot: { width: 24, height: 24, borderRadius: 12, backgroundColor: "#3D2580", borderWidth: 2, borderColor: "#4A3B6A", alignItems: "center", justifyContent: "center" },
+  stepDotCompleted: { backgroundColor: "#22C55E", borderColor: "#22C55E" },
+  stepDotCurrent: { backgroundColor: "#FFD700", borderColor: "#FFD700" },
+  stepDotInner: { width: 8, height: 8, borderRadius: 4, backgroundColor: "#1A0533" },
+  stepCheck: { color: "#FFFFFF", fontSize: 12, fontWeight: "bold" },
+  stepLine: { width: 2, flex: 1, backgroundColor: "#3D2580", marginVertical: 2 },
+  stepLineCompleted: { backgroundColor: "#22C55E" },
+  stepContent: { flex: 1, paddingTop: 2, paddingBottom: 8 },
+  stepLabel: { color: "#6B5B8A", fontSize: 14 },
+  stepLabelCompleted: { color: "#C4B5D4" },
+  stepLabelCurrent: { color: "#FFD700", fontWeight: "700" },
+  stepCurrentHint: { color: "#FFD700", fontSize: 11, marginTop: 2, opacity: 0.7 },
+  detailsCard: { marginHorizontal: 20, marginBottom: 16, backgroundColor: "#2D1B69", borderRadius: 18, padding: 20 },
+  detailRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  detailLabel: { color: "#9B8AB0", fontSize: 13 },
+  detailValue: { color: "#FFFFFF", fontSize: 13, fontWeight: "600" },
+  detailDivider: { height: 1, backgroundColor: "#3D2580", marginVertical: 10 },
+  phoneLink: { color: "#FFD700", textDecorationLine: "underline" },
+  addressesCard: { marginHorizontal: 20, marginBottom: 16, backgroundColor: "#2D1B69", borderRadius: 18, padding: 20 },
+  addressRow: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
+  addrDot: { width: 12, height: 12, borderRadius: 6, marginTop: 4 },
+  addrLabel: { color: "#9B8AB0", fontSize: 11, marginBottom: 2 },
+  addrText: { color: "#FFFFFF", fontSize: 14 },
+  addrConnector: { width: 2, height: 20, backgroundColor: "#3D2580", marginLeft: 5, marginVertical: 4 },
+  driverCard: { marginHorizontal: 20, marginBottom: 16, backgroundColor: "#2D1B69", borderRadius: 18, padding: 20 },
+  driverRow: { flexDirection: "row", alignItems: "center", gap: 14 },
+  driverAvatar: { width: 50, height: 50, borderRadius: 25, backgroundColor: "#FFD700", alignItems: "center", justifyContent: "center" },
+  driverAvatarText: { color: "#1A0533", fontSize: 20, fontWeight: "800" },
+  driverName: { color: "#FFFFFF", fontSize: 16, fontWeight: "700" },
+  driverPhone: { color: "#FFD700", fontSize: 13, marginTop: 4 },
+  doneBtn: { marginHorizontal: 20, marginTop: 8, backgroundColor: "#FFD700", paddingVertical: 16, borderRadius: 16, alignItems: "center" },
+  doneBtnText: { color: "#1A0533", fontSize: 16, fontWeight: "800" },
 });

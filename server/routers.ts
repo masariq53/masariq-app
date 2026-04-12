@@ -104,6 +104,22 @@ import {
   searchRecipientByPhone,
   getAgentMonthlyStats,
   deleteAgent,
+  createParcel,
+  getParcelById,
+  getParcelByTracking,
+  getSenderParcels,
+  getPendingInstantParcels,
+  getDriverActiveParcels,
+  acceptParcel,
+  updateParcelStatus,
+  verifyParcelDeliveryOtp,
+  getParcelStatusLogs,
+  getAdminParcels,
+  getParcelStats,
+  getAllParcelAgents,
+  getActiveParcelAgents,
+  createParcelAgent,
+  updateParcelAgentStatus,
 } from "./db";
 import { storagePut } from "./storage";
 
@@ -2833,7 +2849,115 @@ export const appRouter = router({
         return deleteAgent(input.agentId);
       }),
   }),
+
+  // ─── Parcel Delivery ───────────────────────────────────────────────────────────────
+  parcel: router({
+    create: publicProcedure
+      .input(z.object({
+        deliveryType: z.enum(["instant", "scheduled", "intercity"]),
+        senderId: z.number(),
+        senderName: z.string(),
+        senderPhone: z.string(),
+        recipientName: z.string(),
+        recipientPhone: z.string(),
+        pickupAddress: z.string(),
+        pickupLat: z.number().optional(),
+        pickupLng: z.number().optional(),
+        dropoffAddress: z.string(),
+        dropoffLat: z.number().optional(),
+        dropoffLng: z.number().optional(),
+        fromCity: z.string().optional(),
+        toCity: z.string().optional(),
+        parcelSize: z.enum(["small", "medium", "large"]),
+        parcelDescription: z.string().optional(),
+        parcelPhotoUrl: z.string().optional(),
+        scheduledDate: z.string().optional(),
+        scheduledTimeSlot: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => createParcel(input)),
+
+    getById: publicProcedure
+      .input(z.object({ parcelId: z.number() }))
+      .query(async ({ input }) => getParcelById(input.parcelId)),
+
+    getByTracking: publicProcedure
+      .input(z.object({ trackingNumber: z.string() }))
+      .query(async ({ input }) => getParcelByTracking(input.trackingNumber)),
+
+    getSenderParcels: publicProcedure
+      .input(z.object({ senderId: z.number() }))
+      .query(async ({ input }) => getSenderParcels(input.senderId)),
+
+    getPendingInstant: publicProcedure
+      .query(async () => getPendingInstantParcels()),
+
+    getDriverActive: publicProcedure
+      .input(z.object({ driverId: z.number() }))
+      .query(async ({ input }) => getDriverActiveParcels(input.driverId)),
+
+    accept: publicProcedure
+      .input(z.object({ parcelId: z.number(), driverId: z.number(), price: z.number() }))
+      .mutation(async ({ input }) => { await acceptParcel(input.parcelId, input.driverId, input.price); return { success: true }; }),
+
+    updateStatus: publicProcedure
+      .input(z.object({
+        parcelId: z.number(),
+        status: z.enum(["picked_up", "in_transit", "delivered", "cancelled", "returned"]),
+        updatedBy: z.enum(["driver", "agent", "admin"]),
+        note: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => { await updateParcelStatus(input.parcelId, input.status, input.updatedBy, input.note); return { success: true }; }),
+
+    verifyOtp: publicProcedure
+      .input(z.object({ parcelId: z.number(), otp: z.string() }))
+      .mutation(async ({ input }) => verifyParcelDeliveryOtp(input.parcelId, input.otp)),
+
+    getStatusLogs: publicProcedure
+      .input(z.object({ parcelId: z.number() }))
+      .query(async ({ input }) => getParcelStatusLogs(input.parcelId)),
+
+    getActiveAgents: publicProcedure
+      .input(z.object({ fromCity: z.string() }))
+      .query(async ({ input }) => getActiveParcelAgents(input.fromCity)),
+
+    admin: router({
+      getAll: publicProcedure
+        .input(z.object({
+          deliveryType: z.string().optional(),
+          status: z.string().optional(),
+          fromDate: z.string().optional(),
+          toDate: z.string().optional(),
+          search: z.string().optional(),
+          page: z.number().optional(),
+          limit: z.number().optional(),
+        }).optional())
+        .query(async ({ input }) => getAdminParcels(input ?? {})),
+
+      getStats: publicProcedure
+        .query(async () => getParcelStats()),
+
+      getAgents: publicProcedure
+        .query(async () => getAllParcelAgents()),
+
+      createAgent: publicProcedure
+        .input(z.object({
+          name: z.string(),
+          phone: z.string(),
+          companyName: z.string().optional(),
+          city: z.string(),
+          username: z.string(),
+          passwordHash: z.string(),
+          coveredCities: z.string().optional(),
+          pickupTime: z.string().optional(),
+          pickupDays: z.string().optional(),
+          pricingJson: z.string().optional(),
+        }))
+        .mutation(async ({ input }) => { const id = await createParcelAgent(input); return { success: true, id }; }),
+
+      updateAgentStatus: publicProcedure
+        .input(z.object({ agentId: z.number(), isActive: z.boolean() }))
+        .mutation(async ({ input }) => { await updateParcelAgentStatus(input.agentId, input.isActive); return { success: true }; }),
+    }),
+  }),
 });
 export type AppRouter = typeof appRouter;
-
-

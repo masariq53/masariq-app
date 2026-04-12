@@ -2527,3 +2527,253 @@ export async function deductDriverCommission(driverId: number, rideId: number, r
   });
   return { commission, balanceBefore, balanceAfter };
 }
+
+// ─── Parcel Delivery Functions ────────────────────────────────────────────────
+import { parcels, parcelAgents, parcelStatusLogs } from "../drizzle/schema";
+
+function generateTrackingNumber(): string {
+  const prefix = "MSR";
+  const timestamp = Date.now().toString().slice(-7);
+  const random = Math.floor(Math.random() * 1000).toString().padStart(3, "0");
+  return `${prefix}${timestamp}${random}`;
+}
+
+function generateDeliveryOtp(): string {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
+export async function createParcel(data: {
+  deliveryType: "instant" | "scheduled" | "intercity";
+  senderId: number;
+  senderName: string;
+  senderPhone: string;
+  recipientName: string;
+  recipientPhone: string;
+  pickupAddress: string;
+  pickupLat?: number;
+  pickupLng?: number;
+  dropoffAddress: string;
+  dropoffLat?: number;
+  dropoffLng?: number;
+  fromCity?: string;
+  toCity?: string;
+  parcelSize: "small" | "medium" | "large";
+  parcelDescription?: string;
+  parcelPhotoUrl?: string;
+  scheduledDate?: string;
+  scheduledTimeSlot?: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const trackingNumber = generateTrackingNumber();
+  const deliveryOtp = generateDeliveryOtp();
+  const [result] = await db.insert(parcels).values({
+    ...data,
+    trackingNumber,
+    deliveryOtp,
+    status: "pending",
+    paymentMethod: "cash",
+    pickupLat: data.pickupLat?.toString() as any,
+    pickupLng: data.pickupLng?.toString() as any,
+    dropoffLat: data.dropoffLat?.toString() as any,
+    dropoffLng: data.dropoffLng?.toString() as any,
+  });
+  const newId = (result as any).insertId;
+  await db.insert(parcelStatusLogs).values({ parcelId: newId, status: "pending", note: "تم إنشاء الطرد", updatedBy: "system" });
+  return { id: newId, trackingNumber, deliveryOtp };
+}
+
+export async function getParcelById(parcelId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const [row] = await db
+    .select({
+      id: parcels.id,
+      trackingNumber: parcels.trackingNumber,
+      deliveryType: parcels.deliveryType,
+      senderId: parcels.senderId,
+      senderName: parcels.senderName,
+      senderPhone: parcels.senderPhone,
+      recipientName: parcels.recipientName,
+      recipientPhone: parcels.recipientPhone,
+      pickupAddress: parcels.pickupAddress,
+      pickupLat: parcels.pickupLat,
+      pickupLng: parcels.pickupLng,
+      dropoffAddress: parcels.dropoffAddress,
+      dropoffLat: parcels.dropoffLat,
+      dropoffLng: parcels.dropoffLng,
+      fromCity: parcels.fromCity,
+      toCity: parcels.toCity,
+      parcelSize: parcels.parcelSize,
+      parcelDescription: parcels.parcelDescription,
+      parcelPhotoUrl: parcels.parcelPhotoUrl,
+      estimatedWeight: parcels.estimatedWeight,
+      price: parcels.price,
+      paymentMethod: parcels.paymentMethod,
+      scheduledDate: parcels.scheduledDate,
+      scheduledTimeSlot: parcels.scheduledTimeSlot,
+      driverId: parcels.driverId,
+      agentId: parcels.agentId,
+      status: parcels.status,
+      cancelReason: parcels.cancelReason,
+      deliveryOtp: parcels.deliveryOtp,
+      deliveryOtpVerified: parcels.deliveryOtpVerified,
+      acceptedAt: parcels.acceptedAt,
+      pickedUpAt: parcels.pickedUpAt,
+      deliveredAt: parcels.deliveredAt,
+      createdAt: parcels.createdAt,
+      updatedAt: parcels.updatedAt,
+      driverName: drivers.name,
+      driverPhone: drivers.phone,
+    })
+    .from(parcels)
+    .leftJoin(drivers, eq(parcels.driverId, drivers.id))
+    .where(eq(parcels.id, parcelId))
+    .limit(1);
+  return row ?? null;
+}
+
+export async function getParcelByTracking(trackingNumber: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const [parcel] = await db.select().from(parcels).where(eq(parcels.trackingNumber, trackingNumber)).limit(1);
+  return parcel ?? null;
+}
+
+export async function getSenderParcels(senderId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(parcels).where(eq(parcels.senderId, senderId)).orderBy(sql`${parcels.createdAt} DESC`);
+}
+
+export async function getPendingInstantParcels() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(parcels).where(and(eq(parcels.deliveryType, "instant"), eq(parcels.status, "pending"))).orderBy(sql`${parcels.createdAt} ASC`);
+}
+
+export async function getDriverActiveParcels(driverId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(parcels).where(and(eq(parcels.driverId, driverId), sql`${parcels.status} IN ('accepted', 'picked_up', 'in_transit')`)).orderBy(sql`${parcels.createdAt} DESC`);
+}
+
+export async function acceptParcel(parcelId: number, driverId: number, price: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(parcels).set({ driverId, price: price.toString(), status: "accepted", acceptedAt: new Date() }).where(and(eq(parcels.id, parcelId), eq(parcels.status, "pending")));
+  await db.insert(parcelStatusLogs).values({ parcelId, status: "accepted", note: "تم قبول الطرد من الكابتن", updatedBy: "driver" });
+}
+
+export async function updateParcelStatus(
+  parcelId: number,
+  status: "picked_up" | "in_transit" | "delivered" | "cancelled" | "returned",
+  updatedBy: "driver" | "agent" | "admin",
+  note?: string
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const updateData: any = { status };
+  if (status === "picked_up") updateData.pickedUpAt = new Date();
+  if (status === "delivered") updateData.deliveredAt = new Date();
+  await db.update(parcels).set(updateData).where(eq(parcels.id, parcelId));
+  await db.insert(parcelStatusLogs).values({ parcelId, status, note: note ?? "", updatedBy });
+}
+
+export async function verifyParcelDeliveryOtp(parcelId: number, otp: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [parcel] = await db.select().from(parcels).where(and(eq(parcels.id, parcelId), eq(parcels.deliveryOtp, otp))).limit(1);
+  if (!parcel) return { success: false, message: "رمز التسليم غير صحيح" };
+  if (parcel.deliveryOtpVerified) return { success: false, message: "تم استخدام هذا الرمز مسبقاً" };
+  await db.update(parcels).set({ deliveryOtpVerified: true, status: "delivered", deliveredAt: new Date() }).where(eq(parcels.id, parcelId));
+  await db.insert(parcelStatusLogs).values({ parcelId, status: "delivered", note: "تم التسليم بتأكيد OTP", updatedBy: "driver" });
+  return { success: true };
+}
+
+export async function getParcelStatusLogs(parcelId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(parcelStatusLogs).where(eq(parcelStatusLogs.parcelId, parcelId)).orderBy(sql`${parcelStatusLogs.createdAt} ASC`);
+}
+
+export async function getAdminParcels(filters: {
+  deliveryType?: string;
+  status?: string;
+  fromDate?: string;
+  toDate?: string;
+  search?: string;
+  page?: number;
+  limit?: number;
+}) {
+  const db = await getDb();
+  if (!db) return { parcels: [], total: 0, page: 1, limit: 50 };
+  const { deliveryType, status, fromDate, toDate, search, page = 1, limit = 50 } = filters;
+  const offset = (page - 1) * limit;
+  const conditions: any[] = [];
+  if (deliveryType) conditions.push(eq(parcels.deliveryType, deliveryType as any));
+  if (status) conditions.push(eq(parcels.status, status as any));
+  if (fromDate) conditions.push(sql`DATE(${parcels.createdAt}) >= ${fromDate}`);
+  if (toDate) conditions.push(sql`DATE(${parcels.createdAt}) <= ${toDate}`);
+  if (search) conditions.push(sql`(${parcels.trackingNumber} LIKE ${`%${search}%`} OR ${parcels.senderName} LIKE ${`%${search}%`} OR ${parcels.recipientName} LIKE ${`%${search}%`} OR ${parcels.senderPhone} LIKE ${`%${search}%`} OR ${parcels.recipientPhone} LIKE ${`%${search}%`})`);
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+  const [rows, countResult] = await Promise.all([
+    db.select().from(parcels).where(whereClause).orderBy(sql`${parcels.createdAt} DESC`).limit(limit).offset(offset),
+    db.select({ count: sql<number>`COUNT(*)` }).from(parcels).where(whereClause),
+  ]);
+  return { parcels: rows, total: countResult[0]?.count ?? 0, page, limit };
+}
+
+export async function getParcelStats() {
+  const db = await getDb();
+  if (!db) return null;
+  const [stats] = await db.select({
+    total: sql<number>`COUNT(*)`,
+    pending: sql<number>`SUM(CASE WHEN ${parcels.status} = 'pending' THEN 1 ELSE 0 END)`,
+    accepted: sql<number>`SUM(CASE WHEN ${parcels.status} = 'accepted' THEN 1 ELSE 0 END)`,
+    inTransit: sql<number>`SUM(CASE WHEN ${parcels.status} IN ('picked_up','in_transit') THEN 1 ELSE 0 END)`,
+    delivered: sql<number>`SUM(CASE WHEN ${parcels.status} = 'delivered' THEN 1 ELSE 0 END)`,
+    cancelled: sql<number>`SUM(CASE WHEN ${parcels.status} = 'cancelled' THEN 1 ELSE 0 END)`,
+    instant: sql<number>`SUM(CASE WHEN ${parcels.deliveryType} = 'instant' THEN 1 ELSE 0 END)`,
+    scheduled: sql<number>`SUM(CASE WHEN ${parcels.deliveryType} = 'scheduled' THEN 1 ELSE 0 END)`,
+    intercity: sql<number>`SUM(CASE WHEN ${parcels.deliveryType} = 'intercity' THEN 1 ELSE 0 END)`,
+    todayTotal: sql<number>`SUM(CASE WHEN DATE(${parcels.createdAt}) = CURDATE() THEN 1 ELSE 0 END)`,
+  }).from(parcels);
+  return stats;
+}
+
+export async function getAllParcelAgents() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(parcelAgents).orderBy(sql`${parcelAgents.city} ASC`);
+}
+
+export async function getActiveParcelAgents(fromCity: string) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(parcelAgents).where(and(eq(parcelAgents.city, fromCity), eq(parcelAgents.isActive, true)));
+}
+
+export async function createParcelAgent(data: {
+  name: string;
+  phone: string;
+  companyName?: string;
+  city: string;
+  username: string;
+  passwordHash: string;
+  coveredCities?: string;
+  pickupTime?: string;
+  pickupDays?: string;
+  pricingJson?: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [result] = await db.insert(parcelAgents).values(data);
+  return (result as any).insertId;
+}
+
+export async function updateParcelAgentStatus(agentId: number, isActive: boolean) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(parcelAgents).set({ isActive }).where(eq(parcelAgents.id, agentId));
+}

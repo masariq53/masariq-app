@@ -66,6 +66,9 @@ export default function CaptainHomeScreen() {
   const [isOnline, setIsOnline] = useState(false);
   const [currentRequest, setCurrentRequest] = useState<PendingRide | null>(null);
   const [seenRideIds, setSeenRideIds] = useState<Set<number>>(new Set());
+  // طلبات الطرود الفورية
+  const [currentParcelRequest, setCurrentParcelRequest] = useState<any | null>(null);
+  const [seenParcelIds, setSeenParcelIds] = useState<Set<number>>(new Set());
   const [timer, setTimer] = useState(30);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // OSRM dual route state
@@ -253,7 +256,47 @@ export default function CaptainHomeScreen() {
     }
   }, [blockCheckQuery.data]);
 
-  // Polling للطلبات الجديدة كل 5 ثوانٍ عندما يكون متاحاً
+  // Polling لطلبات الطرود الفورية
+  const pendingParcelsQuery = trpc.parcel.getPendingInstant.useQuery(undefined, {
+    enabled: isOnline,
+    refetchInterval: 5000,
+    staleTime: 0,
+  });
+  useEffect(() => {
+    if (!isOnline || !pendingParcelsQuery.data) return;
+    const parcels = pendingParcelsQuery.data;
+    if (parcels.length === 0) return;
+    if (currentRequest || currentParcelRequest) return;
+    const newParcel = parcels.find((p: any) => {
+      if (seenParcelIds.has(p.id)) return false;
+      const age = Date.now() - new Date(p.createdAt).getTime();
+      return age < 3 * 60 * 1000;
+    });
+    if (!newParcel) return;
+    setSeenParcelIds((prev) => new Set([...prev, newParcel.id]));
+    setCurrentParcelRequest(newParcel);
+    setTimer(30);
+    if (Platform.OS !== "web") {
+      try {
+        setAudioModeAsync({ playsInSilentMode: true, shouldPlayInBackground: false }).catch(() => {});
+        notificationPlayer.seekTo(0);
+        notificationPlayer.volume = 1.0;
+        notificationPlayer.play();
+      } catch (e) {}
+      Vibration.vibrate([0, 400, 200, 400, 200, 400, 200, 600]);
+    }
+  }, [pendingParcelsQuery.data, isOnline, currentRequest, currentParcelRequest]);
+  useEffect(() => {
+    if (!currentParcelRequest || !pendingParcelsQuery.data) return;
+    const stillPending = pendingParcelsQuery.data.some((p: any) => p.id === currentParcelRequest.id);
+    if (!stillPending) {
+      if (timerRef.current) clearInterval(timerRef.current);
+      setCurrentParcelRequest(null);
+      setTimer(30);
+    }
+  }, [pendingParcelsQuery.data, currentParcelRequest]);
+
+  // Polling للطلبات الجديدة كل 5 ثوانّ عندما يكون متاحاً
   const pendingRidesQuery = trpc.rides.pendingRides.useQuery(undefined, {
     enabled: isOnline,
     refetchInterval: 5000,
@@ -333,6 +376,18 @@ export default function CaptainHomeScreen() {
       if (timerRef.current) clearInterval(timerRef.current);
     };
   }, [currentRequest]);
+
+  // قبول طلب الطرد
+  const acceptParcelMutation = trpc.parcel.accept.useMutation({
+    onSuccess: () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+      const parcelId = currentParcelRequest!.id;
+      setCurrentParcelRequest(null);
+      setTimer(30);
+      router.replace({ pathname: "/captain/active-parcel", params: { parcelId: parcelId.toString() } } as any);
+    },
+    onError: () => Alert.alert("خطأ", "لم نتمكن من قبول طلب الطرد."),
+  });
 
   // قبول الطلب
   const acceptRideMutation = trpc.rides.accept.useMutation({
@@ -605,6 +660,86 @@ export default function CaptainHomeScreen() {
           <Text style={styles.statLabel}>{t.captain.intercityTrips}</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Modal طلب طرد فوري */}
+      <Modal
+        visible={!!currentParcelRequest && !currentRequest}
+        transparent
+        animationType="slide"
+        onRequestClose={() => { if (timerRef.current) clearInterval(timerRef.current); setCurrentParcelRequest(null); setTimer(30); }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.requestCard}>
+            <View style={styles.timerRow}>
+              <View style={styles.timerCircle}>
+                <Text style={styles.timerText}>{timer}</Text>
+              </View>
+              <View style={styles.timerBarBg}>
+                <View style={[styles.timerBarFill, { width: `${(timer / 30) * 100}%` }]} />
+              </View>
+            </View>
+            <Text style={styles.requestTitle}>📦 طلب توصيل طرد جديد</Text>
+            <View style={styles.passengerRow}>
+              <View style={styles.passengerAvatar}>
+                <Text style={{ fontSize: 24 }}>📦</Text>
+              </View>
+              <View style={styles.passengerInfo}>
+                <Text style={styles.passengerName}>{currentParcelRequest?.senderName || "المرسل"}</Text>
+                <Text style={[styles.passengerRatingText, { marginTop: 2 }]}>
+                  {currentParcelRequest?.parcelSize === "small" ? "📦 صغير" : currentParcelRequest?.parcelSize === "medium" ? "📦 وسط" : "📦 كبير"}
+                </Text>
+              </View>
+              <View style={styles.priceTag}>
+                <Text style={styles.priceValue}>
+                  {currentParcelRequest?.parcelSize === "small" ? "3,000" : currentParcelRequest?.parcelSize === "medium" ? "5,000" : "8,000"}
+                </Text>
+                <Text style={styles.priceCurrency}>د.ع</Text>
+              </View>
+            </View>
+            <View style={styles.routeBox}>
+              <View style={styles.routeRow}>
+                <View style={styles.dotGreen} />
+                <Text style={styles.routeText} numberOfLines={1}>{currentParcelRequest?.pickupAddress || "موقع الاستلام"}</Text>
+              </View>
+              <View style={styles.routeLine} />
+              <View style={styles.routeRow}>
+                <View style={styles.dotRed} />
+                <Text style={styles.routeText} numberOfLines={1}>{currentParcelRequest?.dropoffAddress || "موقع التسليم"}</Text>
+              </View>
+            </View>
+            {currentParcelRequest?.parcelDescription ? (
+              <View style={{ paddingHorizontal: 4, marginBottom: 8 }}>
+                <Text style={{ color: "#9B8EC4", fontSize: 13 }}>📝 {currentParcelRequest.parcelDescription}</Text>
+              </View>
+            ) : null}
+            <View style={styles.requestBtns}>
+              <TouchableOpacity
+                style={styles.rejectBtn}
+                onPress={() => { if (timerRef.current) clearInterval(timerRef.current); setCurrentParcelRequest(null); setTimer(30); }}
+              >
+                <Text style={styles.rejectText}>رفض</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.acceptBtn}
+                onPress={() => {
+                  if (!currentParcelRequest || !driver?.id) return;
+                  const stillPending = pendingParcelsQuery.data?.some((p: any) => p.id === currentParcelRequest.id);
+                  if (!stillPending) { setCurrentParcelRequest(null); setTimer(30); return; }
+                  const fare = currentParcelRequest.parcelSize === "small" ? 3000 : currentParcelRequest.parcelSize === "medium" ? 5000 : 8000;
+                  trpc.parcel.accept.useMutation;
+                  // نستخدم mutation مباشرة
+                  acceptParcelMutation.mutate({ parcelId: currentParcelRequest.id, driverId: driver.id, price: fare });
+                }}
+                disabled={acceptParcelMutation.isPending}
+              >
+                <Text style={styles.acceptText}>
+                  {acceptParcelMutation.isPending ? "جاري..." : "✅ قبول"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Modal طلب رحلة حقيقي */}
       <Modal

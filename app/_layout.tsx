@@ -267,6 +267,8 @@ export default function RootLayout() {
             <Stack.Screen name="captain/wallet" options={{ gestureEnabled: false }} />
             <Stack.Screen name="captain/intercity-trips" options={{ gestureEnabled: false }} />
             <Stack.Screen name="captain/intercity-schedule" options={{ gestureEnabled: false }} />
+            <Stack.Screen name="captain/active-parcel" options={{ gestureEnabled: false, headerShown: false }} />
+            <Stack.Screen name="captain/parcel-summary" options={{ gestureEnabled: false, headerShown: false }} />
             <Stack.Screen name="oauth/callback" />
             <Stack.Screen name="privacy" />
             <Stack.Screen name="about" />

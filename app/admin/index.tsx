@@ -63,7 +63,15 @@ function StatCard({
 export default function AdminDashboard() {
   const insets = useSafeAreaInsets();
   const [refreshing, setRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState<"overview" | "rides" | "drivers" | "passengers" | "pricing" | "intercity" | "support" | "agents">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "rides" | "drivers" | "passengers" | "pricing" | "intercity" | "support" | "agents" | "parcels">("overview");
+  // Parcel filters
+  const [parcelSearch, setParcelSearch] = useState("");
+  const [parcelStatusFilter, setParcelStatusFilter] = useState<"all" | "pending" | "accepted" | "picked_up" | "in_transit" | "delivered" | "cancelled" | "returned">("all");
+  const [parcelTypeFilter, setParcelTypeFilter] = useState<"all" | "instant" | "scheduled" | "intercity">("all");
+  const [parcelFromDate, setParcelFromDate] = useState("");
+  const [parcelToDate, setParcelToDate] = useState("");
+  const [parcelPage, setParcelPage] = useState(0);
+  const PARCEL_PAGE_SIZE = 20;
 
   const [driversPage, setDriversPage] = useState(0);
   const [passengersPage, setPassengersPage] = useState(0);
@@ -192,6 +200,24 @@ export default function AdminDashboard() {
     undefined,
     { enabled: activeTab === "support" }
   );
+  // Parcel admin queries
+  const { data: adminParcelsData, isLoading: parcelsLoading, refetch: refetchParcels } = trpc.parcel.admin.getAll.useQuery(
+    {
+      deliveryType: parcelTypeFilter === "all" ? undefined : parcelTypeFilter,
+      status: parcelStatusFilter === "all" ? undefined : parcelStatusFilter,
+      search: parcelSearch || undefined,
+      fromDate: parcelFromDate || undefined,
+      toDate: parcelToDate || undefined,
+      page: parcelPage,
+      limit: PARCEL_PAGE_SIZE,
+    },
+    { enabled: activeTab === "parcels" }
+  );
+  const { data: parcelStats, refetch: refetchParcelStats } = trpc.parcel.admin.getStats.useQuery(
+    undefined,
+    { enabled: activeTab === "parcels" || activeTab === "overview" }
+  );
+  const adminUpdateParcelStatus = trpc.parcel.updateStatus.useMutation({ onSuccess: () => { refetchParcels(); } });
 
   const supportUnreadCount = supportUnreadData?.count ?? 0;
 
@@ -214,6 +240,7 @@ export default function AdminDashboard() {
     { id: "intercity", label: "بين المدن", icon: "🗣️" },
     { id: "support", label: "الدعم الفني", icon: "🎟️" },
     { id: "agents", label: "الوكلاء", icon: "💼" },
+    { id: "parcels", label: "الطرود", icon: "📦" },
   ] as const;
 
   return (
@@ -358,6 +385,23 @@ export default function AdminDashboard() {
                   </View>
                 </View>
 
+                {/* Parcel Stats in Overview */}
+                {parcelStats && (
+                  <View style={styles.section}>
+                    <View style={styles.sectionHeader}>
+                      <Text style={styles.sectionTitle}>📦 إحصائيات الطرود</Text>
+                      <TouchableOpacity onPress={() => setActiveTab("parcels")}>
+                        <Text style={styles.seeAll}>عرض الكل ←</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <View style={styles.statsGrid}>
+                      <StatCard icon="📦" label="إجمالي الطرود" value={parcelStats.total ?? 0} color="#9B8EC4" onPress={() => setActiveTab("parcels")} />
+                      <StatCard icon="⏳" label="بانتظار" value={parcelStats.pending ?? 0} color="#F59E0B" onPress={() => setActiveTab("parcels")} />
+                      <StatCard icon="✅" label="مسلّمة" value={parcelStats.delivered ?? 0} color="#22C55E" onPress={() => setActiveTab("parcels")} />
+                      <StatCard icon="📅" label="اليوم" value={parcelStats.todayTotal ?? 0} color="#FFD700" onPress={() => setActiveTab("parcels")} />
+                    </View>
+                  </View>
+                )}
                 {/* Quick Actions */}
                 <View style={styles.section}>
                   <Text style={styles.sectionTitle}>إدارة النظام</Text>
@@ -1635,9 +1679,246 @@ export default function AdminDashboard() {
           </View>
         )}
 
+        {/* ── Parcels Admin Tab ── */}
+        {activeTab === "parcels" && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>📦 إدارة الطرود</Text>
+
+            {/* Stats Row */}
+            {parcelStats && (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+                {[
+                  { label: 'الكل', value: parcelStats.total ?? 0, color: '#9B8EC4' },
+                  { label: 'بانتظار', value: parcelStats.pending ?? 0, color: '#F59E0B' },
+                  { label: 'نشطة', value: (parcelStats.accepted ?? 0) + (parcelStats.inTransit ?? 0), color: '#6366F1' },
+                  { label: 'مسلّمة', value: parcelStats.delivered ?? 0, color: '#22C55E' },
+                  { label: 'ملغاة', value: parcelStats.cancelled ?? 0, color: '#EF4444' },
+                ].map((stat: any) => (
+                  <View key={stat.label} style={{ backgroundColor: '#1E0F4A', borderRadius: 10, padding: 10, minWidth: 70, alignItems: 'center', borderWidth: 1, borderColor: stat.color + '44' }}>
+                    <Text style={{ color: stat.color, fontSize: 18, fontWeight: '800' }}>{stat.value}</Text>
+                    <Text style={{ color: '#9B8EC4', fontSize: 11, marginTop: 2 }}>{stat.label}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {/* Search Bar */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#1E1035', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1, borderColor: '#2D1B4E', marginBottom: 10 }}>
+              <Text style={{ fontSize: 14, marginRight: 6 }}>🔍</Text>
+              <TextInput
+                value={parcelSearch}
+                onChangeText={(t) => { setParcelSearch(t); setParcelPage(0); }}
+                placeholder="بحث برقم التتبع أو الاسم أو الهاتف..."
+                placeholderTextColor="#6B5A8A"
+                style={{ flex: 1, color: '#FFFFFF', fontSize: 13, paddingVertical: 0 }}
+                returnKeyType="search"
+              />
+              {parcelSearch ? (
+                <TouchableOpacity onPress={() => setParcelSearch('')}>
+                  <Text style={{ color: '#9B8EC4', fontSize: 16 }}>✕</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+
+            {/* Status Filter */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+              <View style={{ flexDirection: 'row', gap: 6 }}>
+                {([
+                  { id: 'all', label: 'الكل' },
+                  { id: 'pending', label: 'بانتظار' },
+                  { id: 'accepted', label: 'مقبول' },
+                  { id: 'picked_up', label: 'مستلم' },
+                  { id: 'in_transit', label: 'في الطريق' },
+                  { id: 'delivered', label: 'مسلّم' },
+                  { id: 'cancelled', label: 'ملغي' },
+                  { id: 'returned', label: 'مُعاد' },
+                ] as const).map(s => (
+                  <TouchableOpacity
+                    key={s.id}
+                    style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: parcelStatusFilter === s.id ? '#FFD700' : '#1E1035', borderWidth: 1, borderColor: parcelStatusFilter === s.id ? '#FFD700' : '#2D1B4E' }}
+                    onPress={() => { setParcelStatusFilter(s.id); setParcelPage(0); }}
+                  >
+                    <Text style={{ color: parcelStatusFilter === s.id ? '#1A0533' : '#9B8EC4', fontSize: 12, fontWeight: '600' }}>{s.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
+
+            {/* Type Filter */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+              <View style={{ flexDirection: 'row', gap: 6 }}>
+                {([
+                  { id: 'all', label: '🔖 الكل' },
+                  { id: 'instant', label: '⚡ فوري' },
+                  { id: 'scheduled', label: '📅 مجدول' },
+                  { id: 'intercity', label: '🚚 بين المدن' },
+                ] as const).map(t => (
+                  <TouchableOpacity
+                    key={t.id}
+                    style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: parcelTypeFilter === t.id ? '#6366F1' : '#1E1035', borderWidth: 1, borderColor: parcelTypeFilter === t.id ? '#6366F1' : '#2D1B4E' }}
+                    onPress={() => { setParcelTypeFilter(t.id); setParcelPage(0); }}
+                  >
+                    <Text style={{ color: parcelTypeFilter === t.id ? '#FFFFFF' : '#9B8EC4', fontSize: 12, fontWeight: '600' }}>{t.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
+
+            {/* Date Range */}
+            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+              <View style={{ flex: 1, backgroundColor: '#1E1035', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1, borderColor: '#2D1B4E' }}>
+                <Text style={{ color: '#9B8EC4', fontSize: 10, marginBottom: 2 }}>من تاريخ</Text>
+                <TextInput
+                  value={parcelFromDate}
+                  onChangeText={setParcelFromDate}
+                  placeholder="YYYY-MM-DD"
+                  placeholderTextColor="#4A3B6A"
+                  style={{ color: '#FFFFFF', fontSize: 12, paddingVertical: 0 }}
+                />
+              </View>
+              <View style={{ flex: 1, backgroundColor: '#1E1035', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1, borderColor: '#2D1B4E' }}>
+                <Text style={{ color: '#9B8EC4', fontSize: 10, marginBottom: 2 }}>إلى تاريخ</Text>
+                <TextInput
+                  value={parcelToDate}
+                  onChangeText={setParcelToDate}
+                  placeholder="YYYY-MM-DD"
+                  placeholderTextColor="#4A3B6A"
+                  style={{ color: '#FFFFFF', fontSize: 12, paddingVertical: 0 }}
+                />
+              </View>
+              {(parcelFromDate || parcelToDate) && (
+                <TouchableOpacity
+                  style={{ backgroundColor: '#3D2580', borderRadius: 10, paddingHorizontal: 10, justifyContent: 'center' }}
+                  onPress={() => { setParcelFromDate(''); setParcelToDate(''); }}
+                >
+                  <Text style={{ color: '#9B8EC4', fontSize: 12 }}>مسح</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Parcels List */}
+            {parcelsLoading ? (
+              <View style={{ alignItems: 'center', padding: 24 }}>
+                <ActivityIndicator size="large" color="#FFD700" />
+              </View>
+            ) : !adminParcelsData?.parcels || adminParcelsData.parcels.length === 0 ? (
+              <View style={{ alignItems: 'center', padding: 32 }}>
+                <Text style={{ fontSize: 40 }}>📭</Text>
+                <Text style={{ color: '#9B8EC4', fontSize: 15, marginTop: 8 }}>لا توجد طرود</Text>
+              </View>
+            ) : (
+              <>
+                {adminParcelsData.parcels.map((parcel: any) => {
+                  const STATUS_COLORS: Record<string, string> = {
+                    pending: '#F59E0B', accepted: '#3B82F6', picked_up: '#8B5CF6',
+                    in_transit: '#6366F1', delivered: '#22C55E', cancelled: '#EF4444', returned: '#6B7280'
+                  };
+                  const STATUS_LABELS: Record<string, string> = {
+                    pending: 'بانتظار الكابتن', accepted: 'تم القبول', picked_up: 'تم الاستلام',
+                    in_transit: 'في الطريق', delivered: 'تم التسليم', cancelled: 'ملغي', returned: 'مُعاد'
+                  };
+                  const TYPE_LABELS: Record<string, string> = {
+                    instant: '⚡ فوري', scheduled: '📅 مجدول', intercity: '🚚 بين المدن'
+                  };
+                  const statusColor = STATUS_COLORS[parcel.status] ?? '#9B8EC4';
+                  return (
+                    <View key={parcel.id} style={{ backgroundColor: '#1E0F4A', borderRadius: 14, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: statusColor + '44' }}>
+                      {/* Header Row */}
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                        <View style={{ backgroundColor: statusColor + '22', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 }}>
+                          <Text style={{ color: statusColor, fontSize: 11, fontWeight: '700' }}>{STATUS_LABELS[parcel.status] ?? parcel.status}</Text>
+                        </View>
+                        <Text style={{ color: '#FFD700', fontSize: 13, fontWeight: '700' }}>#{parcel.trackingNumber}</Text>
+                      </View>
+                      {/* Type & Size */}
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
+                        <Text style={{ color: '#9B8EC4', fontSize: 12 }}>{TYPE_LABELS[parcel.deliveryType] ?? parcel.deliveryType}</Text>
+                        <Text style={{ color: '#9B8EC4', fontSize: 12 }}>
+                          {parcel.parcelSize === 'small' ? '📦 صغير' : parcel.parcelSize === 'medium' ? '🗃️ متوسط' : '📫 كبير'}
+                        </Text>
+                      </View>
+                      {/* Addresses */}
+                      <View style={{ gap: 4, marginBottom: 6 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#22C55E' }} />
+                          <Text style={{ color: '#C4B5D4', fontSize: 12, flex: 1 }} numberOfLines={1}>{parcel.pickupAddress}</Text>
+                        </View>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#EF4444' }} />
+                          <Text style={{ color: '#C4B5D4', fontSize: 12, flex: 1 }} numberOfLines={1}>{parcel.dropoffAddress}</Text>
+                        </View>
+                      </View>
+                      {/* Sender / Recipient */}
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
+                        <Text style={{ color: '#9B8EC4', fontSize: 11 }}>📤 {parcel.senderName || parcel.senderPhone}</Text>
+                        <Text style={{ color: '#9B8EC4', fontSize: 11 }}>📥 {parcel.recipientName}</Text>
+                      </View>
+                      {/* Price & Date */}
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Text style={{ color: '#6B5A8A', fontSize: 11 }}>
+                          {new Date(parcel.createdAt).toLocaleDateString('ar-IQ', { day: 'numeric', month: 'short', year: 'numeric' })}
+                        </Text>
+                        {parcel.price && (
+                          <Text style={{ color: '#FFD700', fontSize: 13, fontWeight: '700' }}>
+                            {Number(parcel.price).toLocaleString()} د.ع
+                          </Text>
+                        )}
+                      </View>
+                      {/* Admin Actions */}
+                      {parcel.status !== 'delivered' && parcel.status !== 'cancelled' && parcel.status !== 'returned' && (
+                        <View style={{ flexDirection: 'row', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
+                          {parcel.status === 'pending' && (
+                            <TouchableOpacity
+                              style={{ backgroundColor: '#EF444422', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1, borderColor: '#EF4444' }}
+                              onPress={() => Alert.alert('إلغاء الطرد', 'هل تريد إلغاء هذا الطرد؟', [
+                                { text: 'لا', style: 'cancel' },
+                                { text: 'نعم', style: 'destructive', onPress: () => adminUpdateParcelStatus.mutate({ parcelId: parcel.id, status: 'cancelled', updatedBy: 'admin', note: 'إلغاء من الإدارة' }) }
+                              ])}
+                            >
+                              <Text style={{ color: '#EF4444', fontSize: 12, fontWeight: '600' }}>❌ إلغاء</Text>
+                            </TouchableOpacity>
+                          )}
+                          {(parcel.status === 'accepted' || parcel.status === 'picked_up' || parcel.status === 'in_transit') && (
+                            <TouchableOpacity
+                              style={{ backgroundColor: '#22C55E22', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1, borderColor: '#22C55E' }}
+                              onPress={() => Alert.alert('تسليم الطرد', 'هل تريد تعليم هذا الطرد كمُسلَّم؟', [
+                                { text: 'لا', style: 'cancel' },
+                                { text: 'نعم', onPress: () => adminUpdateParcelStatus.mutate({ parcelId: parcel.id, status: 'delivered', updatedBy: 'admin', note: 'تسليم يدوي من الإدارة' }) }
+                              ])}
+                            >
+                              <Text style={{ color: '#22C55E', fontSize: 12, fontWeight: '600' }}>✅ تسليم يدوي</Text>
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                      )}
+                    </View>
+                  );
+                })}
+                {/* Pagination */}
+                <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 12, marginTop: 8 }}>
+                  <TouchableOpacity
+                    style={{ backgroundColor: parcelPage > 0 ? '#2D1B69' : '#1E0F4A', borderRadius: 10, paddingHorizontal: 16, paddingVertical: 8 }}
+                    onPress={() => setParcelPage(p => Math.max(0, p - 1))}
+                    disabled={parcelPage === 0}
+                  >
+                    <Text style={{ color: parcelPage > 0 ? '#FFD700' : '#4A3B6A', fontWeight: '700' }}>→ السابق</Text>
+                  </TouchableOpacity>
+                  <Text style={{ color: '#9B8EC4', fontSize: 13 }}>صفحة {parcelPage + 1}</Text>
+                  <TouchableOpacity
+                    style={{ backgroundColor: adminParcelsData.parcels.length >= PARCEL_PAGE_SIZE ? '#2D1B69' : '#1E0F4A', borderRadius: 10, paddingHorizontal: 16, paddingVertical: 8 }}
+                    onPress={() => setParcelPage(p => p + 1)}
+                    disabled={adminParcelsData.parcels.length < PARCEL_PAGE_SIZE}
+                  >
+                    <Text style={{ color: adminParcelsData.parcels.length >= PARCEL_PAGE_SIZE ? '#FFD700' : '#4A3B6A', fontWeight: '700' }}>التالي ←</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+          </View>
+        )}
+
         <View style={{ height: 40 }} />
       </ScrollView>
-
       {/* Support Chat Modal */}
       <Modal
         visible={showSupportChatModal}

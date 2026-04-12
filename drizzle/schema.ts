@@ -448,3 +448,88 @@ export const agentTransactions = mysqlTable("agentTransactions", {
 });
 export type AgentTransaction = typeof agentTransactions.$inferSelect;
 export type InsertAgentTransaction = typeof agentTransactions.$inferInsert;
+
+// ─── Parcel Delivery Tables ───────────────────────────────────────────────────
+
+/**
+ * Parcels - main table for all parcel delivery orders
+ */
+export const parcels = mysqlTable("parcels", {
+  id: int("id").autoincrement().primaryKey(),
+  trackingNumber: varchar("trackingNumber", { length: 20 }).notNull().unique(),
+  deliveryType: mysqlEnum("deliveryType", ["instant", "scheduled", "intercity"]).notNull(),
+  senderId: int("senderId").notNull(),
+  senderName: varchar("senderName", { length: 100 }),
+  senderPhone: varchar("senderPhone", { length: 20 }),
+  recipientName: varchar("recipientName", { length: 100 }).notNull(),
+  recipientPhone: varchar("recipientPhone", { length: 20 }).notNull(),
+  pickupAddress: varchar("pickupAddress", { length: 500 }).notNull(),
+  pickupLat: decimal("pickupLat", { precision: 10, scale: 7 }),
+  pickupLng: decimal("pickupLng", { precision: 10, scale: 7 }),
+  dropoffAddress: varchar("dropoffAddress", { length: 500 }).notNull(),
+  dropoffLat: decimal("dropoffLat", { precision: 10, scale: 7 }),
+  dropoffLng: decimal("dropoffLng", { precision: 10, scale: 7 }),
+  fromCity: varchar("fromCity", { length: 100 }),
+  toCity: varchar("toCity", { length: 100 }),
+  parcelSize: mysqlEnum("parcelSize", ["small", "medium", "large"]).default("small").notNull(),
+  parcelDescription: varchar("parcelDescription", { length: 300 }),
+  parcelPhotoUrl: text("parcelPhotoUrl"),
+  estimatedWeight: varchar("estimatedWeight", { length: 50 }),
+  price: decimal("price", { precision: 10, scale: 2 }),
+  paymentMethod: mysqlEnum("paymentMethod", ["cash"]).default("cash").notNull(),
+  scheduledDate: varchar("scheduledDate", { length: 20 }),
+  scheduledTimeSlot: varchar("scheduledTimeSlot", { length: 50 }),
+  driverId: int("driverId"),
+  agentId: int("agentId"),
+  status: mysqlEnum("status", ["pending","accepted","picked_up","in_transit","delivered","cancelled","returned"]).default("pending").notNull(),
+  cancelReason: varchar("cancelReason", { length: 300 }),
+  deliveryOtp: varchar("deliveryOtp", { length: 6 }),
+  deliveryOtpVerified: boolean("deliveryOtpVerified").default(false).notNull(),
+  acceptedAt: timestamp("acceptedAt"),
+  pickedUpAt: timestamp("pickedUpAt"),
+  deliveredAt: timestamp("deliveredAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type Parcel = typeof parcels.$inferSelect;
+export type InsertParcel = typeof parcels.$inferInsert;
+
+/**
+ * Parcel Agents - external agents for intercity parcel delivery
+ */
+export const parcelAgents = mysqlTable("parcelAgents", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 100 }).notNull(),
+  phone: varchar("phone", { length: 20 }).notNull().unique(),
+  companyName: varchar("companyName", { length: 200 }),
+  city: varchar("city", { length: 100 }).notNull(),
+  username: varchar("username", { length: 50 }).notNull().unique(),
+  passwordHash: varchar("passwordHash", { length: 255 }).notNull(),
+  coveredCities: text("coveredCities"),
+  pickupTime: varchar("pickupTime", { length: 20 }),
+  pickupDays: varchar("pickupDays", { length: 100 }),
+  pricingJson: text("pricingJson"),
+  isActive: boolean("isActive").default(true).notNull(),
+  logoUrl: text("logoUrl"),
+  notes: text("notes"),
+  totalParcels: int("totalParcels").default(0).notNull(),
+  totalDelivered: int("totalDelivered").default(0).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type ParcelAgent = typeof parcelAgents.$inferSelect;
+export type InsertParcelAgent = typeof parcelAgents.$inferInsert;
+
+/**
+ * Parcel status logs - audit trail for parcel status changes
+ */
+export const parcelStatusLogs = mysqlTable("parcelStatusLogs", {
+  id: int("id").autoincrement().primaryKey(),
+  parcelId: int("parcelId").notNull(),
+  status: varchar("status", { length: 50 }).notNull(),
+  note: varchar("note", { length: 300 }),
+  updatedBy: mysqlEnum("updatedBy", ["system","driver","agent","admin"]).default("system").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type ParcelStatusLog = typeof parcelStatusLogs.$inferSelect;
+export type InsertParcelStatusLog = typeof parcelStatusLogs.$inferInsert;
