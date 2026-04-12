@@ -1,4 +1,3 @@
-import React, { useState, useRef } from "react";
 import {
   View,
   Text,
@@ -6,10 +5,8 @@ import {
   StyleSheet,
   ScrollView,
   Alert,
-  TextInput,
   ActivityIndicator,
   Linking,
-  Modal,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -30,10 +27,6 @@ export default function ActiveParcelScreen() {
   const params = useLocalSearchParams<{ parcelId: string }>();
   const parcelId = parseInt(params.parcelId ?? "0");
 
-  const [showOtpModal, setShowOtpModal] = useState(false);
-  const [otpInput, setOtpInput] = useState("");
-  const [otpError, setOtpError] = useState("");
-
   const utils = trpc.useUtils();
 
   const { data: parcel, isLoading, refetch } = trpc.parcel.getById.useQuery(
@@ -49,28 +42,6 @@ export default function ActiveParcelScreen() {
     },
     onError: (err) => {
       Alert.alert("خطأ", err.message || "حدث خطأ أثناء تحديث الحالة");
-    },
-  });
-
-  const verifyOtpMutation = trpc.parcel.verifyOtp.useMutation({
-    onSuccess: (data: any) => {
-      if (data.success) {
-        if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        setShowOtpModal(false);
-        setOtpInput("");
-        setOtpError("");
-        refetch();
-        // Navigate to summary
-        setTimeout(() => {
-          router.replace({ pathname: "/captain/parcel-summary" as any, params: { parcelId: parcelId.toString() } });
-        }, 500);
-      } else {
-        setOtpError("رمز التسليم غير صحيح، حاول مجدداً");
-        if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      }
-    },
-    onError: () => {
-      setOtpError("رمز التسليم غير صحيح، حاول مجدداً");
     },
   });
 
@@ -103,17 +74,33 @@ export default function ActiveParcelScreen() {
   };
 
   const handleDelivery = () => {
-    setShowOtpModal(true);
-    setOtpInput("");
-    setOtpError("");
-  };
-
-  const handleVerifyOtp = () => {
-    if (otpInput.length !== 6) {
-      setOtpError("أدخل رمز التسليم المكون من 6 أرقام");
-      return;
-    }
-    verifyOtpMutation.mutate({ parcelId, otp: otpInput });
+    Alert.alert(
+      "تأكيد التسليم",
+      "هل تأكدت من تسليم الطرد للمستلم؟",
+      [
+        { text: "إلغاء", style: "cancel" },
+        {
+          text: "نعم، تم التسليم",
+          onPress: () => {
+            updateStatusMutation.mutate(
+              {
+                parcelId,
+                status: "delivered",
+                updatedBy: "driver",
+                note: "تم تسليم الطرد للمستلم",
+              },
+              {
+                onSuccess: () => {
+                  setTimeout(() => {
+                    router.replace({ pathname: "/captain/parcel-summary" as any, params: { parcelId: parcelId.toString() } });
+                  }, 500);
+                },
+              }
+            );
+          },
+        },
+      ]
+    );
   };
 
   const handleCancel = () => {
@@ -341,14 +328,18 @@ export default function ActiveParcelScreen() {
               </TouchableOpacity>
             )}
 
-            {/* Step 3: Deliver */}
+            {/* Step 3: Deliver - Direct without OTP */}
             {isInTransit && (
               <TouchableOpacity
                 style={[styles.actionBtn, styles.actionBtnDeliver]}
                 onPress={handleDelivery}
-                disabled={verifyOtpMutation.isPending}
+                disabled={updateStatusMutation.isPending}
               >
-                <Text style={[styles.actionBtnText, { color: "#1A0533" }]}>🎉 تسليم الطرد (OTP)</Text>
+                {updateStatusMutation.isPending ? (
+                  <ActivityIndicator color="#1A0533" />
+                ) : (
+                  <Text style={[styles.actionBtnText, { color: "#1A0533" }]}>🎉 تأكيد التسليم</Text>
+                )}
               </TouchableOpacity>
             )}
 
@@ -380,48 +371,6 @@ export default function ActiveParcelScreen() {
 
         <View style={{ height: 40 }} />
       </ScrollView>
-
-      {/* OTP Modal */}
-      <Modal
-        visible={showOtpModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowOtpModal(false)}
-      >
-        <View style={styles.otpOverlay}>
-          <View style={styles.otpCard}>
-            <Text style={styles.otpTitle}>🔐 رمز التسليم</Text>
-            <Text style={styles.otpSubtitle}>
-              اطلب من المستلم إعطاءك الرمز المكون من 6 أرقام
-            </Text>
-            <TextInput
-              style={styles.otpInput}
-              value={otpInput}
-              onChangeText={(t) => { setOtpInput(t.replace(/\D/g, "").slice(0, 6)); setOtpError(""); }}
-              placeholder="_ _ _ _ _ _"
-              placeholderTextColor="#9B8AB0"
-              keyboardType="number-pad"
-              maxLength={6}
-              textAlign="center"
-            />
-            {otpError ? <Text style={styles.otpError}>{otpError}</Text> : null}
-            <TouchableOpacity
-              style={[styles.otpConfirmBtn, verifyOtpMutation.isPending && { opacity: 0.6 }]}
-              onPress={handleVerifyOtp}
-              disabled={verifyOtpMutation.isPending}
-            >
-              {verifyOtpMutation.isPending ? (
-                <ActivityIndicator color="#1A0533" />
-              ) : (
-                <Text style={styles.otpConfirmText}>✅ تأكيد التسليم</Text>
-              )}
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.otpCancelBtn} onPress={() => setShowOtpModal(false)}>
-              <Text style={styles.otpCancelText}>إلغاء</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 }
@@ -480,19 +429,4 @@ const styles = StyleSheet.create({
   deliveredText: { color: "#22C55E", fontSize: 20, fontWeight: "800" },
   homeBtn: { backgroundColor: "#22C55E", paddingHorizontal: 32, paddingVertical: 14, borderRadius: 14 },
   homeBtnText: { color: "#FFFFFF", fontSize: 16, fontWeight: "700" },
-  // OTP Modal
-  otpOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "flex-end" },
-  otpCard: { backgroundColor: "#1A0533", borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 28, gap: 16 },
-  otpTitle: { color: "#FFFFFF", fontSize: 22, fontWeight: "800", textAlign: "center" },
-  otpSubtitle: { color: "rgba(255,255,255,0.6)", fontSize: 14, textAlign: "center", lineHeight: 20 },
-  otpInput: {
-    backgroundColor: "#2D1B69", color: "#FFD700", fontSize: 32, fontWeight: "800",
-    borderRadius: 16, paddingVertical: 16, paddingHorizontal: 20,
-    borderWidth: 2, borderColor: "#FFD700", letterSpacing: 8,
-  },
-  otpError: { color: "#EF4444", fontSize: 13, textAlign: "center" },
-  otpConfirmBtn: { backgroundColor: "#FFD700", paddingVertical: 16, borderRadius: 16, alignItems: "center" },
-  otpConfirmText: { color: "#1A0533", fontSize: 16, fontWeight: "800" },
-  otpCancelBtn: { paddingVertical: 12, alignItems: "center" },
-  otpCancelText: { color: "rgba(255,255,255,0.5)", fontSize: 14 },
 });
