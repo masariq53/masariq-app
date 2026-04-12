@@ -154,7 +154,7 @@ export default function DriverStatusScreen() {
             {status === "approved" && (
               <TouchableOpacity
                 style={styles.startBtn}
-                onPress={() => router.replace("/captain/home" as any)}
+                onPress={() => { router.dismissAll(); router.replace("/captain/home" as any); }}
               >
                 <Text style={styles.startBtnText}>🚗 ابدأ استقبال الرحلات</Text>
               </TouchableOpacity>

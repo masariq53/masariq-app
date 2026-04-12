@@ -55,6 +55,8 @@ export default function DriverOtpScreen() {
         walletBalance: data.driver.walletBalance ?? "0.00",
       });
       // Navigate based on registration status
+      // dismissAll() يمسح كل الـ stack السابق (تسجيل دخول + OTP) لمنع الرجوع بالسحب على iOS
+      router.dismissAll();
       if (data.driver.registrationStatus === "approved") {
         router.replace("/captain/home" as any);
       } else {
