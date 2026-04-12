@@ -204,7 +204,7 @@ export default function AdminDashboard() {
       deliveryType: parcelTypeFilter === "all" ? undefined : parcelTypeFilter,
       status: parcelStatusFilter === "all" ? undefined : parcelStatusFilter,
       search: parcelSearch || undefined,
-      page: parcelPage,
+      page: parcelPage + 1,
       limit: PARCEL_PAGE_SIZE,
     },
     { enabled: activeTab === "parcels" }
