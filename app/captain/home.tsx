@@ -242,6 +242,8 @@ export default function CaptainHomeScreen() {
             text: "حسناً",
             onPress: async () => {
               await logout();
+              // مسح الـ navigation stack بالكامل
+              router.dismissAll();
               router.replace("/(tabs)/profile" as any);
             },
           },

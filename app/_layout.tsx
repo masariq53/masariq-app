@@ -254,14 +254,17 @@ export default function RootLayout() {
             <Stack.Screen name="wallet" />
             <Stack.Screen name="driver/register" />
             <Stack.Screen name="captain/home" options={{ headerShown: false, gestureEnabled: false }} />
-            <Stack.Screen name="captain/earnings" />
-            <Stack.Screen name="captain/active-trip" />
-            <Stack.Screen name="captain/trip-summary" />
-            <Stack.Screen name="captain/profile" />
-            <Stack.Screen name="captain/rate-passenger" />
-            <Stack.Screen name="captain/trips" />
-            <Stack.Screen name="captain/documents" />
-            <Stack.Screen name="captain/support" />
+            <Stack.Screen name="captain/earnings" options={{ gestureEnabled: false }} />
+            <Stack.Screen name="captain/active-trip" options={{ gestureEnabled: false }} />
+            <Stack.Screen name="captain/trip-summary" options={{ gestureEnabled: false }} />
+            <Stack.Screen name="captain/profile" options={{ gestureEnabled: false }} />
+            <Stack.Screen name="captain/rate-passenger" options={{ gestureEnabled: false }} />
+            <Stack.Screen name="captain/trips" options={{ gestureEnabled: false }} />
+            <Stack.Screen name="captain/documents" options={{ gestureEnabled: false }} />
+            <Stack.Screen name="captain/support" options={{ gestureEnabled: false }} />
+            <Stack.Screen name="captain/wallet" options={{ gestureEnabled: false }} />
+            <Stack.Screen name="captain/intercity-trips" options={{ gestureEnabled: false }} />
+            <Stack.Screen name="captain/intercity-schedule" options={{ gestureEnabled: false }} />
             <Stack.Screen name="oauth/callback" />
             <Stack.Screen name="privacy" />
             <Stack.Screen name="about" />
