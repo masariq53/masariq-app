@@ -73,7 +73,7 @@ export default function HomeScreen() {
 
   const handleService = (id: string) => {
     if (id === "ride") router.push("/ride-type-select" as any);
-    else if (id === "delivery") router.push("/delivery/new" as any);
+    else if (id === "delivery") router.push("/(tabs)/delivery" as any);
     else if (id === "subscription") router.push("/subscription" as any);
     else if (id === "intercity") router.push("/intercity" as any);
   };
