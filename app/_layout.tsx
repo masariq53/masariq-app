@@ -21,6 +21,7 @@ import { useAudioPlayer, setAudioModeAsync } from "expo-audio";
 
 import { trpc, createTRPCClient } from "@/lib/trpc";
 import { PassengerProvider, usePassenger } from "@/lib/passenger-context";
+import { usePathname } from "expo-router";
 import { DriverProvider, useDriver } from "@/lib/driver-context";
 import { initManusRuntime, subscribeSafeAreaInsets } from "@/lib/_core/manus-runtime";
 import { registerPassengerNotifications } from "@/lib/passenger-notifications";
@@ -42,6 +43,10 @@ function PassengerBlockChecker() {
   const { passenger, setPassenger, setIsBlockedOverlay, registerBlockNavigation } = usePassenger();
   const wasBlockedRef = useRef(false);
   const utils = trpc.useUtils();
+  const pathname = usePathname();
+
+  // صفحات الدعم الفني مستثناة من إعادة إظهار overlay الحظر
+  const isSupportPage = pathname?.startsWith("/support") || pathname?.startsWith("/captain/support");
 
   // Register navigation callbacks for the overlay buttons
   useEffect(() => {
@@ -67,6 +72,17 @@ function PassengerBlockChecker() {
         );
         if (!data) return;
         const { isBlocked } = data as { isBlocked: boolean; blockReason: string | null };
+
+        // إذا كان المستخدم في صفحة الدعم الفني، لا نُظهر overlay الحظر
+        if (isBlocked && isSupportPage) {
+          // تحديث الحالة فقط بدون إظهار overlay (showOverlay=false)
+          if (passenger && passenger.isBlocked !== isBlocked) {
+            setPassenger({ ...passenger, isBlocked }, false).catch(() => {});
+          }
+          wasBlockedRef.current = true;
+          return;
+        }
+
         // Update passenger context with latest isBlocked status
         // setPassenger already handles setIsBlockedOverlay internally
         if (passenger && passenger.isBlocked !== isBlocked) {

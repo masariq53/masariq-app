@@ -53,7 +53,7 @@ type PassengerContextType = {
   setIsBlockedOverlay: (v: boolean) => void;
   /** Register navigation callbacks so the overlay can navigate without router dependency in context */
   registerBlockNavigation: (callbacks: { toSupport: () => void; toLogin: () => void }) => void;
-  setPassenger: (p: PassengerProfile | null) => Promise<void>;
+  setPassenger: (p: PassengerProfile | null, showOverlay?: boolean) => Promise<void>;
   setDriver: (d: DriverProfile | null) => Promise<void>;
   setMode: (m: AppMode) => Promise<void>;
   logout: () => Promise<void>;
@@ -246,15 +246,17 @@ export function PassengerProvider({ children }: { children: React.ReactNode }) {
     load();
   }, []);
 
-  const setPassenger = useCallback(async (p: PassengerProfile | null) => {
+  const setPassenger = useCallback(async (p: PassengerProfile | null, showOverlay: boolean = true) => {
     setPassengerState(p);
     if (p) {
       await AsyncStorage.setItem(PASSENGER_KEY, JSON.stringify(p));
-      // Auto-show/hide overlay based on isBlocked
-      if (p.isBlocked) {
-        setIsBlockedOverlay(true);
-      } else {
-        setIsBlockedOverlay(false);
+      // Auto-show/hide overlay based on isBlocked (only if showOverlay is true)
+      if (showOverlay) {
+        if (p.isBlocked) {
+          setIsBlockedOverlay(true);
+        } else {
+          setIsBlockedOverlay(false);
+        }
       }
     } else {
       await AsyncStorage.removeItem(PASSENGER_KEY);
