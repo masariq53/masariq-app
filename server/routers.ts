@@ -1969,16 +1969,19 @@ export const appRouter = router({
      * Get driver's city rides history (admin view)
      */
     driverCityRides: publicProcedure
-      .input(z.object({ driverId: z.number(), limit: z.number().default(50) }))
+      .input(z.object({ driverId: z.number(), limit: z.number().default(100), fromDate: z.string().optional(), toDate: z.string().optional() }))
       .query(async ({ input }) => {
         const db = await getDb();
-        if (!db) return [];
+        if (!db) return { rides: [], totals: { count: 0, completed: 0, cancelled: 0, totalFare: 0, totalCommission: 0 } };
         const { rides: ridesTable, passengers, walletTransactions: walletTx } = await import("../drizzle/schema");
-        const { eq, desc, and } = await import("drizzle-orm");
+        const { eq, desc, and, gte, lte } = await import("drizzle-orm");
+        const conditions: any[] = [eq(ridesTable.driverId, input.driverId)];
+        if (input.fromDate) conditions.push(gte(ridesTable.createdAt, new Date(input.fromDate)));
+        if (input.toDate) { const to = new Date(input.toDate); to.setHours(23,59,59,999); conditions.push(lte(ridesTable.createdAt, to)); }
         const ridesList = await db
           .select()
           .from(ridesTable)
-          .where(eq(ridesTable.driverId, input.driverId))
+          .where(and(...conditions))
           .orderBy(desc(ridesTable.createdAt))
           .limit(input.limit);
         // Enrich with passenger name and wallet transaction
@@ -2000,23 +2003,32 @@ export const appRouter = router({
           } catch {}
           return { ...r, passengerName, passengerPhone, walletTx: walletTxData };
         }));
-        return enriched;
+        const completed = enriched.filter(r => r.status === 'completed');
+        const totalFare = completed.reduce((s, r) => s + parseFloat(r.fare?.toString() ?? '0'), 0);
+        const totalCommission = enriched.reduce((s, r) => s + parseFloat(r.walletTx?.amount ?? '0'), 0);
+        return {
+          rides: enriched,
+          totals: { count: enriched.length, completed: completed.length, cancelled: enriched.filter(r => r.status === 'cancelled').length, totalFare: Math.round(totalFare), totalCommission: Math.round(totalCommission) }
+        };
       }),
 
     /**
      * Get driver's intercity trips history (admin view)
      */
     driverIntercityTrips: publicProcedure
-      .input(z.object({ driverId: z.number(), limit: z.number().default(50) }))
+      .input(z.object({ driverId: z.number(), limit: z.number().default(100), fromDate: z.string().optional(), toDate: z.string().optional() }))
       .query(async ({ input }) => {
         const db = await getDb();
-        if (!db) return [];
+        if (!db) return { trips: [], totals: { count: 0, completed: 0, totalEarnings: 0, totalCommission: 0 } };
         const { intercityTrips: tripsTable, intercityBookings } = await import("../drizzle/schema");
-        const { eq, desc } = await import("drizzle-orm");
+        const { eq, desc, and, gte, lte } = await import("drizzle-orm");
+        const conditions: any[] = [eq(tripsTable.driverId, input.driverId)];
+        if (input.fromDate) conditions.push(gte(tripsTable.createdAt, new Date(input.fromDate)));
+        if (input.toDate) { const to = new Date(input.toDate); to.setHours(23,59,59,999); conditions.push(lte(tripsTable.createdAt, to)); }
         const trips = await db
           .select()
           .from(tripsTable)
-          .where(eq(tripsTable.driverId, input.driverId))
+          .where(and(...conditions))
           .orderBy(desc(tripsTable.createdAt))
           .limit(input.limit);
         // Enrich with bookings count and total earnings
@@ -2027,25 +2039,39 @@ export const appRouter = router({
           const commission = Math.round(totalEarnings * 0.1 * 100) / 100;
           return { ...t, bookingsCount: bookings.length, confirmedBookings: confirmedBookings.length, totalEarnings: Math.round(totalEarnings), commission: Math.round(commission), passengers: confirmedBookings.map(b => ({ name: b.passengerName, phone: b.passengerPhone, seats: b.seatsBooked, price: b.totalPrice?.toString() })) };
         }));
-        return enriched;
+        const totalEarningsAll = enriched.reduce((s, t) => s + (t.totalEarnings ?? 0), 0);
+        const totalCommissionAll = enriched.reduce((s, t) => s + (t.commission ?? 0), 0);
+        return {
+          trips: enriched,
+          totals: { count: enriched.length, completed: enriched.filter(t => t.status === 'completed').length, totalEarnings: Math.round(totalEarningsAll), totalCommission: Math.round(totalCommissionAll) }
+        };
       }),
 
     /**
      * Get driver's parcel deliveries history (admin view)
      */
     driverParcelHistory: publicProcedure
-      .input(z.object({ driverId: z.number(), limit: z.number().default(50) }))
+      .input(z.object({ driverId: z.number(), limit: z.number().default(100), fromDate: z.string().optional(), toDate: z.string().optional() }))
       .query(async ({ input }) => {
         const db = await getDb();
-        if (!db) return [];
+        if (!db) return { parcels: [], totals: { count: 0, delivered: 0, cancelled: 0, totalRevenue: 0 } };
         const { parcels: parcelsTable } = await import("../drizzle/schema");
-        const { eq, desc } = await import("drizzle-orm");
-        return db
+        const { eq, desc, and, gte, lte } = await import("drizzle-orm");
+        const conditions: any[] = [eq(parcelsTable.driverId, input.driverId)];
+        if (input.fromDate) conditions.push(gte(parcelsTable.createdAt, new Date(input.fromDate)));
+        if (input.toDate) { const to = new Date(input.toDate); to.setHours(23,59,59,999); conditions.push(lte(parcelsTable.createdAt, to)); }
+        const parcelsList = await db
           .select()
           .from(parcelsTable)
-          .where(eq(parcelsTable.driverId, input.driverId))
+          .where(and(...conditions))
           .orderBy(desc(parcelsTable.createdAt))
           .limit(input.limit);
+        const delivered = parcelsList.filter(p => p.status === 'delivered');
+        const totalRevenue = delivered.reduce((s, p) => s + parseFloat(p.price?.toString() ?? '0'), 0);
+        return {
+          parcels: parcelsList,
+          totals: { count: parcelsList.length, delivered: delivered.length, cancelled: parcelsList.filter(p => p.status === 'cancelled').length, totalRevenue: Math.round(totalRevenue) }
+        };
       }),
   }),
   // ─── Intercity Trips ───────────────────────────────────────────────────────────
