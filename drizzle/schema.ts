@@ -552,3 +552,57 @@ export const parcelStatusLogs = mysqlTable("parcelStatusLogs", {
 });
 export type ParcelStatusLog = typeof parcelStatusLogs.$inferSelect;
 export type InsertParcelStatusLog = typeof parcelStatusLogs.$inferInsert;
+
+/**
+ * Commission Settings - global default commission rates per service type
+ * Managed by admin from the control panel
+ */
+export const commissionSettings = mysqlTable("commissionSettings", {
+  id: int("id").autoincrement().primaryKey(),
+  serviceType: mysqlEnum("serviceType", ["city_ride", "intercity", "parcel"]).notNull().unique(),
+  commissionRate: decimal("commissionRate", { precision: 5, scale: 2 }).notNull().default("10.00"),
+  isActive: boolean("isActive").default(true).notNull(),
+  updatedBy: int("updatedBy"),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type CommissionSetting = typeof commissionSettings.$inferSelect;
+export type InsertCommissionSetting = typeof commissionSettings.$inferInsert;
+
+/**
+ * Driver Commission Overrides - custom commission rates per driver per service type
+ */
+export const driverCommissionOverrides = mysqlTable("driverCommissionOverrides", {
+  id: int("id").autoincrement().primaryKey(),
+  driverId: int("driverId").notNull(),
+  serviceType: mysqlEnum("serviceType", ["city_ride", "intercity", "parcel"]).notNull(),
+  commissionRate: decimal("commissionRate", { precision: 5, scale: 2 }).notNull(),
+  reason: varchar("reason", { length: 300 }),
+  updatedBy: int("updatedBy"),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type DriverCommissionOverride = typeof driverCommissionOverrides.$inferSelect;
+export type InsertDriverCommissionOverride = typeof driverCommissionOverrides.$inferInsert;
+
+/**
+ * User Discounts - promotional discounts for passengers
+ */
+export const userDiscounts = mysqlTable("userDiscounts", {
+  id: int("id").autoincrement().primaryKey(),
+  passengerId: int("passengerId").notNull(),
+  discountType: mysqlEnum("discountType", ["free_rides", "percentage", "fixed_amount"]).notNull(),
+  totalFreeRides: int("totalFreeRides").default(0).notNull(),
+  usedFreeRides: int("usedFreeRides").default(0).notNull(),
+  discountValue: decimal("discountValue", { precision: 10, scale: 2 }).default("0.00").notNull(),
+  applicableServices: varchar("applicableServices", { length: 100 }).default("all").notNull(),
+  validFrom: timestamp("validFrom").defaultNow().notNull(),
+  validUntil: timestamp("validUntil"),
+  isActive: boolean("isActive").default(true).notNull(),
+  reason: varchar("reason", { length: 300 }),
+  createdBy: int("createdBy"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type UserDiscount = typeof userDiscounts.$inferSelect;
+export type InsertUserDiscount = typeof userDiscounts.$inferInsert;

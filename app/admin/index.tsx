@@ -63,7 +63,7 @@ function StatCard({
 export default function AdminDashboard() {
   const insets = useSafeAreaInsets();
   const [refreshing, setRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState<"overview" | "rides" | "drivers" | "passengers" | "pricing" | "intercity" | "support" | "agents" | "parcels">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "rides" | "drivers" | "passengers" | "pricing" | "intercity" | "support" | "agents" | "parcels" | "commissions">("overview");
   // Parcel filters
   const [parcelSearch, setParcelSearch] = useState("");
   const [parcelStatusFilter, setParcelStatusFilter] = useState<"all" | "pending" | "accepted" | "picked_up" | "in_transit" | "delivered" | "cancelled" | "returned">("all");
@@ -324,6 +324,66 @@ export default function AdminDashboard() {
 
   const supportUnreadCount = supportUnreadData?.count ?? 0;
 
+  // ─── Commission & Discounts State ────────────────────────────────────────────
+  const [commTab, setCommTab] = useState<'global' | 'overrides' | 'discounts'>('global');
+  const [commEditingService, setCommEditingService] = useState<string | null>(null);
+  const [commEditValue, setCommEditValue] = useState('');
+  const [overrideDriverSearch, setOverrideDriverSearch] = useState('');
+  const [showOverrideModal, setShowOverrideModal] = useState(false);
+  const [overrideTarget, setOverrideTarget] = useState<any | null>(null);
+  const [overrideService, setOverrideService] = useState<'city_ride' | 'intercity' | 'parcel'>('city_ride');
+  const [overrideValue, setOverrideValue] = useState('');
+  const [overrideReason, setOverrideReason] = useState('');
+  const [showDiscountModal, setShowDiscountModal] = useState(false);
+  const [discountTarget, setDiscountTarget] = useState<any | null>(null);
+  const [discountType, setDiscountType] = useState<'free_rides' | 'percentage' | 'fixed_amount'>('free_rides');
+  const [discountFreeRides, setDiscountFreeRides] = useState('');
+  const [discountValue, setDiscountValue] = useState('');
+  const [discountService, setDiscountService] = useState('all');
+  const [discountReason, setDiscountReason] = useState('');
+  const [discountValidUntil, setDiscountValidUntil] = useState('');
+  const [discountSearch, setDiscountSearch] = useState('');
+  const [discountPassengerSearch, setDiscountPassengerSearch] = useState('');
+  const [showBulkDiscountModal, setShowBulkDiscountModal] = useState(false);
+  const [bulkSelectedIds, setBulkSelectedIds] = useState<number[]>([]);
+
+  const { data: commSettings, refetch: refetchCommSettings } = trpc.commission.getSettings.useQuery(
+    undefined,
+    { enabled: activeTab === 'commissions' }
+  );
+  const { data: commOverrides, refetch: refetchCommOverrides } = trpc.commission.getAllOverrides.useQuery(
+    undefined,
+    { enabled: activeTab === 'commissions' && commTab === 'overrides' }
+  );
+  const { data: allDiscounts, refetch: refetchDiscounts } = trpc.discounts.getAll.useQuery(
+    undefined,
+    { enabled: activeTab === 'commissions' && commTab === 'discounts' }
+  );
+  const updateCommSettingMutation = trpc.commission.updateSetting.useMutation({
+    onSuccess: () => { refetchCommSettings(); setCommEditingService(null); setCommEditValue(''); },
+    onError: (e) => Alert.alert('خطأ', e.message),
+  });
+  const setDriverOverrideMutation = trpc.commission.setDriverOverride.useMutation({
+    onSuccess: () => { refetchCommOverrides(); setShowOverrideModal(false); setOverrideTarget(null); setOverrideValue(''); setOverrideReason(''); },
+    onError: (e) => Alert.alert('خطأ', e.message),
+  });
+  const deleteDriverOverrideMutation = trpc.commission.deleteDriverOverride.useMutation({
+    onSuccess: () => refetchCommOverrides(),
+    onError: (e) => Alert.alert('خطأ', e.message),
+  });
+  const createDiscountMutation = trpc.discounts.create.useMutation({
+    onSuccess: () => { refetchDiscounts(); setShowDiscountModal(false); setDiscountTarget(null); setDiscountFreeRides(''); setDiscountValue(''); setDiscountReason(''); setDiscountValidUntil(''); },
+    onError: (e) => Alert.alert('خطأ', e.message),
+  });
+  const createBulkDiscountMutation = trpc.discounts.createBulk.useMutation({
+    onSuccess: () => { refetchDiscounts(); setShowBulkDiscountModal(false); setBulkSelectedIds([]); setDiscountFreeRides(''); setDiscountValue(''); setDiscountReason(''); setDiscountValidUntil(''); },
+    onError: (e) => Alert.alert('خطأ', e.message),
+  });
+  const deactivateDiscountMutation = trpc.discounts.deactivate.useMutation({
+    onSuccess: () => refetchDiscounts(),
+    onError: (e) => Alert.alert('خطأ', e.message),
+  });
+
   const onRefresh = async () => {
     setRefreshing(true);
     await Promise.all([refetchStats(), refetchRides(), refetchDrivers(), refetchPassengers(), refetchAllRides(), refetchPending(), refetchIntercity(), refetchSupport(), refetchRidesDetailed()]);
@@ -344,6 +404,7 @@ export default function AdminDashboard() {
     { id: "support", label: "الدعم الفني", icon: "🎟️" },
     { id: "agents", label: "الوكلاء", icon: "💼" },
     { id: "parcels", label: "الطرود", icon: "📦" },
+    { id: "commissions", label: "العمولات", icon: "🏦" },
   ] as const;
 
   return (
@@ -1185,6 +1246,19 @@ export default function AdminDashboard() {
                         >
                           <Text style={{ fontSize: 18 }}>📋</Text>
                         </TouchableOpacity>
+                        {/* Commission Override */}
+                        <TouchableOpacity
+                          style={[styles.docsBtn, { backgroundColor: '#1A3320' }]}
+                          onPress={() => {
+                            setOverrideTarget({ driverId: driver.id, id: driver.id, name: driver.name || driver.phone });
+                            setOverrideService('city_ride');
+                            setOverrideValue('');
+                            setOverrideReason('');
+                            setShowOverrideModal(true);
+                          }}
+                        >
+                          <Text style={{ fontSize: 18 }}>💹</Text>
+                        </TouchableOpacity>
                         {/* Block/Unblock */}
                         <TouchableOpacity
                           style={[styles.blockBtn, driver.isBlocked && styles.unblockBtn]}
@@ -1465,6 +1539,21 @@ export default function AdminDashboard() {
                           }}
                         >
                           <Text style={{ fontSize: 11, color: '#A78BFA', fontWeight: '600' }}>📋 سجل</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={{ backgroundColor: '#FFD70022', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, borderWidth: 1, borderColor: '#FFD700', marginBottom: 2 }}
+                          onPress={() => {
+                            setDiscountTarget(p);
+                            setDiscountType('free_rides');
+                            setDiscountFreeRides('');
+                            setDiscountValue('');
+                            setDiscountReason('');
+                            setDiscountValidUntil('');
+                            setDiscountPassengerSearch('');
+                            setShowDiscountModal(true);
+                          }}
+                        >
+                          <Text style={{ fontSize: 11, color: '#FFD700', fontWeight: '600' }}>🎁 خصم</Text>
                         </TouchableOpacity>
                         <TouchableOpacity
                           style={{ backgroundColor: isBlocked ? '#22C55E22' : '#EF444422', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, borderWidth: 1, borderColor: isBlocked ? '#22C55E' : '#EF4444' }}
@@ -2520,8 +2609,540 @@ export default function AdminDashboard() {
           </View>
         )}
 
+        {/* ─── Commission & Discounts Section ─────────────────────────────── */}
+        {activeTab === 'commissions' && (() => {
+          const SERVICE_LABELS: Record<string, string> = {
+            city_ride: '🚗 رحلات داخل المدينة',
+            intercity: '🗣️ رحلات بين المدن',
+            parcel: '📦 الطرود',
+          };
+          const DISCOUNT_LABELS: Record<string, string> = {
+            free_rides: '🎟️ رحلات مجانية',
+            percentage: '📊 خصم نسبة مئوية',
+            fixed_amount: '💰 خصم ثابت',
+          };
+          const filteredOverrides = (commOverrides ?? []).filter((o: any) =>
+            !overrideDriverSearch || o.driverName?.includes(overrideDriverSearch) || o.driverPhone?.includes(overrideDriverSearch)
+          );
+          const filteredDiscounts = (allDiscounts ?? []).filter((d: any) =>
+            !discountSearch || d.passengerName?.includes(discountSearch) || d.passengerPhone?.includes(discountSearch)
+          );
+          const filteredPassengers = (allPassengers ?? []).filter((p: any) =>
+            !discountPassengerSearch || p.name?.includes(discountPassengerSearch) || p.phone?.includes(discountPassengerSearch)
+          );
+
+          return (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>🏦 إدارة العمولات والخصومات</Text>
+
+              {/* Sub-tabs */}
+              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
+                {([['global', '⚙️ عمولات افتراضية'], ['overrides', '👨‍✈️ خاص بالسائق'], ['discounts', '🎁 خصومات المستخدمين']] as const).map(([id, label]) => (
+                  <TouchableOpacity
+                    key={id}
+                    style={{ flex: 1, paddingVertical: 10, borderRadius: 12, backgroundColor: commTab === id ? '#FFD700' : '#1E1035', borderWidth: 1, borderColor: commTab === id ? '#FFD700' : '#2D1B4E', alignItems: 'center' }}
+                    onPress={() => setCommTab(id)}
+                  >
+                    <Text style={{ color: commTab === id ? '#1A0533' : '#9B8EC4', fontSize: 11, fontWeight: '700', textAlign: 'center' }}>{label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* ─── Global Commission Settings ─── */}
+              {commTab === 'global' && (
+                <View style={{ gap: 12 }}>
+                  <Text style={{ color: '#9B8EC4', fontSize: 12, marginBottom: 4 }}>تحديد نسبة عمولة الشركة لكل نوع خدمة. تُطبّق على جميع السائقين ما لم يكن لهم عمولة مخصصة.</Text>
+                  {(commSettings ?? []).map((s: any) => (
+                    <View key={s.serviceType} style={{ backgroundColor: '#0F0628', borderRadius: 14, padding: 16, borderWidth: 1, borderColor: '#2D1B4E' }}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                        <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '700' }}>{SERVICE_LABELS[s.serviceType] ?? s.serviceType}</Text>
+                        <View style={{ backgroundColor: '#FFD70022', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 4, borderWidth: 1, borderColor: '#FFD70055' }}>
+                          <Text style={{ color: '#FFD700', fontSize: 16, fontWeight: '900' }}>{parseFloat(s.commissionRate)}%</Text>
+                        </View>
+                      </View>
+                      {commEditingService === s.serviceType ? (
+                        <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                          <TextInput
+                            value={commEditValue}
+                            onChangeText={setCommEditValue}
+                            keyboardType="decimal-pad"
+                            placeholder="النسبة الجديدة %"
+                            placeholderTextColor="#6B5A8A"
+                            style={{ flex: 1, backgroundColor: '#1E1035', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, color: '#FFFFFF', fontSize: 14, borderWidth: 1, borderColor: '#7C3AED' }}
+                          />
+                          <TouchableOpacity
+                            style={{ backgroundColor: '#22C55E', borderRadius: 10, paddingHorizontal: 16, paddingVertical: 8 }}
+                            onPress={() => {
+                              const rate = parseFloat(commEditValue);
+                              if (isNaN(rate) || rate < 0 || rate > 100) { Alert.alert('خطأ', 'أدخل نسبة صحيحة بين 0 و 100'); return; }
+                              updateCommSettingMutation.mutate({ serviceType: s.serviceType, commissionRate: rate });
+                            }}
+                            disabled={updateCommSettingMutation.isPending}
+                          >
+                            <Text style={{ color: '#FFFFFF', fontWeight: '700' }}>حفظ</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={{ backgroundColor: '#2D1B4E', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 }}
+                            onPress={() => { setCommEditingService(null); setCommEditValue(''); }}
+                          >
+                            <Text style={{ color: '#9B8EC4', fontWeight: '700' }}>إلغاء</Text>
+                          </TouchableOpacity>
+                        </View>
+                      ) : (
+                        <TouchableOpacity
+                          style={{ backgroundColor: '#2D1B4E', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8, alignSelf: 'flex-start', borderWidth: 1, borderColor: '#7C3AED' }}
+                          onPress={() => { setCommEditingService(s.serviceType); setCommEditValue(parseFloat(s.commissionRate).toString()); }}
+                        >
+                          <Text style={{ color: '#C4B5FD', fontSize: 13, fontWeight: '600' }}>✏️ تعديل العمولة</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  ))}
+                  {(!commSettings || commSettings.length === 0) && (
+                    <Text style={{ color: '#9B8EC4', textAlign: 'center', marginTop: 20 }}>جاري تحميل الإعدادات...</Text>
+                  )}
+                </View>
+              )}
+
+              {/* ─── Driver Commission Overrides ─── */}
+              {commTab === 'overrides' && (
+                <View style={{ gap: 12 }}>
+                  <Text style={{ color: '#9B8EC4', fontSize: 12, marginBottom: 4 }}>عمولات مخصصة لكل سائق — تتغلب على العمولات الافتراضية.</Text>
+
+                  {/* Search + Add */}
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: '#1E1035', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1, borderColor: '#2D1B4E' }}>
+                      <Text style={{ fontSize: 14, marginRight: 6 }}>🔍</Text>
+                      <TextInput
+                        value={overrideDriverSearch}
+                        onChangeText={setOverrideDriverSearch}
+                        placeholder="بحث باسم السائق..."
+                        placeholderTextColor="#6B5A8A"
+                        style={{ flex: 1, color: '#FFFFFF', fontSize: 13, paddingVertical: 0 }}
+                      />
+                    </View>
+                    <TouchableOpacity
+                      style={{ backgroundColor: '#7C3AED', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 8, justifyContent: 'center' }}
+                      onPress={() => { setOverrideTarget(null); setOverrideService('city_ride'); setOverrideValue(''); setOverrideReason(''); setShowOverrideModal(true); }}
+                    >
+                      <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '700' }}>+ إضافة</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {filteredOverrides.length === 0 ? (
+                    <Text style={{ color: '#9B8EC4', textAlign: 'center', marginTop: 16 }}>لا توجد عمولات مخصصة بعد</Text>
+                  ) : filteredOverrides.map((o: any) => (
+                    <View key={o.id} style={{ backgroundColor: '#0F0628', borderRadius: 14, padding: 14, borderWidth: 1, borderColor: '#2D1B4E' }}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '700' }}>{o.driverName}</Text>
+                          <Text style={{ color: '#9B8EC4', fontSize: 12, marginTop: 2 }}>{o.driverPhone}</Text>
+                          <Text style={{ color: '#C4B5FD', fontSize: 12, marginTop: 4 }}>{SERVICE_LABELS[o.serviceType] ?? o.serviceType}</Text>
+                          {o.reason && <Text style={{ color: '#6B7280', fontSize: 11, marginTop: 3 }}>السبب: {o.reason}</Text>}
+                        </View>
+                        <View style={{ alignItems: 'flex-end', gap: 8 }}>
+                          <View style={{ backgroundColor: '#FFD70022', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 4, borderWidth: 1, borderColor: '#FFD70055' }}>
+                            <Text style={{ color: '#FFD700', fontSize: 16, fontWeight: '900' }}>{parseFloat(o.commissionRate)}%</Text>
+                          </View>
+                          <View style={{ flexDirection: 'row', gap: 6 }}>
+                            <TouchableOpacity
+                              style={{ backgroundColor: '#2D1B4E', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1, borderColor: '#7C3AED' }}
+                              onPress={() => { setOverrideTarget(o); setOverrideService(o.serviceType); setOverrideValue(parseFloat(o.commissionRate).toString()); setOverrideReason(o.reason ?? ''); setShowOverrideModal(true); }}
+                            >
+                              <Text style={{ color: '#C4B5FD', fontSize: 12 }}>تعديل</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={{ backgroundColor: '#450A0A', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1, borderColor: '#EF4444' }}
+                              onPress={() => showConfirm({ title: 'حذف التخصيص', message: `سيعود السائق ${o.driverName} للعمولة الافتراضية`, confirmText: 'حذف', confirmColor: '#EF4444', onConfirm: () => deleteDriverOverrideMutation.mutate({ driverId: o.driverId, serviceType: o.serviceType }) })}
+                            >
+                              <Text style={{ color: '#F87171', fontSize: 12 }}>حذف</Text>
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              {/* ─── User Discounts ─── */}
+              {commTab === 'discounts' && (
+                <View style={{ gap: 12 }}>
+                  <Text style={{ color: '#9B8EC4', fontSize: 12, marginBottom: 4 }}>منح رحلات مجانية أو خصومات للمستخدمين بشكل فردي أو جماعي.</Text>
+
+                  {/* Actions Row */}
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: '#1E1035', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1, borderColor: '#2D1B4E' }}>
+                      <Text style={{ fontSize: 14, marginRight: 6 }}>🔍</Text>
+                      <TextInput
+                        value={discountSearch}
+                        onChangeText={setDiscountSearch}
+                        placeholder="بحث باسم المستخدم..."
+                        placeholderTextColor="#6B5A8A"
+                        style={{ flex: 1, color: '#FFFFFF', fontSize: 13, paddingVertical: 0 }}
+                      />
+                    </View>
+                    <TouchableOpacity
+                      style={{ backgroundColor: '#7C3AED', borderRadius: 12, paddingHorizontal: 10, paddingVertical: 8, justifyContent: 'center' }}
+                      onPress={() => { setDiscountTarget(null); setDiscountType('free_rides'); setDiscountFreeRides(''); setDiscountValue(''); setDiscountReason(''); setDiscountValidUntil(''); setDiscountPassengerSearch(''); setShowDiscountModal(true); }}
+                    >
+                      <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '700' }}>+ فردي</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={{ backgroundColor: '#0EA5E9', borderRadius: 12, paddingHorizontal: 10, paddingVertical: 8, justifyContent: 'center' }}
+                      onPress={() => { setBulkSelectedIds([]); setDiscountType('free_rides'); setDiscountFreeRides(''); setDiscountValue(''); setDiscountReason(''); setDiscountValidUntil(''); setShowBulkDiscountModal(true); }}
+                    >
+                      <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '700' }}>+ جماعي</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {filteredDiscounts.length === 0 ? (
+                    <Text style={{ color: '#9B8EC4', textAlign: 'center', marginTop: 16 }}>لا توجد خصومات مسجلة</Text>
+                  ) : filteredDiscounts.map((d: any) => (
+                    <View key={d.id} style={{ backgroundColor: '#0F0628', borderRadius: 14, padding: 14, borderWidth: 1, borderColor: d.isActive ? '#22C55E44' : '#2D1B4E' }}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <View style={{ flex: 1 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                            <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '700' }}>{d.passengerName}</Text>
+                            <View style={{ backgroundColor: d.isActive ? '#22C55E22' : '#EF444422', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2, borderWidth: 1, borderColor: d.isActive ? '#22C55E55' : '#EF444455' }}>
+                              <Text style={{ color: d.isActive ? '#22C55E' : '#EF4444', fontSize: 10, fontWeight: '700' }}>{d.isActive ? 'نشط' : 'منتهي'}</Text>
+                            </View>
+                          </View>
+                          <Text style={{ color: '#9B8EC4', fontSize: 12 }}>{d.passengerPhone}</Text>
+                          <Text style={{ color: '#C4B5FD', fontSize: 12, marginTop: 4 }}>{DISCOUNT_LABELS[d.discountType] ?? d.discountType}</Text>
+                          {d.discountType === 'free_rides' && (
+                            <Text style={{ color: '#FFD700', fontSize: 13, fontWeight: '700', marginTop: 4 }}>رحلات مجانية: {d.usedFreeRides ?? 0} / {d.totalFreeRides ?? 0}</Text>
+                          )}
+                          {d.discountType !== 'free_rides' && (
+                            <Text style={{ color: '#FFD700', fontSize: 13, fontWeight: '700', marginTop: 4 }}>الخصم: {parseFloat(d.discountValue)}{d.discountType === 'percentage' ? '%' : ' د.ع'}</Text>
+                          )}
+                          {d.reason && <Text style={{ color: '#6B7280', fontSize: 11, marginTop: 3 }}>السبب: {d.reason}</Text>}
+                          {d.validUntil && <Text style={{ color: '#6B7280', fontSize: 11, marginTop: 2 }}>صالح حتى: {new Date(d.validUntil).toLocaleDateString('ar-IQ')}</Text>}
+                        </View>
+                        {d.isActive && (
+                          <TouchableOpacity
+                            style={{ backgroundColor: '#450A0A', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1, borderColor: '#EF4444', marginTop: 4 }}
+                            onPress={() => showConfirm({ title: 'إلغاء الخصم', message: `إلغاء خصم ${d.passengerName}?`, confirmText: 'إلغاء', confirmColor: '#EF4444', onConfirm: () => deactivateDiscountMutation.mutate({ discountId: d.id }) })}
+                          >
+                            <Text style={{ color: '#F87171', fontSize: 12 }}>إلغاء</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </View>
+          );
+        })()}
+
         <View style={{ height: 40 }} />
       </ScrollView>
+
+      {/* ─── Override Commission Modal ─── */}
+      <Modal visible={showOverrideModal} transparent animationType="slide" onRequestClose={() => setShowOverrideModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={{ backgroundColor: '#1A0533', borderRadius: 20, width: '92%', padding: 20 }}>
+            <Text style={{ color: '#FFD700', fontSize: 16, fontWeight: '800', marginBottom: 16, textAlign: 'right' }}>
+              {overrideTarget ? 'تعديل عمولة سائق' : 'إضافة عمولة مخصصة'}
+            </Text>
+
+            {/* Driver picker (only for new override) */}
+            {!overrideTarget && (
+              <View style={{ marginBottom: 12 }}>
+                <Text style={{ color: '#9B8EC4', fontSize: 12, marginBottom: 6 }}>اختر السائق</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#1E1035', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1, borderColor: '#2D1B4E', marginBottom: 8 }}>
+                  <TextInput
+                    value={overrideDriverSearch}
+                    onChangeText={setOverrideDriverSearch}
+                    placeholder="بحث باسم السائق..."
+                    placeholderTextColor="#6B5A8A"
+                    style={{ flex: 1, color: '#FFFFFF', fontSize: 13, paddingVertical: 0 }}
+                  />
+                </View>
+                <ScrollView style={{ maxHeight: 150 }} showsVerticalScrollIndicator={false}>
+                  {(allDrivers ?? []).filter((d: any) =>
+                    !overrideDriverSearch || d.name?.includes(overrideDriverSearch) || d.phone?.includes(overrideDriverSearch)
+                  ).slice(0, 10).map((d: any) => (
+                    <TouchableOpacity
+                      key={d.id}
+                      style={{ padding: 10, borderRadius: 10, backgroundColor: overrideTarget?.driverId === d.id ? '#7C3AED' : '#1E1035', marginBottom: 4, borderWidth: 1, borderColor: '#2D1B4E' }}
+                      onPress={() => setOverrideTarget({ driverId: d.id, driverName: d.name, driverPhone: d.phone })}
+                    >
+                      <Text style={{ color: '#FFFFFF', fontSize: 13 }}>{d.name} — {d.phone}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+
+            {overrideTarget && (
+              <View style={{ backgroundColor: '#2D1B4E', borderRadius: 10, padding: 10, marginBottom: 12 }}>
+                <Text style={{ color: '#FFD700', fontSize: 13, fontWeight: '700' }}>{overrideTarget.driverName ?? overrideTarget.name}</Text>
+                <Text style={{ color: '#9B8EC4', fontSize: 12 }}>{overrideTarget.driverPhone ?? overrideTarget.phone}</Text>
+              </View>
+            )}
+
+            {/* Service Type */}
+            <Text style={{ color: '#9B8EC4', fontSize: 12, marginBottom: 6 }}>نوع الخدمة</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                {(['city_ride', 'intercity', 'parcel'] as const).map((svc) => (
+                  <TouchableOpacity
+                    key={svc}
+                    style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: overrideService === svc ? '#7C3AED' : '#1E1035', borderWidth: 1, borderColor: overrideService === svc ? '#7C3AED' : '#2D1B4E' }}
+                    onPress={() => setOverrideService(svc)}
+                  >
+                    <Text style={{ color: overrideService === svc ? '#FFFFFF' : '#9B8EC4', fontSize: 12, fontWeight: '600' }}>
+                      {svc === 'city_ride' ? 'داخل المدينة' : svc === 'intercity' ? 'بين المدن' : 'طرود'}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
+
+            {/* Commission Rate */}
+            <Text style={{ color: '#9B8EC4', fontSize: 12, marginBottom: 6 }}>نسبة العمولة %</Text>
+            <TextInput
+              value={overrideValue}
+              onChangeText={setOverrideValue}
+              keyboardType="decimal-pad"
+              placeholder="مثال: 8"
+              placeholderTextColor="#6B5A8A"
+              style={{ backgroundColor: '#1E1035', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, color: '#FFFFFF', fontSize: 14, borderWidth: 1, borderColor: '#2D1B4E', marginBottom: 12 }}
+            />
+
+            {/* Reason */}
+            <Text style={{ color: '#9B8EC4', fontSize: 12, marginBottom: 6 }}>سبب التخصيص (اختياري)</Text>
+            <TextInput
+              value={overrideReason}
+              onChangeText={setOverrideReason}
+              placeholder="مثال: سائق متميز"
+              placeholderTextColor="#6B5A8A"
+              style={{ backgroundColor: '#1E1035', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, color: '#FFFFFF', fontSize: 14, borderWidth: 1, borderColor: '#2D1B4E', marginBottom: 16 }}
+            />
+
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <TouchableOpacity
+                style={{ flex: 1, backgroundColor: '#2D1B4E', borderRadius: 12, paddingVertical: 12, alignItems: 'center' }}
+                onPress={() => setShowOverrideModal(false)}
+              >
+                <Text style={{ color: '#9B8EC4', fontWeight: '700' }}>إلغاء</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{ flex: 2, backgroundColor: '#7C3AED', borderRadius: 12, paddingVertical: 12, alignItems: 'center' }}
+                disabled={setDriverOverrideMutation.isPending}
+                onPress={() => {
+                  const driverId = overrideTarget?.driverId ?? overrideTarget?.id;
+                  if (!driverId) { Alert.alert('خطأ', 'يرجى اختيار سائق'); return; }
+                  const rate = parseFloat(overrideValue);
+                  if (isNaN(rate) || rate < 0 || rate > 100) { Alert.alert('خطأ', 'أدخل نسبة صحيحة'); return; }
+                  setDriverOverrideMutation.mutate({ driverId, serviceType: overrideService, commissionRate: rate, reason: overrideReason || undefined });
+                }}
+              >
+                {setDriverOverrideMutation.isPending ? <ActivityIndicator color="#FFFFFF" size="small" /> : <Text style={{ color: '#FFFFFF', fontWeight: '800' }}>حفظ التخصيص</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ─── Single Discount Modal ─── */}
+      <Modal visible={showDiscountModal} transparent animationType="slide" onRequestClose={() => setShowDiscountModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={{ backgroundColor: '#1A0533', borderRadius: 20, width: '92%', padding: 20, maxHeight: '85%' }}>
+            <Text style={{ color: '#FFD700', fontSize: 16, fontWeight: '800', marginBottom: 16, textAlign: 'right' }}>🎁 منح خصم لمستخدم</Text>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {/* Passenger picker */}
+              <Text style={{ color: '#9B8EC4', fontSize: 12, marginBottom: 6 }}>اختر المستخدم</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#1E1035', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1, borderColor: '#2D1B4E', marginBottom: 8 }}>
+                <TextInput
+                  value={discountPassengerSearch}
+                  onChangeText={setDiscountPassengerSearch}
+                  placeholder="بحث باسم المستخدم..."
+                  placeholderTextColor="#6B5A8A"
+                  style={{ flex: 1, color: '#FFFFFF', fontSize: 13, paddingVertical: 0 }}
+                />
+              </View>
+              <View style={{ maxHeight: 120, marginBottom: 12 }}>
+                <ScrollView showsVerticalScrollIndicator={false}>
+                  {(allPassengers ?? []).filter((p: any) => !discountPassengerSearch || p.name?.includes(discountPassengerSearch) || p.phone?.includes(discountPassengerSearch)).slice(0, 8).map((p: any) => (
+                    <TouchableOpacity
+                      key={p.id}
+                      style={{ padding: 10, borderRadius: 10, backgroundColor: discountTarget?.id === p.id ? '#7C3AED' : '#1E1035', marginBottom: 4, borderWidth: 1, borderColor: '#2D1B4E' }}
+                      onPress={() => setDiscountTarget(p)}
+                    >
+                      <Text style={{ color: '#FFFFFF', fontSize: 13 }}>{p.name} — {p.phone}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+              {discountTarget && (
+                <View style={{ backgroundColor: '#2D1B4E', borderRadius: 10, padding: 10, marginBottom: 12 }}>
+                  <Text style={{ color: '#FFD700', fontSize: 13, fontWeight: '700' }}>{discountTarget.name}</Text>
+                  <Text style={{ color: '#9B8EC4', fontSize: 12 }}>{discountTarget.phone}</Text>
+                </View>
+              )}
+
+              {/* Discount Type */}
+              <Text style={{ color: '#9B8EC4', fontSize: 12, marginBottom: 6 }}>نوع الخصم</Text>
+              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+                {(['free_rides', 'percentage', 'fixed_amount'] as const).map((t) => (
+                  <TouchableOpacity
+                    key={t}
+                    style={{ flex: 1, paddingVertical: 8, borderRadius: 10, backgroundColor: discountType === t ? '#7C3AED' : '#1E1035', borderWidth: 1, borderColor: discountType === t ? '#7C3AED' : '#2D1B4E', alignItems: 'center' }}
+                    onPress={() => setDiscountType(t)}
+                  >
+                    <Text style={{ color: discountType === t ? '#FFFFFF' : '#9B8EC4', fontSize: 11, fontWeight: '600', textAlign: 'center' }}>
+                      {t === 'free_rides' ? 'مجانية' : t === 'percentage' ? 'نسبة %' : 'ثابت'}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {discountType === 'free_rides' ? (
+                <>
+                  <Text style={{ color: '#9B8EC4', fontSize: 12, marginBottom: 6 }}>عدد الرحلات المجانية</Text>
+                  <TextInput value={discountFreeRides} onChangeText={setDiscountFreeRides} keyboardType="number-pad" placeholder="مثال: 5" placeholderTextColor="#6B5A8A" style={{ backgroundColor: '#1E1035', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, color: '#FFFFFF', fontSize: 14, borderWidth: 1, borderColor: '#2D1B4E', marginBottom: 12 }} />
+                </>
+              ) : (
+                <>
+                  <Text style={{ color: '#9B8EC4', fontSize: 12, marginBottom: 6 }}>{discountType === 'percentage' ? 'نسبة الخصم %' : 'مبلغ الخصم (د.ع)'}</Text>
+                  <TextInput value={discountValue} onChangeText={setDiscountValue} keyboardType="decimal-pad" placeholder="مثال: 15" placeholderTextColor="#6B5A8A" style={{ backgroundColor: '#1E1035', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, color: '#FFFFFF', fontSize: 14, borderWidth: 1, borderColor: '#2D1B4E', marginBottom: 12 }} />
+                </>
+              )}
+
+              <Text style={{ color: '#9B8EC4', fontSize: 12, marginBottom: 6 }}>سبب الخصم (اختياري)</Text>
+              <TextInput value={discountReason} onChangeText={setDiscountReason} placeholder="مثال: عميل مميز" placeholderTextColor="#6B5A8A" style={{ backgroundColor: '#1E1035', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, color: '#FFFFFF', fontSize: 14, borderWidth: 1, borderColor: '#2D1B4E', marginBottom: 12 }} />
+
+              <Text style={{ color: '#9B8EC4', fontSize: 12, marginBottom: 6 }}>صالح حتى (اختياري — YYYY-MM-DD)</Text>
+              <TextInput value={discountValidUntil} onChangeText={setDiscountValidUntil} placeholder="مثال: 2026-12-31" placeholderTextColor="#6B5A8A" style={{ backgroundColor: '#1E1035', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, color: '#FFFFFF', fontSize: 14, borderWidth: 1, borderColor: '#2D1B4E', marginBottom: 16 }} />
+
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <TouchableOpacity style={{ flex: 1, backgroundColor: '#2D1B4E', borderRadius: 12, paddingVertical: 12, alignItems: 'center' }} onPress={() => setShowDiscountModal(false)}>
+                  <Text style={{ color: '#9B8EC4', fontWeight: '700' }}>إلغاء</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={{ flex: 2, backgroundColor: '#7C3AED', borderRadius: 12, paddingVertical: 12, alignItems: 'center' }}
+                  disabled={createDiscountMutation.isPending}
+                  onPress={() => {
+                    if (!discountTarget) { Alert.alert('خطأ', 'يرجى اختيار مستخدم'); return; }
+                    const freeRides = parseInt(discountFreeRides);
+                    const val = parseFloat(discountValue);
+                    if (discountType === 'free_rides' && (isNaN(freeRides) || freeRides <= 0)) { Alert.alert('خطأ', 'أدخل عدد صحيح'); return; }
+                    if (discountType !== 'free_rides' && (isNaN(val) || val <= 0)) { Alert.alert('خطأ', 'أدخل قيمة صحيحة'); return; }
+                    createDiscountMutation.mutate({
+                      passengerId: discountTarget.id,
+                      discountType,
+                      totalFreeRides: discountType === 'free_rides' ? freeRides : undefined,
+                      discountValue: discountType !== 'free_rides' ? val : undefined,
+                      applicableServices: discountService,
+                      validUntil: discountValidUntil || undefined,
+                      reason: discountReason || undefined,
+                    });
+                  }}
+                >
+                  {createDiscountMutation.isPending ? <ActivityIndicator color="#FFFFFF" size="small" /> : <Text style={{ color: '#FFFFFF', fontWeight: '800' }}>منح الخصم</Text>}
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ─── Bulk Discount Modal ─── */}
+      <Modal visible={showBulkDiscountModal} transparent animationType="slide" onRequestClose={() => setShowBulkDiscountModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={{ backgroundColor: '#1A0533', borderRadius: 20, width: '92%', padding: 20, maxHeight: '85%' }}>
+            <Text style={{ color: '#FFD700', fontSize: 16, fontWeight: '800', marginBottom: 16, textAlign: 'right' }}>🎁 خصم جماعي</Text>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <Text style={{ color: '#9B8EC4', fontSize: 12, marginBottom: 8 }}>اختر المستخدمين ({bulkSelectedIds.length} مختار)</Text>
+
+              {/* Passenger search */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#1E1035', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1, borderColor: '#2D1B4E', marginBottom: 8 }}>
+                <TextInput
+                  value={discountPassengerSearch}
+                  onChangeText={setDiscountPassengerSearch}
+                  placeholder="بحث..."
+                  placeholderTextColor="#6B5A8A"
+                  style={{ flex: 1, color: '#FFFFFF', fontSize: 13, paddingVertical: 0 }}
+                />
+              </View>
+              <View style={{ maxHeight: 180, marginBottom: 12 }}>
+                <ScrollView showsVerticalScrollIndicator={false}>
+                  {(allPassengers ?? []).filter((p: any) => !discountPassengerSearch || p.name?.includes(discountPassengerSearch) || p.phone?.includes(discountPassengerSearch)).slice(0, 20).map((p: any) => (
+                    <TouchableOpacity
+                      key={p.id}
+                      style={{ flexDirection: 'row', alignItems: 'center', padding: 10, borderRadius: 10, backgroundColor: bulkSelectedIds.includes(p.id) ? '#7C3AED22' : '#1E1035', marginBottom: 4, borderWidth: 1, borderColor: bulkSelectedIds.includes(p.id) ? '#7C3AED' : '#2D1B4E' }}
+                      onPress={() => setBulkSelectedIds(prev => prev.includes(p.id) ? prev.filter(id => id !== p.id) : [...prev, p.id])}
+                    >
+                      <Text style={{ fontSize: 16, marginRight: 8 }}>{bulkSelectedIds.includes(p.id) ? '✅' : '⬜'}</Text>
+                      <Text style={{ color: '#FFFFFF', fontSize: 13, flex: 1 }}>{p.name} — {p.phone}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+
+              {/* Discount Type */}
+              <Text style={{ color: '#9B8EC4', fontSize: 12, marginBottom: 6 }}>نوع الخصم</Text>
+              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+                {(['free_rides', 'percentage', 'fixed_amount'] as const).map((t) => (
+                  <TouchableOpacity key={t} style={{ flex: 1, paddingVertical: 8, borderRadius: 10, backgroundColor: discountType === t ? '#7C3AED' : '#1E1035', borderWidth: 1, borderColor: discountType === t ? '#7C3AED' : '#2D1B4E', alignItems: 'center' }} onPress={() => setDiscountType(t)}>
+                    <Text style={{ color: discountType === t ? '#FFFFFF' : '#9B8EC4', fontSize: 11, fontWeight: '600', textAlign: 'center' }}>{t === 'free_rides' ? 'مجانية' : t === 'percentage' ? 'نسبة %' : 'ثابت'}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {discountType === 'free_rides' ? (
+                <>
+                  <Text style={{ color: '#9B8EC4', fontSize: 12, marginBottom: 6 }}>عدد الرحلات المجانية</Text>
+                  <TextInput value={discountFreeRides} onChangeText={setDiscountFreeRides} keyboardType="number-pad" placeholder="مثال: 5" placeholderTextColor="#6B5A8A" style={{ backgroundColor: '#1E1035', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, color: '#FFFFFF', fontSize: 14, borderWidth: 1, borderColor: '#2D1B4E', marginBottom: 12 }} />
+                </>
+              ) : (
+                <>
+                  <Text style={{ color: '#9B8EC4', fontSize: 12, marginBottom: 6 }}>{discountType === 'percentage' ? 'نسبة الخصم %' : 'مبلغ الخصم (د.ع)'}</Text>
+                  <TextInput value={discountValue} onChangeText={setDiscountValue} keyboardType="decimal-pad" placeholder="مثال: 15" placeholderTextColor="#6B5A8A" style={{ backgroundColor: '#1E1035', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, color: '#FFFFFF', fontSize: 14, borderWidth: 1, borderColor: '#2D1B4E', marginBottom: 12 }} />
+                </>
+              )}
+
+              <Text style={{ color: '#9B8EC4', fontSize: 12, marginBottom: 6 }}>سبب (اختياري)</Text>
+              <TextInput value={discountReason} onChangeText={setDiscountReason} placeholder="مثال: حملة ترويجية" placeholderTextColor="#6B5A8A" style={{ backgroundColor: '#1E1035', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, color: '#FFFFFF', fontSize: 14, borderWidth: 1, borderColor: '#2D1B4E', marginBottom: 12 }} />
+
+              <Text style={{ color: '#9B8EC4', fontSize: 12, marginBottom: 6 }}>صالح حتى (اختياري — YYYY-MM-DD)</Text>
+              <TextInput value={discountValidUntil} onChangeText={setDiscountValidUntil} placeholder="مثال: 2026-12-31" placeholderTextColor="#6B5A8A" style={{ backgroundColor: '#1E1035', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, color: '#FFFFFF', fontSize: 14, borderWidth: 1, borderColor: '#2D1B4E', marginBottom: 16 }} />
+
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <TouchableOpacity style={{ flex: 1, backgroundColor: '#2D1B4E', borderRadius: 12, paddingVertical: 12, alignItems: 'center' }} onPress={() => setShowBulkDiscountModal(false)}>
+                  <Text style={{ color: '#9B8EC4', fontWeight: '700' }}>إلغاء</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={{ flex: 2, backgroundColor: '#0EA5E9', borderRadius: 12, paddingVertical: 12, alignItems: 'center' }}
+                  disabled={createBulkDiscountMutation.isPending}
+                  onPress={() => {
+                    if (bulkSelectedIds.length === 0) { Alert.alert('خطأ', 'يرجى اختيار مستخدم واحد على الأقل'); return; }
+                    const freeRides = parseInt(discountFreeRides);
+                    const val = parseFloat(discountValue);
+                    if (discountType === 'free_rides' && (isNaN(freeRides) || freeRides <= 0)) { Alert.alert('خطأ', 'أدخل عدد صحيح'); return; }
+                    if (discountType !== 'free_rides' && (isNaN(val) || val <= 0)) { Alert.alert('خطأ', 'أدخل قيمة صحيحة'); return; }
+                    createBulkDiscountMutation.mutate({
+                      passengerIds: bulkSelectedIds,
+                      discountType,
+                      totalFreeRides: discountType === 'free_rides' ? freeRides : undefined,
+                      discountValue: discountType !== 'free_rides' ? val : undefined,
+                      applicableServices: discountService,
+                      validUntil: discountValidUntil || undefined,
+                      reason: discountReason || undefined,
+                    });
+                  }}
+                >
+                  {createBulkDiscountMutation.isPending ? <ActivityIndicator color="#FFFFFF" size="small" /> : <Text style={{ color: '#FFFFFF', fontWeight: '800' }}>منح لـ {bulkSelectedIds.length} مستخدم</Text>}
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
       {/* Parcel Detail Modal */}
       <Modal
         visible={showParcelModal}

@@ -2947,3 +2947,370 @@ export async function updateParcelAgentStatus(agentId: number, isActive: boolean
   if (!db) throw new Error("Database not available");
   await db.update(parcelAgents).set({ isActive }).where(eq(parcelAgents.id, agentId));
 }
+
+// ─── Commission System Functions ─────────────────────────────────────────────
+import { commissionSettings, driverCommissionOverrides, userDiscounts } from "../drizzle/schema";
+
+/**
+ * Get the effective commission rate for a driver and service type.
+ * Returns driver override if exists, otherwise global default.
+ */
+export async function getEffectiveCommissionRate(
+  driverId: number,
+  serviceType: "city_ride" | "intercity" | "parcel"
+): Promise<number> {
+  const db = await getDb();
+  if (!db) return 10;
+
+  const [override] = await db
+    .select({ commissionRate: driverCommissionOverrides.commissionRate })
+    .from(driverCommissionOverrides)
+    .where(
+      and(
+        eq(driverCommissionOverrides.driverId, driverId),
+        eq(driverCommissionOverrides.serviceType, serviceType)
+      )
+    )
+    .limit(1);
+
+  if (override) return parseFloat(override.commissionRate?.toString() ?? "10");
+
+  const [setting] = await db
+    .select({ commissionRate: commissionSettings.commissionRate })
+    .from(commissionSettings)
+    .where(eq(commissionSettings.serviceType, serviceType))
+    .limit(1);
+
+  return parseFloat(setting?.commissionRate?.toString() ?? "10");
+}
+
+/**
+ * Deduct commission from driver wallet for intercity trip completion.
+ */
+export async function deductIntercityCommission(driverId: number, tripId: number) {
+  const db = await getDb();
+  if (!db) return;
+
+  const bookings = await db
+    .select({
+      seatsBooked: intercityBookings.seatsBooked,
+      pricePerSeat: intercityTrips.pricePerSeat,
+    })
+    .from(intercityBookings)
+    .innerJoin(intercityTrips, eq(intercityBookings.tripId, intercityTrips.id))
+    .where(
+      and(
+        eq(intercityBookings.tripId, tripId),
+        inArray(intercityBookings.status, ["confirmed", "completed"] as any)
+      )
+    );
+
+  if (!bookings.length) return;
+
+  const totalEarnings = bookings.reduce((sum, b) => {
+    return sum + (b.seatsBooked * parseFloat(b.pricePerSeat?.toString() ?? "0"));
+  }, 0);
+
+  if (totalEarnings <= 0) return;
+
+  const rate = await getEffectiveCommissionRate(driverId, "intercity");
+  const commission = Math.round(totalEarnings * (rate / 100) * 100) / 100;
+
+  const [driver] = await db
+    .select({ walletBalance: drivers.walletBalance })
+    .from(drivers)
+    .where(eq(drivers.id, driverId))
+    .limit(1);
+
+  if (!driver) return;
+
+  const balanceBefore = parseFloat(driver.walletBalance?.toString() ?? "0");
+  const balanceAfter = Math.max(0, balanceBefore - commission);
+
+  await db.update(drivers)
+    .set({ walletBalance: sql`GREATEST(0, walletBalance - ${commission})` })
+    .where(eq(drivers.id, driverId));
+
+  await db.insert(walletTransactions).values({
+    userId: driverId,
+    userType: "driver",
+    type: "debit",
+    amount: commission.toString(),
+    description: `عمولة الشركة ${rate}% - رحلة بين المدن #${tripId} (إجمالي: ${Math.round(totalEarnings).toLocaleString()} د.ع)`,
+    rideId: tripId,
+    balanceBefore: balanceBefore.toString(),
+    balanceAfter: balanceAfter.toString(),
+  });
+
+  return { commission, rate, totalEarnings, balanceBefore, balanceAfter };
+}
+
+/**
+ * Deduct commission from driver wallet for parcel delivery.
+ */
+export async function deductParcelCommission(driverId: number, parcelId: number, parcelPrice: number) {
+  const db = await getDb();
+  if (!db) return;
+
+  if (parcelPrice <= 0) return;
+
+  const rate = await getEffectiveCommissionRate(driverId, "parcel");
+  const commission = Math.round(parcelPrice * (rate / 100) * 100) / 100;
+
+  const [driver] = await db
+    .select({ walletBalance: drivers.walletBalance })
+    .from(drivers)
+    .where(eq(drivers.id, driverId))
+    .limit(1);
+
+  if (!driver) return;
+
+  const balanceBefore = parseFloat(driver.walletBalance?.toString() ?? "0");
+  const balanceAfter = Math.max(0, balanceBefore - commission);
+
+  await db.update(drivers)
+    .set({ walletBalance: sql`GREATEST(0, walletBalance - ${commission})` })
+    .where(eq(drivers.id, driverId));
+
+  await db.insert(walletTransactions).values({
+    userId: driverId,
+    userType: "driver",
+    type: "debit",
+    amount: commission.toString(),
+    description: `عمولة الشركة ${rate}% - طرد #${parcelId} (قيمة: ${Math.round(parcelPrice).toLocaleString()} د.ع)`,
+    rideId: parcelId,
+    balanceBefore: balanceBefore.toString(),
+    balanceAfter: balanceAfter.toString(),
+  });
+
+  return { commission, rate, parcelPrice, balanceBefore, balanceAfter };
+}
+
+/**
+ * Get all commission settings (global defaults)
+ */
+export async function getCommissionSettings() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(commissionSettings).orderBy(commissionSettings.serviceType);
+}
+
+/**
+ * Update global commission setting for a service type
+ */
+export async function updateCommissionSetting(
+  serviceType: "city_ride" | "intercity" | "parcel",
+  commissionRate: number,
+  updatedBy?: number
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .update(commissionSettings)
+    .set({ commissionRate: commissionRate.toString(), updatedBy })
+    .where(eq(commissionSettings.serviceType, serviceType));
+  return { success: true };
+}
+
+/**
+ * Get driver commission overrides for a specific driver
+ */
+export async function getDriverCommissionOverrides(driverId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(driverCommissionOverrides)
+    .where(eq(driverCommissionOverrides.driverId, driverId))
+    .orderBy(driverCommissionOverrides.serviceType);
+}
+
+/**
+ * Set or update a driver commission override
+ */
+export async function setDriverCommissionOverride(
+  driverId: number,
+  serviceType: "city_ride" | "intercity" | "parcel",
+  commissionRate: number,
+  reason?: string,
+  updatedBy?: number
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const [existing] = await db
+    .select({ id: driverCommissionOverrides.id })
+    .from(driverCommissionOverrides)
+    .where(
+      and(
+        eq(driverCommissionOverrides.driverId, driverId),
+        eq(driverCommissionOverrides.serviceType, serviceType)
+      )
+    )
+    .limit(1);
+
+  if (existing) {
+    await db
+      .update(driverCommissionOverrides)
+      .set({ commissionRate: commissionRate.toString(), reason, updatedBy })
+      .where(eq(driverCommissionOverrides.id, existing.id));
+  } else {
+    await db.insert(driverCommissionOverrides).values({
+      driverId,
+      serviceType,
+      commissionRate: commissionRate.toString(),
+      reason,
+      updatedBy,
+    });
+  }
+  return { success: true };
+}
+
+/**
+ * Delete a driver commission override (revert to global default)
+ */
+export async function deleteDriverCommissionOverride(
+  driverId: number,
+  serviceType: "city_ride" | "intercity" | "parcel"
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db
+    .delete(driverCommissionOverrides)
+    .where(
+      and(
+        eq(driverCommissionOverrides.driverId, driverId),
+        eq(driverCommissionOverrides.serviceType, serviceType)
+      )
+    );
+  return { success: true };
+}
+
+/**
+ * Get all driver commission overrides (admin view with driver info)
+ */
+export async function getAllDriverCommissionOverrides() {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select({
+      id: driverCommissionOverrides.id,
+      driverId: driverCommissionOverrides.driverId,
+      driverName: drivers.name,
+      driverPhone: drivers.phone,
+      serviceType: driverCommissionOverrides.serviceType,
+      commissionRate: driverCommissionOverrides.commissionRate,
+      reason: driverCommissionOverrides.reason,
+      updatedAt: driverCommissionOverrides.updatedAt,
+    })
+    .from(driverCommissionOverrides)
+    .innerJoin(drivers, eq(driverCommissionOverrides.driverId, drivers.id))
+    .orderBy(sql`${driverCommissionOverrides.updatedAt} DESC`);
+}
+
+// ─── User Discounts Functions ─────────────────────────────────────────────────
+
+/**
+ * Get all user discounts (admin view) with passenger info
+ */
+export async function getAllUserDiscounts(filters?: { passengerId?: number; discountType?: string; isActive?: boolean }) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions: any[] = [];
+  if (filters?.passengerId) conditions.push(eq(userDiscounts.passengerId, filters.passengerId));
+  if (filters?.discountType) conditions.push(eq(userDiscounts.discountType, filters.discountType as any));
+  if (filters?.isActive !== undefined) conditions.push(eq(userDiscounts.isActive, filters.isActive));
+
+  return db
+    .select({
+      id: userDiscounts.id,
+      passengerId: userDiscounts.passengerId,
+      passengerName: passengers.name,
+      passengerPhone: passengers.phone,
+      discountType: userDiscounts.discountType,
+      totalFreeRides: userDiscounts.totalFreeRides,
+      usedFreeRides: userDiscounts.usedFreeRides,
+      discountValue: userDiscounts.discountValue,
+      applicableServices: userDiscounts.applicableServices,
+      validFrom: userDiscounts.validFrom,
+      validUntil: userDiscounts.validUntil,
+      isActive: userDiscounts.isActive,
+      reason: userDiscounts.reason,
+      createdAt: userDiscounts.createdAt,
+    })
+    .from(userDiscounts)
+    .innerJoin(passengers, eq(userDiscounts.passengerId, passengers.id))
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .orderBy(sql`${userDiscounts.createdAt} DESC`);
+}
+
+/**
+ * Create a discount for a single passenger
+ */
+export async function createUserDiscount(data: {
+  passengerId: number;
+  discountType: "free_rides" | "percentage" | "fixed_amount";
+  totalFreeRides?: number;
+  discountValue?: number;
+  applicableServices?: string;
+  validUntil?: Date;
+  reason?: string;
+  createdBy?: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [result] = await db.insert(userDiscounts).values({
+    passengerId: data.passengerId,
+    discountType: data.discountType,
+    totalFreeRides: data.totalFreeRides ?? 0,
+    usedFreeRides: 0,
+    discountValue: (data.discountValue ?? 0).toString(),
+    applicableServices: data.applicableServices ?? "all",
+    validUntil: data.validUntil,
+    reason: data.reason,
+    createdBy: data.createdBy,
+    isActive: true,
+  });
+  return { id: (result as any).insertId };
+}
+
+/**
+ * Create bulk discounts for multiple passengers
+ */
+export async function createBulkUserDiscounts(data: {
+  passengerIds: number[];
+  discountType: "free_rides" | "percentage" | "fixed_amount";
+  totalFreeRides?: number;
+  discountValue?: number;
+  applicableServices?: string;
+  validUntil?: Date;
+  reason?: string;
+  createdBy?: number;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const rows = data.passengerIds.map((passengerId) => ({
+    passengerId,
+    discountType: data.discountType,
+    totalFreeRides: data.totalFreeRides ?? 0,
+    usedFreeRides: 0,
+    discountValue: (data.discountValue ?? 0).toString(),
+    applicableServices: data.applicableServices ?? "all",
+    validUntil: data.validUntil,
+    reason: data.reason,
+    createdBy: data.createdBy,
+    isActive: true,
+  }));
+  await db.insert(userDiscounts).values(rows);
+  return { count: rows.length };
+}
+
+/**
+ * Deactivate a user discount
+ */
+export async function deactivateUserDiscount(discountId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(userDiscounts).set({ isActive: false }).where(eq(userDiscounts.id, discountId));
+  return { success: true };
+}

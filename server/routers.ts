@@ -124,6 +124,18 @@ import {
   updateParcelAgentStatus,
   getPassengerBlockStatus,
   getAllRidesWithDetails,
+  deductIntercityCommission,
+  deductParcelCommission,
+  getCommissionSettings,
+  updateCommissionSetting,
+  getDriverCommissionOverrides,
+  setDriverCommissionOverride,
+  deleteDriverCommissionOverride,
+  getAllDriverCommissionOverrides,
+  getAllUserDiscounts,
+  createUserDiscount,
+  createBulkUserDiscounts,
+  deactivateUserDiscount,
 } from "./db";
 import { storagePut } from "./storage";
 
@@ -2395,6 +2407,12 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => {
         await updateIntercityTripStatus(input.tripId, input.driverId, input.status);
+        // خصم عمولة الشركة عند اكتمال الرحلة بين المدن
+        if (input.status === "completed") {
+          try {
+            await deductIntercityCommission(input.driverId, input.tripId);
+          } catch (e) { console.warn("[Commission] intercity deduction failed:", e); }
+        }
         // إرسال إشعارات لجميع مسافري الرحلة
         try {
           const db = await getDb();
@@ -3222,11 +3240,47 @@ export const appRouter = router({
         updatedBy: z.enum(["driver", "agent", "admin"]),
         note: z.string().optional(),
       }))
-      .mutation(async ({ input }) => { await updateParcelStatus(input.parcelId, input.status, input.updatedBy, input.note); return { success: true }; }),
+      .mutation(async ({ input }) => {
+        await updateParcelStatus(input.parcelId, input.status, input.updatedBy, input.note);
+        // خصم عمولة الشركة عند تسليم الطرد
+        if (input.status === "delivered") {
+          try {
+            const db = await getDb();
+            if (db) {
+              const { parcels: parcelsTable } = await import("../drizzle/schema");
+              const { eq: eqFn } = await import("drizzle-orm");
+              const [parcel] = await db.select({ driverId: parcelsTable.driverId, price: parcelsTable.price })
+                .from(parcelsTable).where(eqFn(parcelsTable.id, input.parcelId)).limit(1);
+              if (parcel?.driverId && parcel?.price) {
+                await deductParcelCommission(parcel.driverId, input.parcelId, parseFloat(parcel.price.toString()));
+              }
+            }
+          } catch (e) { console.warn("[Commission] parcel deduction failed:", e); }
+        }
+        return { success: true };
+      }),
 
     verifyOtp: publicProcedure
       .input(z.object({ parcelId: z.number(), otp: z.string() }))
-      .mutation(async ({ input }) => verifyParcelDeliveryOtp(input.parcelId, input.otp)),
+      .mutation(async ({ input }) => {
+        const result = await verifyParcelDeliveryOtp(input.parcelId, input.otp);
+        // خصم عمولة الشركة عند تأكيد التسليم بـ OTP
+        if (result?.success) {
+          try {
+            const db = await getDb();
+            if (db) {
+              const { parcels: parcelsTable } = await import("../drizzle/schema");
+              const { eq: eqFn } = await import("drizzle-orm");
+              const [parcel] = await db.select({ driverId: parcelsTable.driverId, price: parcelsTable.price })
+                .from(parcelsTable).where(eqFn(parcelsTable.id, input.parcelId)).limit(1);
+              if (parcel?.driverId && parcel?.price) {
+                await deductParcelCommission(parcel.driverId, input.parcelId, parseFloat(parcel.price.toString()));
+              }
+            }
+          } catch (e) { console.warn("[Commission] parcel OTP deduction failed:", e); }
+        }
+        return result;
+      }),
 
     getStatusLogs: publicProcedure
       .input(z.object({ parcelId: z.number() }))
@@ -3274,6 +3328,85 @@ export const appRouter = router({
         .input(z.object({ agentId: z.number(), isActive: z.boolean() }))
         .mutation(async ({ input }) => { await updateParcelAgentStatus(input.agentId, input.isActive); return { success: true }; }),
     }),
+  }),
+
+  // ─── Commission Management ────────────────────────────────────────────────
+  commission: router({
+    getSettings: publicProcedure
+      .query(async () => getCommissionSettings()),
+    updateSetting: publicProcedure
+      .input(z.object({
+        serviceType: z.enum(["city_ride", "intercity", "parcel"]),
+        commissionRate: z.number().min(0).max(100),
+        updatedBy: z.number().optional(),
+      }))
+      .mutation(async ({ input }) => updateCommissionSetting(input.serviceType, input.commissionRate, input.updatedBy)),
+    getAllOverrides: publicProcedure
+      .query(async () => getAllDriverCommissionOverrides()),
+    getDriverOverrides: publicProcedure
+      .input(z.object({ driverId: z.number() }))
+      .query(async ({ input }) => getDriverCommissionOverrides(input.driverId)),
+    setDriverOverride: publicProcedure
+      .input(z.object({
+        driverId: z.number(),
+        serviceType: z.enum(["city_ride", "intercity", "parcel"]),
+        commissionRate: z.number().min(0).max(100),
+        reason: z.string().optional(),
+        updatedBy: z.number().optional(),
+      }))
+      .mutation(async ({ input }) =>
+        setDriverCommissionOverride(input.driverId, input.serviceType, input.commissionRate, input.reason, input.updatedBy)
+      ),
+    deleteDriverOverride: publicProcedure
+      .input(z.object({
+        driverId: z.number(),
+        serviceType: z.enum(["city_ride", "intercity", "parcel"]),
+      }))
+      .mutation(async ({ input }) => deleteDriverCommissionOverride(input.driverId, input.serviceType)),
+  }),
+
+  // ─── User Discounts Management ────────────────────────────────────────────
+  discounts: router({
+    getAll: publicProcedure
+      .input(z.object({
+        passengerId: z.number().optional(),
+        discountType: z.string().optional(),
+        isActive: z.boolean().optional(),
+      }).optional())
+      .query(async ({ input }) => getAllUserDiscounts(input ?? {})),
+    create: publicProcedure
+      .input(z.object({
+        passengerId: z.number(),
+        discountType: z.enum(["free_rides", "percentage", "fixed_amount"]),
+        totalFreeRides: z.number().optional(),
+        discountValue: z.number().optional(),
+        applicableServices: z.string().optional(),
+        validUntil: z.string().optional(),
+        reason: z.string().optional(),
+        createdBy: z.number().optional(),
+      }))
+      .mutation(async ({ input }) => createUserDiscount({
+        ...input,
+        validUntil: input.validUntil ? new Date(input.validUntil) : undefined,
+      })),
+    createBulk: publicProcedure
+      .input(z.object({
+        passengerIds: z.array(z.number()),
+        discountType: z.enum(["free_rides", "percentage", "fixed_amount"]),
+        totalFreeRides: z.number().optional(),
+        discountValue: z.number().optional(),
+        applicableServices: z.string().optional(),
+        validUntil: z.string().optional(),
+        reason: z.string().optional(),
+        createdBy: z.number().optional(),
+      }))
+      .mutation(async ({ input }) => createBulkUserDiscounts({
+        ...input,
+        validUntil: input.validUntil ? new Date(input.validUntil) : undefined,
+      })),
+    deactivate: publicProcedure
+      .input(z.object({ discountId: z.number() }))
+      .mutation(async ({ input }) => deactivateUserDiscount(input.discountId)),
   }),
 });
 export type AppRouter = typeof appRouter;

@@ -190,6 +190,13 @@
       "when": 1776108189631,
       "tag": "0026_sticky_lady_mastermind",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "5",
+      "when": 1776119649603,
+      "tag": "0027_red_lilandra",
+      "breakpoints": true
     }
   ]
 }

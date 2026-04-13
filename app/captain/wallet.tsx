@@ -91,7 +91,7 @@ export default function DriverWalletScreen() {
             {formatAmount(balance)} <Text style={styles.balanceCurrency}>د.ع</Text>
           </Text>
         )}
-        <Text style={styles.balanceNote}>يُستقطع 10% تلقائياً من كل رحلة مكتملة</Text>
+        <Text style={styles.balanceNote}>تُخصم عمولة الشركة تلقائياً من كل رحلة مكتملة</Text>
       </View>
 
       {/* Transactions */}
