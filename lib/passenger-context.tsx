@@ -54,7 +54,7 @@ type PassengerContextType = {
   /** Ref that is true while navigating to support page - prevents overlay from re-appearing during transition */
   navigatingToSupportRef: React.MutableRefObject<boolean>;
   /** Register navigation callbacks so the overlay can navigate without router dependency in context */
-  registerBlockNavigation: (callbacks: { toSupport: () => void; toLogin: () => void }) => void;
+  registerBlockNavigation: (callbacks: { toSupport: () => Promise<void>; toLogin: () => void }) => void;
   setPassenger: (p: PassengerProfile | null, showOverlay?: boolean) => Promise<void>;
   setDriver: (d: DriverProfile | null) => Promise<void>;
   setMode: (m: AppMode) => Promise<void>;
@@ -211,12 +211,12 @@ export function PassengerProvider({ children }: { children: React.ReactNode }) {
   const [isBlockedOverlay, setIsBlockedOverlay] = useState(false);
 
   // Navigation callbacks registered by _layout.tsx once router is available
-  const navCallbacksRef = useRef<{ toSupport?: () => void; toLogin?: () => void }>({});
+  const navCallbacksRef = useRef<{ toSupport?: () => Promise<void>; toLogin?: () => void }>({});
   // Flag to prevent re-showing overlay while navigating to support page
   const navigatingToSupportRef = useRef(false);
 
   const registerBlockNavigation = useCallback(
-    (callbacks: { toSupport: () => void; toLogin: () => void }) => {
+    (callbacks: { toSupport: () => Promise<void>; toLogin: () => void }) => {
       navCallbacksRef.current = callbacks;
     },
     []
@@ -297,18 +297,18 @@ export function PassengerProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   // Handlers for the overlay buttons
-  const handleContactSupport = useCallback(() => {
+  const handleContactSupport = useCallback(async () => {
     // نضع flag يمنع إعادة إظهار overlay أثناء الانتقال
     navigatingToSupportRef.current = true;
-    // ننتقل مباشرة بدون إخفاء overlay - الـ overlay يغطي الصفحة الرئيسية أثناء الانتقال
+    // ننتظر اكتمال toSupport (async - يتحقق من التذاكر ويستدعي router.replace)
     if (navCallbacksRef.current.toSupport) {
-      navCallbacksRef.current.toSupport();
+      await navCallbacksRef.current.toSupport();
     }
-    // بعد الانتقال بوقت كافٍ، نخفي الـ overlay (pathname سيكون /support الآن)
+    // بعد اكتمال الانتقال، نخفي الـ overlay
     setTimeout(() => {
       setIsBlockedOverlay(false);
       navigatingToSupportRef.current = false;
-    }, 500);
+    }, 300);
   }, []);
 
   const handleOverlayLogout = useCallback(async () => {

@@ -58,7 +58,7 @@ function PassengerBlockChecker() {
         // نتحقق من وجود تذكرة مفتوحة للمستخدم أولاً
         if (passenger?.id) {
           try {
-            const tickets = await utils.support.getTickets.fetch({ userId: passenger.id, userType: "passenger" });
+            const tickets = await utils.support.getUserTickets.fetch({ userId: passenger.id, userType: "passenger" });
             const openTicket = (tickets as any[]).find((t: any) => t.status === "open" || t.status === "in_progress");
             if (openTicket) {
               // فتح المحادثة الموجودة مباشرة
@@ -88,8 +88,7 @@ function PassengerBlockChecker() {
     const checkBlock = async () => {
       try {
         const data = await utils.passenger.checkStatus.fetch(
-          { passengerId: pid },
-          { signal: undefined }
+          { passengerId: pid }
         );
         if (!data) return;
         const { isBlocked } = data as { isBlocked: boolean; blockReason: string | null };
