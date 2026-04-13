@@ -104,6 +104,10 @@ export default function AdminDashboard() {
   const [unblockTargetPassenger, setUnblockTargetPassenger] = useState<{ id: number; name: string } | null>(null);
   const [passengerBlockReasonInput, setPassengerBlockReasonInput] = useState("");
 
+  // ─── Profile Photo Preview ────────────────────────────────────────────
+  const [previewPhotoUrl, setPreviewPhotoUrl] = useState<string | null>(null);
+  const [previewPhotoName, setPreviewPhotoName] = useState<string>("");
+
   const { data: stats, isLoading: statsLoading, refetch: refetchStats } = trpc.admin.stats.useQuery();
   const { data: recentRides, isLoading: ridesLoading, refetch: refetchRides } = trpc.admin.recentRides.useQuery({ limit: 8 });
   const { data: allDrivers, isLoading: driversLoading, refetch: refetchDrivers } = trpc.admin.drivers.useQuery({ limit: 500 });
@@ -1023,11 +1027,28 @@ export default function AdminDashboard() {
                 ) : pagedDrivers && pagedDrivers.length > 0 ? (
                   pagedDrivers.map((driver) => (
                     <View key={driver.id} style={[styles.driverCard, driver.isBlocked && { borderLeftWidth: 3, borderLeftColor: '#EF4444' }]}>
-                      <View style={styles.driverAvatar}>
-                        <Text style={styles.driverAvatarText}>
-                          {(driver.name || "؟").charAt(0)}
-                        </Text>
-                      </View>
+                      <TouchableOpacity
+                        onPress={() => {
+                          if ((driver as any).photoUrl) {
+                            setPreviewPhotoUrl((driver as any).photoUrl);
+                            setPreviewPhotoName(driver.name || driver.phone || "سائق");
+                          }
+                        }}
+                        activeOpacity={(driver as any).photoUrl ? 0.8 : 1}
+                      >
+                        {(driver as any).photoUrl ? (
+                          <Image
+                            source={{ uri: (driver as any).photoUrl }}
+                            style={styles.driverAvatar}
+                          />
+                        ) : (
+                          <View style={styles.driverAvatar}>
+                            <Text style={styles.driverAvatarText}>
+                              {(driver.name || "؟").charAt(0)}
+                            </Text>
+                          </View>
+                        )}
+                      </TouchableOpacity>
                       <View style={styles.driverInfo}>
                         <Text style={styles.driverName}>{driver.name || "بدون اسم"}</Text>
                         <Text style={styles.driverPhone}>{driver.phone}</Text>
@@ -1309,11 +1330,28 @@ export default function AdminDashboard() {
                     const locationStr = city && country ? `${country}، ${city}` : city || country || null;
                     return (
                     <View key={p.id} style={[styles.passengerCard, isBlocked && { borderLeftWidth: 3, borderLeftColor: '#EF4444', opacity: 0.9 }]}>
-                      <View style={[styles.passengerAvatar, isBlocked && { backgroundColor: '#7f1d1d' }]}>
-                        <Text style={styles.passengerAvatarText}>
-                          {(p.name || p.phone || "؟").charAt(0)}
-                        </Text>
-                      </View>
+                      <TouchableOpacity
+                        onPress={() => {
+                          if ((p as any).photoUrl) {
+                            setPreviewPhotoUrl((p as any).photoUrl);
+                            setPreviewPhotoName(p.name || p.phone || "مستخدم");
+                          }
+                        }}
+                        activeOpacity={(p as any).photoUrl ? 0.8 : 1}
+                      >
+                        {(p as any).photoUrl ? (
+                          <Image
+                            source={{ uri: (p as any).photoUrl }}
+                            style={[styles.passengerAvatar, { borderWidth: 2, borderColor: isBlocked ? '#EF4444' : '#6C3FC5' }]}
+                          />
+                        ) : (
+                          <View style={[styles.passengerAvatar, isBlocked && { backgroundColor: '#7f1d1d' }]}>
+                            <Text style={styles.passengerAvatarText}>
+                              {(p.name || p.phone || "؟").charAt(0)}
+                            </Text>
+                          </View>
+                        )}
+                      </TouchableOpacity>
                       <View style={[styles.passengerInfo, { flex: 1 }]}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                           <Text style={[styles.passengerName, { textAlign: 'right', flex: 1 }]}>{p.name || "بدون اسم"}</Text>
@@ -3059,6 +3097,48 @@ export default function AdminDashboard() {
           </TouchableOpacity>
         </View>
       </Modal>
+
+      {/* ── Profile Photo Preview Modal (إنستجرام ستايل) ── */}
+      <Modal
+        visible={!!previewPhotoUrl}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPreviewPhotoUrl(null)}
+      >
+        <TouchableOpacity
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(0,0,0,0.88)",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+          activeOpacity={1}
+          onPress={() => setPreviewPhotoUrl(null)}
+        >
+          {/* Circular enlarged photo */}
+          {previewPhotoUrl && (
+            <View style={{ alignItems: "center", gap: 16 }}>
+              <Image
+                source={{ uri: previewPhotoUrl }}
+                style={{
+                  width: 260,
+                  height: 260,
+                  borderRadius: 130,
+                  borderWidth: 4,
+                  borderColor: "#FFD700",
+                }}
+                resizeMode="cover"
+              />
+              <Text style={{ color: "#FFFFFF", fontSize: 16, fontWeight: "700" }}>
+                {previewPhotoName}
+              </Text>
+              <Text style={{ color: "#9B8EC4", fontSize: 12 }}>
+                اضغط في أي مكان للإغلاق
+              </Text>
+            </View>
+          )}
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
@@ -3239,6 +3319,7 @@ const styles = StyleSheet.create({
   driverAvatar: {
     width: 46, height: 46, borderRadius: 23,
     backgroundColor: "#6C3FC5", alignItems: "center", justifyContent: "center",
+    overflow: "hidden",
   },
   driverAvatarText: { fontSize: 20, fontWeight: "800", color: "#FFFFFF" },
   driverInfo: { flex: 1 },
@@ -3267,6 +3348,7 @@ const styles = StyleSheet.create({
   passengerAvatar: {
     width: 44, height: 44, borderRadius: 22,
     backgroundColor: "#3B82F6", alignItems: "center", justifyContent: "center",
+    overflow: "hidden",
   },
   passengerAvatarText: { fontSize: 18, fontWeight: "800", color: "#FFFFFF" },
   passengerInfo: { flex: 1 },
