@@ -84,12 +84,19 @@ export default function AdminDashboard() {
   const [driverRatingFilter, setDriverRatingFilter] = useState<"all" | "4+" | "3+" | "below3">("all");
   const [showDriverFilters, setShowDriverFilters] = useState(false);
 
-  // ─── Passenger Filters ────────────────────────────────────────────────────────
+  // ─── Passenger Filters ────────────────────────────────────────────
   const [passengerSearch, setPassengerSearch] = useState("");
   const [passengerStatusFilter, setPassengerStatusFilter] = useState<"all" | "active" | "blocked">("all");
   const [passengerSortBy, setPassengerSortBy] = useState<"name" | "rating" | "rides" | "newest">("newest");
   const [passengerRidesFilter, setPassengerRidesFilter] = useState<"all" | "0" | "1-5" | "6-20" | "20+">("all");
   const [showPassengerFilters, setShowPassengerFilters] = useState(false);
+  const [passengerCityFilter, setPassengerCityFilter] = useState("");
+  // ─── Passenger Block/Unblock ──────────────────────────────────────────
+  const [showPassengerBlockModal, setShowPassengerBlockModal] = useState(false);
+  const [showPassengerUnblockModal, setShowPassengerUnblockModal] = useState(false);
+  const [blockTargetPassenger, setBlockTargetPassenger] = useState<{ id: number; name: string } | null>(null);
+  const [unblockTargetPassenger, setUnblockTargetPassenger] = useState<{ id: number; name: string } | null>(null);
+  const [passengerBlockReasonInput, setPassengerBlockReasonInput] = useState("");
 
   const { data: stats, isLoading: statsLoading, refetch: refetchStats } = trpc.admin.stats.useQuery();
   const { data: recentRides, isLoading: ridesLoading, refetch: refetchRides } = trpc.admin.recentRides.useQuery({ limit: 8 });
@@ -107,6 +114,15 @@ export default function AdminDashboard() {
       await refetchStats();
     },
     onError: (err) => Alert.alert("خطأ", err.message || "حدث خطأ أثناء تحديث الحساب"),
+  });
+  const blockPassenger = trpc.admin.blockPassenger.useMutation({
+    onSuccess: async () => {
+      await refetchPassengers();
+      setShowPassengerBlockModal(false);
+      setShowPassengerUnblockModal(false);
+      setPassengerBlockReasonInput("");
+    },
+    onError: (err) => Alert.alert("خطأ", err.message || "حدث خطأ أثناء تحديث حساب المستخدم"),
   });
   const [docsDriver, setDocsDriver] = useState<NonNullable<typeof allDrivers>[number] | null>(null);
   const cancelRide = trpc.admin.cancelRide.useMutation({
@@ -798,6 +814,14 @@ export default function AdminDashboard() {
                     );
                   }
 
+                  // City filter
+                  if (passengerCityFilter.trim()) {
+                    const cityQ = passengerCityFilter.trim().toLowerCase();
+                    filteredPassengers = filteredPassengers.filter(p =>
+                      ((p as any).city || "").toLowerCase().includes(cityQ) ||
+                      ((p as any).country || "").toLowerCase().includes(cityQ)
+                    );
+                  }
                   // Status filter
                   if (passengerStatusFilter === "blocked") {
                     filteredPassengers = filteredPassengers.filter(p => (p as any).isBlocked);
@@ -900,6 +924,22 @@ export default function AdminDashboard() {
                       </View>
                     </ScrollView>
 
+                    {/* City Filter */}
+                    <Text style={filterStyles.filterLabel}>📍 المدينة / الدولة</Text>
+                    <View style={[filterStyles.searchBox, { marginBottom: 10 }]}>
+                      <TextInput
+                        style={{ flex: 1, color: '#ECEDEE', fontSize: 13, textAlign: 'right' }}
+                        placeholder="مثال: العراق أو موصل..."
+                        placeholderTextColor="#9B8EC4"
+                        value={passengerCityFilter}
+                        onChangeText={(v) => { setPassengerCityFilter(v); setPassengersPage(0); }}
+                      />
+                      {passengerCityFilter.length > 0 && (
+                        <TouchableOpacity onPress={() => setPassengerCityFilter("")}>
+                          <Text style={{ color: '#9B8EC4', fontSize: 16, paddingHorizontal: 6 }}>✕</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
                     {/* Sort */}
                     <Text style={filterStyles.filterLabel}>ترتيب حسب</Text>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -927,27 +967,53 @@ export default function AdminDashboard() {
                 {passengersLoading ? (
                   <ActivityIndicator color="#FFD700" style={{ marginVertical: 20 }} />
                 ) : pagedPassengers && pagedPassengers.length > 0 ? (
-                  pagedPassengers.map((p) => (
-                    <View key={p.id} style={styles.passengerCard}>
-                      <View style={styles.passengerAvatar}>
+                  pagedPassengers.map((p) => {
+                    const isBlocked = (p as any).isBlocked;
+                    const city = (p as any).city;
+                    const country = (p as any).country;
+                    const locationStr = city && country ? `${country}، ${city}` : city || country || null;
+                    return (
+                    <View key={p.id} style={[styles.passengerCard, isBlocked && { borderLeftWidth: 3, borderLeftColor: '#EF4444', opacity: 0.9 }]}>
+                      <View style={[styles.passengerAvatar, isBlocked && { backgroundColor: '#7f1d1d' }]}>
                         <Text style={styles.passengerAvatarText}>
                           {(p.name || p.phone || "؟").charAt(0)}
                         </Text>
                       </View>
-                      <View style={styles.passengerInfo}>
-                        <Text style={styles.passengerName}>{p.name || "بدون اسم"}</Text>
-                        <Text style={styles.passengerPhone}>{p.phone}</Text>
-                        <View style={styles.passengerMeta}>
+                      <View style={[styles.passengerInfo, { flex: 1 }]}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Text style={[styles.passengerName, { textAlign: 'right', flex: 1 }]}>{p.name || "بدون اسم"}</Text>
+                          {isBlocked && <Text style={{ fontSize: 11, color: '#EF4444', backgroundColor: '#7f1d1d33', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>محظور</Text>}
+                        </View>
+                        <Text style={[styles.passengerPhone, { textAlign: 'right' }]}>{p.phone}</Text>
+                        {locationStr && <Text style={{ fontSize: 11, color: '#9B8EC4', textAlign: 'right', marginTop: 2 }}>📍 {locationStr}</Text>}
+                        <View style={[styles.passengerMeta, { justifyContent: 'flex-end' }]}>
                           <Text style={styles.passengerRating}>⭐ {p.rating}</Text>
                           <Text style={styles.passengerRides}>• {p.totalRides} رحلة</Text>
                         </View>
                       </View>
-                      <View style={styles.passengerBalance}>
-                        <Text style={styles.balanceValue}>{Math.round(parseFloat(p.walletBalance?.toString() || "0")).toLocaleString()}</Text>
-                        <Text style={styles.balanceLabel}>دينار</Text>
+                      <View style={{ alignItems: 'center', gap: 6 }}>
+                        <View style={styles.passengerBalance}>
+                          <Text style={styles.balanceValue}>{Math.round(parseFloat(p.walletBalance?.toString() || "0")).toLocaleString()}</Text>
+                          <Text style={styles.balanceLabel}>دينار</Text>
+                        </View>
+                        <TouchableOpacity
+                          style={{ backgroundColor: isBlocked ? '#22C55E22' : '#EF444422', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, borderWidth: 1, borderColor: isBlocked ? '#22C55E' : '#EF4444' }}
+                          onPress={() => {
+                            if (isBlocked) {
+                              setUnblockTargetPassenger({ id: p.id, name: p.name || p.phone });
+                              setShowPassengerUnblockModal(true);
+                            } else {
+                              setBlockTargetPassenger({ id: p.id, name: p.name || p.phone });
+                              setShowPassengerBlockModal(true);
+                            }
+                          }}
+                        >
+                          <Text style={{ fontSize: 11, color: isBlocked ? '#22C55E' : '#EF4444', fontWeight: '600' }}>{isBlocked ? '✅ تفعيل' : '🚫 حظر'}</Text>
+                        </TouchableOpacity>
                       </View>
                     </View>
-                  ))
+                    );
+                  })
                 ) : (
                   <View style={styles.emptyState}>
                     <Text style={styles.emptyIcon}>👥</Text>
@@ -2334,6 +2400,68 @@ export default function AdminDashboard() {
         </View>
       </Modal>
 
+      {/* ─── Passenger Block Modal ─────────────────────────────────── */}
+      <Modal visible={showPassengerBlockModal} transparent animationType="fade" onRequestClose={() => setShowPassengerBlockModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={{ backgroundColor: '#1A0533', borderRadius: 16, padding: 20, width: '88%' }}>
+            <Text style={{ color: '#FFD700', fontSize: 16, fontWeight: '800', marginBottom: 8, textAlign: 'right' }}>🚫 حظر المستخدم</Text>
+            <Text style={{ color: '#ccc', fontSize: 13, marginBottom: 12, textAlign: 'right' }}>سيتم تعطيل حساب {blockTargetPassenger?.name} فوراً.</Text>
+            <Text style={{ color: '#9B8EC4', fontSize: 12, marginBottom: 6, textAlign: 'right' }}>سبب الحظر (اختياري)</Text>
+            <TextInput
+              style={{ backgroundColor: '#2D1B4E', color: '#ECEDEE', borderRadius: 8, padding: 10, marginBottom: 16, textAlign: 'right', fontSize: 13 }}
+              placeholder="مثال: انتهاك السياسات..."
+              placeholderTextColor="#9B8EC4"
+              value={passengerBlockReasonInput}
+              onChangeText={setPassengerBlockReasonInput}
+            />
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <TouchableOpacity
+                style={{ flex: 1, backgroundColor: '#EF4444', borderRadius: 8, padding: 12, alignItems: 'center' }}
+                onPress={() => {
+                  if (blockTargetPassenger) {
+                    blockPassenger.mutate({ passengerId: blockTargetPassenger.id, isBlocked: true, blockReason: passengerBlockReasonInput || undefined });
+                  }
+                }}
+              >
+                <Text style={{ color: '#fff', fontWeight: '700' }}>🚫 تأكيد الحظر</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{ flex: 1, backgroundColor: '#2D1B4E', borderRadius: 8, padding: 12, alignItems: 'center' }}
+                onPress={() => { setShowPassengerBlockModal(false); setPassengerBlockReasonInput(""); }}
+              >
+                <Text style={{ color: '#ccc', fontWeight: '700' }}>إلغاء</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+      {/* ─── Passenger Unblock Modal ──────────────────────────────────── */}
+      <Modal visible={showPassengerUnblockModal} transparent animationType="fade" onRequestClose={() => setShowPassengerUnblockModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={{ backgroundColor: '#1A0533', borderRadius: 16, padding: 20, width: '88%' }}>
+            <Text style={{ color: '#FFD700', fontSize: 16, fontWeight: '800', marginBottom: 8, textAlign: 'right' }}>✅ تفعيل المستخدم</Text>
+            <Text style={{ color: '#ccc', fontSize: 13, marginBottom: 20, textAlign: 'right' }}>هل تريد إعادة تفعيل حساب {unblockTargetPassenger?.name}؟</Text>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <TouchableOpacity
+                style={{ flex: 1, backgroundColor: '#22C55E', borderRadius: 8, padding: 12, alignItems: 'center' }}
+                onPress={() => {
+                  if (unblockTargetPassenger) {
+                    blockPassenger.mutate({ passengerId: unblockTargetPassenger.id, isBlocked: false });
+                  }
+                }}
+              >
+                <Text style={{ color: '#fff', fontWeight: '700' }}>✅ تفعيل الحساب</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{ flex: 1, backgroundColor: '#2D1B4E', borderRadius: 8, padding: 12, alignItems: 'center' }}
+                onPress={() => setShowPassengerUnblockModal(false)}
+              >
+                <Text style={{ color: '#ccc', fontWeight: '700' }}>إلغاء</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
       {/* Agent Detail Modal */}
       <Modal visible={showAgentModal} transparent animationType="slide" onRequestClose={() => setShowAgentModal(false)}>
         <View style={styles.modalOverlay}>

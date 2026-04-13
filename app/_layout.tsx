@@ -34,6 +34,38 @@ export const unstable_settings = {
 };
 
 /**
+ * Polls passenger account status every 5 seconds to detect block/unblock in real-time.
+ * Must be inside PassengerProvider and trpc.Provider.
+ */
+function PassengerBlockChecker() {
+  const { passenger, logout } = usePassenger();
+  const wasBlockedRef = useRef(false);
+  const blockCheckQuery = trpc.passenger.checkStatus.useQuery(
+    { passengerId: passenger?.id ?? 0 },
+    { enabled: !!passenger?.id, refetchInterval: 5000, staleTime: 0 }
+  );
+  useEffect(() => {
+    if (!blockCheckQuery.data || !passenger?.id) return;
+    const { isBlocked, blockReason } = blockCheckQuery.data as { isBlocked: boolean; blockReason: string | null };
+    if (isBlocked && !wasBlockedRef.current) {
+      wasBlockedRef.current = true;
+      const reason = blockReason || "تم تعطيل حسابك من قِبل الإدارة";
+      Alert.alert(
+        "🚫 تم تعطيل حسابك",
+        `السبب: ${reason}\n\nيمكنك التواصل مع الدعم الفني للاستفسار.`,
+        [{ text: "حسناً", onPress: async () => { await logout(); router.dismissAll(); router.replace("/login" as any); } }],
+        { cancelable: false }
+      );
+    } else if (!isBlocked && wasBlockedRef.current) {
+      wasBlockedRef.current = false;
+      Alert.alert("✅ تم تفعيل حسابك", "تم إعادة تفعيل حسابك. يمكنك الآن استخدام التطبيق!", [{ text: "حسناً" }]);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [blockCheckQuery.data, passenger?.id]);
+  return null;
+}
+
+/**
  * تسجيل pushToken للراكب تلقائياً عند فتح التطبيق.
  * Must be inside PassengerProvider and trpc.Provider.
  */
@@ -237,6 +269,7 @@ export default function RootLayout() {
       <trpc.Provider client={trpcClient} queryClient={queryClient}>
         <QueryClientProvider client={queryClient}>
           <PassengerPushTokenRegistrar />
+          <PassengerBlockChecker />
           {/* Default to hiding native headers so raw route segments don't appear (e.g. "(tabs)", "products/[id]"). */}
           {/* If a screen needs the native header, explicitly enable it and set a human title via Stack.Screen options. */}
           {/* in order for ios apps tab switching to work properly, use presentation: "fullScreenModal" for login page, whenever you decide to use presentation: "modal*/}

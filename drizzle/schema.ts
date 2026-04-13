@@ -56,6 +56,10 @@ export const passengers = mysqlTable("passengers", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastActiveAt: timestamp("lastActiveAt").defaultNow(),
   pushToken: text("pushToken"),
+  isBlocked: boolean("isBlocked").default(false).notNull(),
+  blockReason: text("blockReason"),
+  city: varchar("city", { length: 100 }),
+  country: varchar("country", { length: 100 }),
 });
 
 export type Passenger = typeof passengers.$inferSelect;

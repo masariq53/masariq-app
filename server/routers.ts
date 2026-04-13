@@ -1657,20 +1657,28 @@ export const appRouter = router({
     /**
      * Step 3: Verify OTP on NEW phone and confirm the change
      */
-    verifyNewPhoneOtp: publicProcedure
+     verifyNewPhoneOtp: publicProcedure
       .input(z.object({ passengerId: z.number(), code: z.string().length(6) }))
       .mutation(async ({ input }) => {
         const passenger = await getPassengerById(input.passengerId);
         if (!passenger) throw new Error("المستخدم غير موجود");
         if (!passenger.pendingPhone) throw new Error("لا يوجد طلب تغيير رقم نشط");
-
         // Verify OTP on NEW phone
         const isValid = await verifyOtp(passenger.pendingPhone, input.code);
         if (!isValid) throw new Error("رمز التحقق غير صحيح أو منتهي الصلاحية");
-
         // Confirm the phone change
         const newPhone = await confirmPhoneChange(input.passengerId);
         return { success: true, newPhone };
+      }),
+    /**
+     * Check passenger account status (blocked/active) - used for polling
+     */
+    checkStatus: publicProcedure
+      .input(z.object({ passengerId: z.number() }))
+      .query(async ({ input }) => {
+        const p = await getPassengerById(input.passengerId);
+        if (!p) return { isBlocked: false, blockReason: null };
+        return { isBlocked: p.isBlocked ?? false, blockReason: (p as any).blockReason ?? null };
       }),
   }),
 
@@ -1891,6 +1899,37 @@ export const appRouter = router({
       .input(z.object({ tripId: z.number() }))
       .query(async ({ input }) => {
         return getAdminTripPassengers(input.tripId);
+      }),
+    // Admin: Block/unblock passenger
+    blockPassenger: publicProcedure
+      .input(z.object({
+        passengerId: z.number(),
+        isBlocked: z.boolean(),
+        blockReason: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const db = await getDb();
+        if (!db) throw new Error("DB not available");
+        const { passengers: passengersTable } = await import("../drizzle/schema");
+        const { eq } = await import("drizzle-orm");
+        await db.update(passengersTable)
+          .set({
+            isBlocked: input.isBlocked,
+            blockReason: input.isBlocked ? (input.blockReason ?? "تم تعطيل حسابك من قِبل الإدارة") : null,
+          })
+          .where(eq(passengersTable.id, input.passengerId));
+        // Send Push notification to passenger
+        try {
+          const pushToken = await getPassengerPushToken(input.passengerId);
+          if (pushToken && pushToken.startsWith("ExponentPushToken[")) {
+            const reason = input.blockReason ?? "تم تعطيل حسابك من قِبل الإدارة";
+            const notification = input.isBlocked
+              ? { to: pushToken, sound: "default" as const, title: "🚫 تم تعطيل حسابك", body: `السبب: ${reason}. للاستفسار تواصل مع الدعم.`, data: { type: "account_blocked", blockReason: reason }, priority: "high" as const }
+              : { to: pushToken, sound: "default" as const, title: "✅ تم تفعيل حسابك", body: "تم إعادة تفعيل حسابك. يمكنك الآن استخدام التطبيق!", data: { type: "account_unblocked" }, priority: "high" as const };
+            fetch("https://exp.host/--/api/v2/push/send", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(notification) }).catch(() => {});
+          }
+        } catch (e) { console.warn("[Push] passenger block notification error:", e); }
+        return { success: true, message: input.isBlocked ? "تم تعطيل حساب المستخدم" : "تم تفعيل حساب المستخدم" };
       }),
   }),
   // ─── Intercity Trips ───────────────────────────────────────────────────────────

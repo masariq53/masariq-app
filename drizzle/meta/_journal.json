@@ -176,6 +176,13 @@
       "when": 1776007703277,
       "tag": "0024_tense_ben_parker",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "5",
+      "when": 1776086546375,
+      "tag": "0025_friendly_kate_bishop",
+      "breakpoints": true
     }
   ]
 }
