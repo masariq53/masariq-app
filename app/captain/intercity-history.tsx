@@ -7,6 +7,26 @@ import { useRouter } from "expo-router";
 import { ScreenContainer } from "@/components/screen-container";
 import { trpc } from "@/lib/trpc";
 import { useDriver } from "@/lib/driver-context";
+import MapView, { Marker, Polyline, PROVIDER_DEFAULT } from "react-native-maps";
+
+const CITY_COORDS: Record<string, { latitude: number; longitude: number }> = {
+  "الموصل": { latitude: 36.3359, longitude: 43.1189 },
+  "بغداد": { latitude: 33.3152, longitude: 44.3661 },
+  "أربيل": { latitude: 36.1901, longitude: 44.0091 },
+  "السليمانية": { latitude: 35.5575, longitude: 45.4329 },
+  "كركوك": { latitude: 35.4681, longitude: 44.3922 },
+  "البصرة": { latitude: 30.5085, longitude: 47.7804 },
+  "النجف": { latitude: 31.9936, longitude: 44.3218 },
+  "كربلاء": { latitude: 32.6166, longitude: 44.0247 },
+  "الحلة": { latitude: 32.4769, longitude: 44.4422 },
+  "الديوانية": { latitude: 31.9887, longitude: 44.9268 },
+  "العمارة": { latitude: 31.8408, longitude: 47.1508 },
+  "الناصرية": { latitude: 31.0433, longitude: 46.2592 },
+  "الرمادي": { latitude: 33.4258, longitude: 43.2997 },
+  "تكريت": { latitude: 34.5989, longitude: 43.6786 },
+  "دهوك": { latitude: 36.8669, longitude: 42.9503 },
+  "زاخو": { latitude: 37.1445, longitude: 42.6838 },
+};
 
 type TripStatus = "all" | "scheduled" | "in_progress" | "completed" | "cancelled";
 type SortOption = "newest" | "oldest" | "highest_price" | "most_seats";
@@ -228,7 +248,50 @@ export default function CaptainIntercityHistoryScreen() {
                 </View>
 
                 {/* Route */}
-                <Text style={styles.route}>{item.fromCity}  →  {item.toCity}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <View style={{ alignItems: 'center' }}>
+                    <Text style={{ color: '#9B8EC4', fontSize: 10, marginBottom: 2 }}>من</Text>
+                    <Text style={[styles.route, { marginBottom: 0 }]}>{item.fromCity}</Text>
+                  </View>
+                  <Text style={{ color: '#9B8EC4', fontSize: 18, marginTop: 10 }}>→</Text>
+                  <View style={{ alignItems: 'center' }}>
+                    <Text style={{ color: '#9B8EC4', fontSize: 10, marginBottom: 2 }}>إلى</Text>
+                    <Text style={[styles.route, { marginBottom: 0 }]}>{item.toCity}</Text>
+                  </View>
+                </View>
+                {/* Route Map */}
+                {CITY_COORDS[item.fromCity] && CITY_COORDS[item.toCity] && (() => {
+                  const from = CITY_COORDS[item.fromCity];
+                  const to = CITY_COORDS[item.toCity];
+                  const midLat = (from.latitude + to.latitude) / 2;
+                  const midLng = (from.longitude + to.longitude) / 2;
+                  const latDelta = Math.abs(from.latitude - to.latitude) * 1.6 + 0.5;
+                  const lngDelta = Math.abs(from.longitude - to.longitude) * 1.6 + 0.5;
+                  return (
+                    <View style={{ height: 120, borderRadius: 10, overflow: 'hidden', marginBottom: 10 }}>
+                      <MapView
+                        style={{ flex: 1 }}
+                        provider={PROVIDER_DEFAULT}
+                        initialRegion={{ latitude: midLat, longitude: midLng, latitudeDelta: latDelta, longitudeDelta: lngDelta }}
+                        scrollEnabled={false}
+                        zoomEnabled={false}
+                        rotateEnabled={false}
+                      >
+                        <Polyline coordinates={[from, to]} strokeColor="#FFD700" strokeWidth={3} lineDashPattern={[8, 4]} />
+                        <Marker coordinate={from}>
+                          <View style={{ backgroundColor: '#22C55E', borderRadius: 10, paddingHorizontal: 7, paddingVertical: 3 }}>
+                            <Text style={{ color: '#fff', fontSize: 10, fontWeight: '700' }}>{item.fromCity}</Text>
+                          </View>
+                        </Marker>
+                        <Marker coordinate={to}>
+                          <View style={{ backgroundColor: '#EF4444', borderRadius: 10, paddingHorizontal: 7, paddingVertical: 3 }}>
+                            <Text style={{ color: '#fff', fontSize: 10, fontWeight: '700' }}>{item.toCity}</Text>
+                          </View>
+                        </Marker>
+                      </MapView>
+                    </View>
+                  );
+                })()}
 
                 {/* Details */}
                 <Text style={styles.detail}>🕐 {formatDate(item.departureTime)}</Text>

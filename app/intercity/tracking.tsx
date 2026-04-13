@@ -233,7 +233,17 @@ export default function IntercityTrackingScreen() {
         </TouchableOpacity>
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>تتبع رحلتك</Text>
-          <Text style={styles.headerRoute}>{fromCity} → {toCity}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <View style={{ alignItems: 'center' }}>
+              <Text style={{ color: '#9B8EC4', fontSize: 9 }}>من</Text>
+              <Text style={styles.headerRoute}>{fromCity}</Text>
+            </View>
+            <Text style={styles.headerRoute}> → </Text>
+            <View style={{ alignItems: 'center' }}>
+              <Text style={{ color: '#9B8EC4', fontSize: 9 }}>إلى</Text>
+              <Text style={styles.headerRoute}>{toCity}</Text>
+            </View>
+          </View>
         </View>
         <View style={styles.headerRight}>
           {bookingStatusQuery.isFetching && (

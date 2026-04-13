@@ -12,6 +12,31 @@ import { trpc } from "@/lib/trpc";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useT } from "@/lib/i18n";
 import { usePassenger } from "@/lib/passenger-context";
+import MapView, { Marker, Polyline, PROVIDER_DEFAULT } from "react-native-maps";
+
+// إحداثيات المدن العراقية الرئيسية
+const CITY_COORDS: Record<string, { latitude: number; longitude: number }> = {
+  "الموصل": { latitude: 36.3359, longitude: 43.1189 },
+  "بغداد": { latitude: 33.3152, longitude: 44.3661 },
+  "أربيل": { latitude: 36.1901, longitude: 44.0091 },
+  "السليمانية": { latitude: 35.5575, longitude: 45.4329 },
+  "كركوك": { latitude: 35.4681, longitude: 44.3922 },
+  "البصرة": { latitude: 30.5085, longitude: 47.7804 },
+  "النجف": { latitude: 31.9936, longitude: 44.3218 },
+  "كربلاء": { latitude: 32.6166, longitude: 44.0247 },
+  "الحلة": { latitude: 32.4769, longitude: 44.4422 },
+  "الديوانية": { latitude: 31.9887, longitude: 44.9268 },
+  "العمارة": { latitude: 31.8408, longitude: 47.1508 },
+  "الناصرية": { latitude: 31.0433, longitude: 46.2592 },
+  "الرمادي": { latitude: 33.4258, longitude: 43.2997 },
+  "تكريت": { latitude: 34.5989, longitude: 43.6786 },
+  "دهوك": { latitude: 36.8669, longitude: 42.9503 },
+  "زاخو": { latitude: 37.1445, longitude: 42.6838 },
+  "سامراء": { latitude: 34.1987, longitude: 43.8741 },
+  "بعقوبة": { latitude: 33.7456, longitude: 44.6498 },
+  "الكوت": { latitude: 32.5000, longitude: 45.8333 },
+  "الفلوجة": { latitude: 33.3500, longitude: 43.7833 },
+};
 
 const IRAQI_CITIES = [
   "الموصل", "بغداد", "أربيل", "السليمانية", "كركوك",
@@ -426,9 +451,56 @@ export default function IntercityBrowseScreen() {
                 <>
                   {/* Trip Summary */}
                   <View style={styles.tripSummary}>
-                    <Text style={styles.tripSummaryRoute}>
-                      {selectedTrip.fromCity} → {selectedTrip.toCity}
-                    </Text>
+                    {/* Route with from/to labels */}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 10 }}>
+                      <View style={{ alignItems: 'center' }}>
+                        <Text style={{ color: '#9B8EC4', fontSize: 11, marginBottom: 3 }}>من</Text>
+                        <Text style={styles.tripSummaryRoute}>{selectedTrip.fromCity}</Text>
+                      </View>
+                      <Text style={{ color: '#9B8EC4', fontSize: 22, marginTop: 14 }}>→</Text>
+                      <View style={{ alignItems: 'center' }}>
+                        <Text style={{ color: '#9B8EC4', fontSize: 11, marginBottom: 3 }}>إلى</Text>
+                        <Text style={styles.tripSummaryRoute}>{selectedTrip.toCity}</Text>
+                      </View>
+                    </View>
+                    {/* Route Map */}
+                    {CITY_COORDS[selectedTrip.fromCity] && CITY_COORDS[selectedTrip.toCity] && (() => {
+                      const from = CITY_COORDS[selectedTrip.fromCity];
+                      const to = CITY_COORDS[selectedTrip.toCity];
+                      const midLat = (from.latitude + to.latitude) / 2;
+                      const midLng = (from.longitude + to.longitude) / 2;
+                      const latDelta = Math.abs(from.latitude - to.latitude) * 1.6 + 0.5;
+                      const lngDelta = Math.abs(from.longitude - to.longitude) * 1.6 + 0.5;
+                      return (
+                        <View style={{ height: 160, borderRadius: 12, overflow: 'hidden', marginBottom: 10 }}>
+                          <MapView
+                            style={{ flex: 1 }}
+                            provider={PROVIDER_DEFAULT}
+                            initialRegion={{ latitude: midLat, longitude: midLng, latitudeDelta: latDelta, longitudeDelta: lngDelta }}
+                            scrollEnabled={false}
+                            zoomEnabled={false}
+                            rotateEnabled={false}
+                          >
+                            <Polyline
+                              coordinates={[from, to]}
+                              strokeColor="#FFD700"
+                              strokeWidth={3}
+                              lineDashPattern={[8, 4]}
+                            />
+                            <Marker coordinate={from} title={selectedTrip.fromCity}>
+                              <View style={{ backgroundColor: '#22C55E', borderRadius: 12, paddingHorizontal: 8, paddingVertical: 4 }}>
+                                <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>{selectedTrip.fromCity}</Text>
+                              </View>
+                            </Marker>
+                            <Marker coordinate={to} title={selectedTrip.toCity}>
+                              <View style={{ backgroundColor: '#EF4444', borderRadius: 12, paddingHorizontal: 8, paddingVertical: 4 }}>
+                                <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>{selectedTrip.toCity}</Text>
+                              </View>
+                            </Marker>
+                          </MapView>
+                        </View>
+                      );
+                    })()}
                     <Text style={styles.tripSummaryDate}>🕐 {formatDate(selectedTrip.departureTime)}</Text>
                     {selectedTrip.meetingPoint ? (
                       <Text style={styles.tripSummaryDetail}>📌 {selectedTrip.meetingPoint}</Text>
