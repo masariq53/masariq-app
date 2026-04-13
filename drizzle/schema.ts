@@ -453,6 +453,21 @@ export const agentTransactions = mysqlTable("agentTransactions", {
 export type AgentTransaction = typeof agentTransactions.$inferSelect;
 export type InsertAgentTransaction = typeof agentTransactions.$inferInsert;
 
+/**
+ * Agent Topup Logs - تسجيل شحنات الإدارة لرصيد الوكيل
+ */
+export const agentTopupLogs = mysqlTable("agentTopupLogs", {
+  id: int("id").autoincrement().primaryKey(),
+  agentId: int("agentId").notNull(),
+  amount: decimal("amount", { precision: 15, scale: 2 }).notNull(),
+  balanceBefore: decimal("balanceBefore", { precision: 15, scale: 2 }).notNull(),
+  balanceAfter: decimal("balanceAfter", { precision: 15, scale: 2 }).notNull(),
+  notes: varchar("notes", { length: 500 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type AgentTopupLog = typeof agentTopupLogs.$inferSelect;
+export type InsertAgentTopupLog = typeof agentTopupLogs.$inferInsert;
+
 // ─── Parcel Delivery Tables ───────────────────────────────────────────────────
 
 /**

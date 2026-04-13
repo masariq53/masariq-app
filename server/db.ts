@@ -25,6 +25,7 @@ import {
   InsertSupportMessage,
   agents,
   agentTransactions,
+  agentTopupLogs,
   Agent,
   InsertAgent,
 } from "../drizzle/schema";
@@ -2353,12 +2354,28 @@ export async function updateAgentStatus(
 /**
  * Recharge agent balance (admin)
  */
-export async function rechargeAgentBalance(agentId: number, amount: number) {
+export async function rechargeAgentBalance(agentId: number, amount: number, notes?: string) {
   const db = await getDb();
   if (!db) return;
+
+  // جلب الرصيد الحالي قبل التحديث
+  const agentResult = await db.select({ balance: agents.balance }).from(agents).where(eq(agents.id, agentId)).limit(1);
+  const balanceBefore = Number(agentResult[0]?.balance ?? 0);
+  const balanceAfter = balanceBefore + amount;
+
+  // تحديث الرصيد
   await db.update(agents).set({
     balance: sql`balance + ${amount}`,
   }).where(eq(agents.id, agentId));
+
+  // تسجيل العملية في سجل الشحن
+  await db.insert(agentTopupLogs).values({
+    agentId,
+    amount: amount.toString(),
+    balanceBefore: balanceBefore.toString(),
+    balanceAfter: balanceAfter.toString(),
+    notes: notes ?? "شحن رصيد من الإدارة",
+  });
 }
 
 /**
@@ -2452,6 +2469,58 @@ export async function getAgentTransactions(agentId: number, limit = 50) {
     .where(eq(agentTransactions.agentId, agentId))
     .orderBy(desc(agentTransactions.createdAt))
     .limit(limit);
+}
+
+/**
+ * Get agent full ledger (admin) - جميع حركات الوكيل المالية
+ * يدمج شحنات الإدارة + عمليات الشحن للسائقين/المستخدمين في سجل موحد
+ */
+export async function getAgentFullLedger(agentId: number, limit = 200) {
+  const db = await getDb();
+  if (!db) return [];
+
+  // شحنات الإدارة للوكيل
+  const topups = await db.select().from(agentTopupLogs)
+    .where(eq(agentTopupLogs.agentId, agentId))
+    .orderBy(desc(agentTopupLogs.createdAt))
+    .limit(limit);
+
+  // عمليات شحن الوكيل للسائقين/المستخدمين
+  const recharges = await db.select().from(agentTransactions)
+    .where(eq(agentTransactions.agentId, agentId))
+    .orderBy(desc(agentTransactions.createdAt))
+    .limit(limit);
+
+  // دمج وترتيب حسب التاريخ
+  const combined = [
+    ...topups.map(t => ({
+      id: `topup-${t.id}`,
+      type: 'admin_topup' as const,
+      amount: Number(t.amount),
+      balanceBefore: Number(t.balanceBefore),
+      balanceAfter: Number(t.balanceAfter),
+      notes: t.notes,
+      recipientType: null,
+      recipientName: null,
+      recipientPhone: null,
+      createdAt: t.createdAt,
+    })),
+    ...recharges.map(r => ({
+      id: `recharge-${r.id}`,
+      type: 'recharge' as const,
+      amount: Number(r.amount),
+      balanceBefore: Number(r.agentBalanceBefore),
+      balanceAfter: Number(r.agentBalanceAfter),
+      notes: r.notes,
+      recipientType: r.recipientType,
+      recipientName: r.recipientName,
+      recipientPhone: r.recipientPhone,
+      createdAt: r.createdAt,
+    })),
+  ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+   .slice(0, limit);
+
+  return combined;
 }
 
 /**

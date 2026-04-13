@@ -101,6 +101,7 @@ import {
   agentRechargeWallet,
   getAgentTransactions,
   getAllAgentTransactions,
+  getAgentFullLedger,
   searchRecipientByPhone,
   getAgentMonthlyStats,
   deleteAgent,
@@ -2917,6 +2918,13 @@ export const appRouter = router({
       .query(async ({ input }) => {
         return getAgentMonthlyStats(input.agentId, input.months ?? 6);
       }),
+    // السجل المالي الكامل للوكيل (للإدارة)
+    getFullLedger: publicProcedure
+      .input(z.object({ agentId: z.number(), limit: z.number().optional() }))
+      .query(async ({ input }) => {
+        return getAgentFullLedger(input.agentId, input.limit ?? 200);
+      }),
+
     // حذف حساب الوكيل نهائياً
     delete: publicProcedure
       .input(z.object({ agentId: z.number() }))

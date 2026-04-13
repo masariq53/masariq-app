@@ -190,6 +190,8 @@ export default function AdminDashboard() {
   const [agentTopupLoading, setAgentTopupLoading] = useState(false);
   const [showAgentRejectModal, setShowAgentRejectModal] = useState(false);
   const [agentRejectReason, setAgentRejectReason] = useState("");
+  const [agentModalTab, setAgentModalTab] = useState<'details' | 'ledger'>('details');
+  const [ledgerFilter, setLedgerFilter] = useState<'all' | 'admin_topup' | 'recharge'>('all');
   const [supportStatusFilter, setSupportStatusFilter] = useState<"all" | "open" | "in_progress" | "resolved" | "closed">("all");
   const [supportUserTypeFilter, setSupportUserTypeFilter] = useState<"all" | "passenger" | "driver">("all");
   const [selectedSupportTicketId, setSelectedSupportTicketId] = useState<number | null>(null);
@@ -223,8 +225,13 @@ export default function AdminDashboard() {
   const approveAgentMutation = trpc.agents.approve.useMutation({ onSuccess: () => refetchAgents() });
   const rejectAgentMutation = trpc.agents.reject.useMutation({ onSuccess: () => refetchAgents() });
   const suspendAgentMutation = trpc.agents.suspend.useMutation({ onSuccess: () => refetchAgents() });
-  const topupAgentMutation = trpc.agents.topup.useMutation({ onSuccess: () => refetchAgents() });
+  const topupAgentMutation = trpc.agents.topup.useMutation({ onSuccess: () => { refetchAgents(); refetchAgentLedger(); } });
   const deleteAgentMutation = trpc.agents.delete.useMutation({ onSuccess: () => { refetchAgents(); setShowAgentModal(false); } });
+
+  const { data: agentLedger, isLoading: ledgerLoading, refetch: refetchAgentLedger } = trpc.agents.getFullLedger.useQuery(
+    { agentId: selectedAgent?.id ?? 0 },
+    { enabled: !!selectedAgent?.id && showAgentModal && agentModalTab === 'ledger' }
+  );
 
   const { data: ratingStats } = trpc.support.adminRatingStats.useQuery(
     undefined,
@@ -2087,7 +2094,7 @@ export default function AdminDashboard() {
                 <TouchableOpacity
                   key={agent.id}
                   style={{ backgroundColor: '#1E0F4A', borderRadius: 14, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: '#2D1B4E' }}
-                  onPress={() => { setSelectedAgent(agent); setShowAgentModal(true); }}
+                  onPress={() => { setSelectedAgent(agent); setAgentModalTab('details'); setLedgerFilter('all'); setShowAgentModal(true); }}
                 >
                   <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                     <View style={{ alignItems: 'flex-end' }}>
@@ -2848,12 +2855,29 @@ export default function AdminDashboard() {
       <Modal visible={showAgentModal} transparent animationType="slide" onRequestClose={() => setShowAgentModal(false)}>
         <View style={styles.modalOverlay}>
           <View style={{ backgroundColor: '#1A0533', borderRadius: 20, padding: 20, width: '92%', maxHeight: '88%' }}>
-            <Text style={{ color: '#FFD700', fontSize: 16, fontWeight: '800', marginBottom: 4, textAlign: 'center' }}>
-              تفاصيل الوكيل: {selectedAgent?.name}
+            <Text style={{ color: '#FFD700', fontSize: 16, fontWeight: '800', marginBottom: 8, textAlign: 'center' }}>
+              {selectedAgent?.name}
             </Text>
+            {/* Tabs */}
+            <View style={{ flexDirection: 'row-reverse', backgroundColor: '#2D1B4E', borderRadius: 10, padding: 3, marginBottom: 12 }}>
+              <TouchableOpacity
+                style={{ flex: 1, paddingVertical: 8, borderRadius: 8, alignItems: 'center', backgroundColor: agentModalTab === 'details' ? '#7C3AED' : 'transparent' }}
+                onPress={() => setAgentModalTab('details')}
+              >
+                <Text style={{ color: agentModalTab === 'details' ? '#fff' : '#9B8EC4', fontWeight: '700', fontSize: 13 }}>📋 التفاصيل</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{ flex: 1, paddingVertical: 8, borderRadius: 8, alignItems: 'center', backgroundColor: agentModalTab === 'ledger' ? '#7C3AED' : 'transparent' }}
+                onPress={() => setAgentModalTab('ledger')}
+              >
+                <Text style={{ color: agentModalTab === 'ledger' ? '#fff' : '#9B8EC4', fontWeight: '700', fontSize: 13 }}>💰 السجل المالي</Text>
+              </TouchableOpacity>
+            </View>
             <ScrollView showsVerticalScrollIndicator={false}>
               {selectedAgent && (
                 <>
+                  {/* ─── Tab: Details ─── */}
+                  {agentModalTab === 'details' && (<>
                   {/* Status */}
                   <View style={{ backgroundColor: '#2D1B4E', borderRadius: 12, padding: 12, marginBottom: 12 }}>
                     <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 6 }}>
@@ -2994,6 +3018,88 @@ export default function AdminDashboard() {
                       <Text style={{ color: '#fff', fontWeight: '700' }}>إغلاق</Text>
                     </TouchableOpacity>
                   </View>
+                  </>)}
+
+                  {/* ─── Tab: Ledger ─── */}
+                  {agentModalTab === 'ledger' && (
+                    <View>
+                      {/* Filter Tabs */}
+                      <View style={{ flexDirection: 'row-reverse', gap: 6, marginBottom: 12 }}>
+                        {([['all', 'الكل'], ['admin_topup', 'شحن من الإدارة'], ['recharge', 'شحن للعملاء']] as const).map(([key, label]) => (
+                          <TouchableOpacity
+                            key={key}
+                            style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: ledgerFilter === key ? '#7C3AED' : '#2D1B4E' }}
+                            onPress={() => setLedgerFilter(key)}
+                          >
+                            <Text style={{ color: ledgerFilter === key ? '#fff' : '#9B8EC4', fontSize: 12, fontWeight: '600' }}>{label}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+
+                      {ledgerLoading ? (
+                        <ActivityIndicator color="#7C3AED" style={{ marginTop: 20 }} />
+                      ) : !agentLedger || agentLedger.length === 0 ? (
+                        <Text style={{ color: '#9B8EC4', textAlign: 'center', marginTop: 20 }}>لا توجد حركات مالية</Text>
+                      ) : (
+                        agentLedger
+                          .filter(item => ledgerFilter === 'all' || item.type === ledgerFilter)
+                          .map((item) => (
+                            <View key={item.id} style={{ backgroundColor: '#2D1B4E', borderRadius: 10, padding: 12, marginBottom: 8 }}>
+                              {/* Row 1: Type badge + Amount */}
+                              <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                                <View style={{ backgroundColor: item.type === 'admin_topup' ? '#14532D' : '#1E3A5F', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 }}>
+                                  <Text style={{ color: item.type === 'admin_topup' ? '#4ADE80' : '#60A5FA', fontSize: 11, fontWeight: '700' }}>
+                                    {item.type === 'admin_topup' ? '⬆️ شحن من الإدارة' : '⬇️ شحن لعميل'}
+                                  </Text>
+                                </View>
+                                <Text style={{ color: item.type === 'admin_topup' ? '#4ADE80' : '#F87171', fontWeight: '800', fontSize: 15 }}>
+                                  {item.type === 'admin_topup' ? '+' : '-'}{item.amount.toLocaleString('ar-IQ')} د.ع
+                                </Text>
+                              </View>
+                              {/* Row 2: Recipient (for recharge) */}
+                              {item.type === 'recharge' && item.recipientName && (
+                                <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 4 }}>
+                                  <Text style={{ color: '#9B8EC4', fontSize: 12 }}>المستفيد:</Text>
+                                  <Text style={{ color: '#fff', fontSize: 12 }}>
+                                    {item.recipientName} ({item.recipientType === 'driver' ? 'سائق' : 'مستخدم'})
+                                  </Text>
+                                </View>
+                              )}
+                              {item.type === 'recharge' && item.recipientPhone && (
+                                <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 4 }}>
+                                  <Text style={{ color: '#9B8EC4', fontSize: 12 }}>الهاتف:</Text>
+                                  <Text style={{ color: '#fff', fontSize: 12 }}>{item.recipientPhone}</Text>
+                                </View>
+                              )}
+                              {/* Row 3: Balance before/after */}
+                              <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 4 }}>
+                                <Text style={{ color: '#9B8EC4', fontSize: 11 }}>رصيد قبل/بعد:</Text>
+                                <Text style={{ color: '#ccc', fontSize: 11 }}>
+                                  {item.balanceBefore.toLocaleString('ar-IQ')} → {item.balanceAfter.toLocaleString('ar-IQ')} د.ع
+                                </Text>
+                              </View>
+                              {/* Row 4: Notes */}
+                              {item.notes ? (
+                                <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 4 }}>
+                                  <Text style={{ color: '#9B8EC4', fontSize: 11 }}>ملاحظة:</Text>
+                                  <Text style={{ color: '#ccc', fontSize: 11, flex: 1, textAlign: 'right', marginRight: 6 }}>{item.notes}</Text>
+                                </View>
+                              ) : null}
+                              {/* Row 5: Date */}
+                              <Text style={{ color: '#6B7280', fontSize: 11, textAlign: 'left', marginTop: 2 }}>
+                                {new Date(item.createdAt).toLocaleString('ar-IQ', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                              </Text>
+                            </View>
+                          ))
+                      )}
+                      <TouchableOpacity
+                        style={{ backgroundColor: '#333', borderRadius: 10, padding: 12, alignItems: 'center', marginTop: 8 }}
+                        onPress={() => setShowAgentModal(false)}
+                      >
+                        <Text style={{ color: '#fff', fontWeight: '700' }}>إغلاق</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
                 </>
               )}
             </ScrollView>

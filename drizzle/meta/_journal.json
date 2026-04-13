@@ -183,6 +183,13 @@
       "when": 1776086546375,
       "tag": "0025_friendly_kate_bishop",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "5",
+      "when": 1776108189631,
+      "tag": "0026_sticky_lady_mastermind",
+      "breakpoints": true
     }
   ]
 }
