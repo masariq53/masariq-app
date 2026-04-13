@@ -254,7 +254,17 @@ export default function CaptainIntercityTripsScreen() {
                 </View>
 
                 {/* Route */}
-                <Text style={styles.route}>{item.fromCity}  →  {item.toCity}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <View style={{ alignItems: 'center' }}>
+                    <Text style={{ color: '#9B8EC4', fontSize: 10, marginBottom: 2 }}>من</Text>
+                    <Text style={[styles.route, { marginBottom: 0 }]}>{item.fromCity}</Text>
+                  </View>
+                  <Text style={{ color: '#9B8EC4', fontSize: 18, marginTop: 10 }}>→</Text>
+                  <View style={{ alignItems: 'center' }}>
+                    <Text style={{ color: '#9B8EC4', fontSize: 10, marginBottom: 2 }}>إلى</Text>
+                    <Text style={[styles.route, { marginBottom: 0 }]}>{item.toCity}</Text>
+                  </View>
+                </View>
 
                 {/* Details */}
                 <Text style={styles.detail}>🕐 {formatDate(item.departureTime)}</Text>

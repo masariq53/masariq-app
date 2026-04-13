@@ -321,9 +321,15 @@ export default function IntercityBrowseScreen() {
                 {/* Route + Price */}
                 <View style={styles.routeHeader}>
                   <View style={styles.routeInfo}>
-                    <Text style={styles.cityFrom}>{item.fromCity}</Text>
+                    <View style={{ alignItems: 'center' }}>
+                      <Text style={{ color: '#9B8EC4', fontSize: 10, marginBottom: 2 }}>من</Text>
+                      <Text style={styles.cityFrom}>{item.fromCity}</Text>
+                    </View>
                     <Text style={styles.routeArrow}>→</Text>
-                    <Text style={styles.cityTo}>{item.toCity}</Text>
+                    <View style={{ alignItems: 'center' }}>
+                      <Text style={{ color: '#9B8EC4', fontSize: 10, marginBottom: 2 }}>إلى</Text>
+                      <Text style={styles.cityTo}>{item.toCity}</Text>
+                    </View>
                   </View>
                   <View style={styles.priceTag}>
                     <Text style={styles.priceText}>{parseInt(item.pricePerSeat).toLocaleString()}</Text>
