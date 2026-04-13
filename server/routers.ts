@@ -363,6 +363,11 @@ export const appRouter = router({
         })
       )
       .mutation(async ({ input }) => {
+        // Block check: prevent blocked passengers from requesting rides
+        const passengerCheck = await getPassengerById(input.passengerId);
+        if (passengerCheck && (passengerCheck as any).isBlocked) {
+          throw new Error("🚫 تم تعطيل حسابك. لا يمكنك طلب رحلة.");
+        }
         // استخدام السعر المقتبس من estimateFare إذا تم تمريره، وإلا احسب من جديد
         let fare: number;
         let duration: number;
@@ -2047,6 +2052,10 @@ export const appRouter = router({
         passengerName: z.string(),
       }))
       .mutation(async ({ input }) => {
+        const passengerCheckIC = await getPassengerById(input.passengerId);
+        if (passengerCheckIC && (passengerCheckIC as any).isBlocked) {
+          throw new Error("🚫 تم تعطيل حسابك. لا يمكنك حجز رحلة.");
+        }
         const booking = await bookIntercityTrip(input);
         // إرسال Push notification للكابتن
         console.log(`[Push] bookTrip: Attempting to send push notification for trip ${input.tripId}`);
@@ -2919,7 +2928,13 @@ export const appRouter = router({
         scheduledDate: z.string().optional(),
         scheduledTimeSlot: z.string().optional(),
       }))
-      .mutation(async ({ input }) => createParcel(input)),
+      .mutation(async ({ input }) => {
+        const passengerCheckP = await getPassengerById(input.senderId);
+        if (passengerCheckP && (passengerCheckP as any).isBlocked) {
+          throw new Error("🚫 تم تعطيل حسابك. لا يمكنك إرسال طرد.");
+        }
+        return createParcel(input);
+      }),
 
     getById: publicProcedure
       .input(z.object({ parcelId: z.number() }))

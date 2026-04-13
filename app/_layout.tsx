@@ -35,12 +35,13 @@ export const unstable_settings = {
 
 /**
  * Polls passenger account status every 4 seconds using trpc utils directly.
- * Uses setInterval (not TanStack Query) to ensure reliable real-time block detection.
+ * On block: immediately redirects to account-blocked screen (full screen, no back).
+ * On unblock: shows alert and stays in app.
  */
 function PassengerBlockChecker() {
   const { passenger, logout } = usePassenger();
   const wasBlockedRef = useRef(false);
-  const alertShownRef = useRef(false);
+  const redirectedRef = useRef(false);
   const utils = trpc.useUtils();
 
   useEffect(() => {
@@ -54,21 +55,17 @@ function PassengerBlockChecker() {
           { signal: undefined }
         );
         if (!data) return;
-        const { isBlocked, blockReason } = data as { isBlocked: boolean; blockReason: string | null };
+        const { isBlocked } = data as { isBlocked: boolean; blockReason: string | null };
         if (isBlocked && !wasBlockedRef.current) {
           wasBlockedRef.current = true;
-          if (alertShownRef.current) return;
-          alertShownRef.current = true;
-          const reason = blockReason || "تم تعطيل حسابك من قِبل الإدارة";
-          Alert.alert(
-            "🚫 تم تعطيل حسابك",
-            `السبب: ${reason}\n\nيمكنك التواصل مع الدعم الفني للاستفسار.`,
-            [{ text: "حسناً", onPress: async () => { alertShownRef.current = false; await logout(); router.dismissAll(); router.replace("/login" as any); } }],
-            { cancelable: false }
-          );
+          if (redirectedRef.current) return;
+          redirectedRef.current = true;
+          // Navigate to full-screen block page immediately
+          router.dismissAll();
+          router.replace("/account-blocked" as any);
         } else if (!isBlocked && wasBlockedRef.current) {
           wasBlockedRef.current = false;
-          alertShownRef.current = false;
+          redirectedRef.current = false;
           Alert.alert("✅ تم تفعيل حسابك", "تم إعادة تفعيل حسابك. يمكنك الآن استخدام التطبيق!", [{ text: "حسناً" }]);
         }
       } catch (e) {
@@ -82,7 +79,7 @@ function PassengerBlockChecker() {
     // Then check every 4 seconds
     const interval = setInterval(checkBlock, 4000);
 
-    // Also check when app comes back to foreground
+    // Also check immediately when app comes back to foreground
     const appStateSub = Platform.OS !== "web"
       ? AppState.addEventListener("change", (state) => {
           if (state === "active") checkBlock();
@@ -309,6 +306,7 @@ export default function RootLayout() {
           {/* in order for ios apps tab switching to work properly, use presentation: "fullScreenModal" for login page, whenever you decide to use presentation: "modal*/}
           <Stack screenOptions={{ headerShown: false }}>
             <Stack.Screen name="(tabs)" />
+            <Stack.Screen name="account-blocked" options={{ headerShown: false, gestureEnabled: false, presentation: "fullScreenModal" }} />
             <Stack.Screen name="onboarding" />
             <Stack.Screen name="auth/login" />
             <Stack.Screen name="login" />
