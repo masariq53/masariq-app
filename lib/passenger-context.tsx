@@ -51,6 +51,8 @@ type PassengerContextType = {
   isLoading: boolean;
   isBlockedOverlay: boolean;
   setIsBlockedOverlay: (v: boolean) => void;
+  /** Ref that is true while navigating to support page - prevents overlay from re-appearing during transition */
+  navigatingToSupportRef: React.MutableRefObject<boolean>;
   /** Register navigation callbacks so the overlay can navigate without router dependency in context */
   registerBlockNavigation: (callbacks: { toSupport: () => void; toLogin: () => void }) => void;
   setPassenger: (p: PassengerProfile | null, showOverlay?: boolean) => Promise<void>;
@@ -210,6 +212,8 @@ export function PassengerProvider({ children }: { children: React.ReactNode }) {
 
   // Navigation callbacks registered by _layout.tsx once router is available
   const navCallbacksRef = useRef<{ toSupport?: () => void; toLogin?: () => void }>({});
+  // Flag to prevent re-showing overlay while navigating to support page
+  const navigatingToSupportRef = useRef(false);
 
   const registerBlockNavigation = useCallback(
     (callbacks: { toSupport: () => void; toLogin: () => void }) => {
@@ -294,14 +298,17 @@ export function PassengerProvider({ children }: { children: React.ReactNode }) {
 
   // Handlers for the overlay buttons
   const handleContactSupport = useCallback(() => {
-    // إخفاء الـ overlay أولاً حتى لا تُفتح الصفحة في الخلفية
-    setIsBlockedOverlay(false);
-    // تأخير بسيط لضمان إخفاء الـ overlay قبل الانتقال
+    // نضع flag يمنع إعادة إظهار overlay أثناء الانتقال
+    navigatingToSupportRef.current = true;
+    // ننتقل مباشرة بدون إخفاء overlay - الـ overlay يغطي الصفحة الرئيسية أثناء الانتقال
+    if (navCallbacksRef.current.toSupport) {
+      navCallbacksRef.current.toSupport();
+    }
+    // بعد الانتقال بوقت كافٍ، نخفي الـ overlay (pathname سيكون /support الآن)
     setTimeout(() => {
-      if (navCallbacksRef.current.toSupport) {
-        navCallbacksRef.current.toSupport();
-      }
-    }, 100);
+      setIsBlockedOverlay(false);
+      navigatingToSupportRef.current = false;
+    }, 500);
   }, []);
 
   const handleOverlayLogout = useCallback(async () => {
@@ -320,6 +327,7 @@ export function PassengerProvider({ children }: { children: React.ReactNode }) {
         isLoading,
         isBlockedOverlay,
         setIsBlockedOverlay,
+        navigatingToSupportRef,
         registerBlockNavigation,
         setPassenger,
         setDriver,

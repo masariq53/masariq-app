@@ -40,19 +40,23 @@ export const unstable_settings = {
  * On unblock: hides overlay and shows alert.
  */
 function PassengerBlockChecker() {
-  const { passenger, setPassenger, setIsBlockedOverlay, registerBlockNavigation } = usePassenger();
+  const { passenger, setPassenger, setIsBlockedOverlay, navigatingToSupportRef, registerBlockNavigation } = usePassenger();
   const wasBlockedRef = useRef(false);
   const utils = trpc.useUtils();
   const pathname = usePathname();
 
-  // صفحات الدعم الفني مستثناة من إعادة إظهار overlay الحظر
-  const isSupportPage = pathname?.startsWith("/support") || pathname?.startsWith("/captain/support");
+  // نحتفظ pathname في ref حتى لا يحدث stale closure داخل setInterval
+  const pathnameRef = useRef(pathname);
+  useEffect(() => {
+    pathnameRef.current = pathname;
+  }, [pathname]);
 
   // Register navigation callbacks for the overlay buttons
   useEffect(() => {
     registerBlockNavigation({
       toSupport: () => {
-        router.push("/support/new" as any);
+        // نستخدم replace بدل push حتى لا يمر عبر الـ tabs أولاً
+        router.replace("/support/new" as any);
       },
       toLogin: () => {
         router.replace("/auth/login" as any);
@@ -73,8 +77,12 @@ function PassengerBlockChecker() {
         if (!data) return;
         const { isBlocked } = data as { isBlocked: boolean; blockReason: string | null };
 
-        // إذا كان المستخدم في صفحة الدعم الفني، لا نُظهر overlay الحظر
-        if (isBlocked && isSupportPage) {
+        // نقرأ pathname من ref حتى نحصل على القيمة الحالية وليس القديمة (stale closure)
+        const currentPath = pathnameRef.current ?? "";
+        const onSupportPage = currentPath.startsWith("/support") || currentPath.startsWith("/captain/support");
+
+        // إذا كان المستخدم في صفحة الدعم أو جارٍ الانتقال إليها، لا نُظهر overlay الحظر
+        if (isBlocked && (onSupportPage || navigatingToSupportRef.current)) {
           // تحديث الحالة فقط بدون إظهار overlay (showOverlay=false)
           if (passenger && passenger.isBlocked !== isBlocked) {
             setPassenger({ ...passenger, isBlocked }, false).catch(() => {});
