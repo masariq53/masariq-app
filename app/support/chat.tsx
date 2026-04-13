@@ -46,18 +46,30 @@ type TicketData = {
 export default function SupportChatScreen() {
   const t = useT();
   const insets = useSafeAreaInsets();
-  const { passenger } = usePassenger();
+  const { passenger, setIsBlockedOverlay } = usePassenger();
   const { driver } = useDriver();
   const { colorScheme } = useThemeContext();
   const isDark = colorScheme === "dark";
-  const params = useLocalSearchParams<{ ticketId: string; subject: string }>();
+  const params = useLocalSearchParams<{ ticketId: string; subject: string; fromBlocked?: string }>();
   const ticketId = parseInt(params.ticketId ?? "0");
   const subject = params.subject ?? "";
+  const fromBlocked = params.fromBlocked === "1";
 
   const isDriverMode = !!driver && !passenger;
   const userId = isDriverMode ? driver?.id : passenger?.id;
   const userType = isDriverMode ? "driver" : "passenger";
   const userName = isDriverMode ? driver?.name : passenger?.name;
+
+  // الرجوع: إذا جاء المستخدم من overlay الحظر، نُعيد إظهاره بدل router.back()
+  const handleBack = () => {
+    if (fromBlocked) {
+      setIsBlockedOverlay(true);
+    } else if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace("/(tabs)" as any);
+    }
+  };
 
   const [newMessage, setNewMessage] = useState("");
   const [showRatingModal, setShowRatingModal] = useState(false);
@@ -318,7 +330,7 @@ export default function SupportChatScreen() {
 
         {/* Header */}
         <View style={[styles.header, { backgroundColor: colors.header }]}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <TouchableOpacity onPress={handleBack} style={styles.backBtn}>
             <Text style={styles.backIcon}>←</Text>
           </TouchableOpacity>
           <View style={styles.headerInfo}>

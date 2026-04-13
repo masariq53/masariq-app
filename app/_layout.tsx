@@ -54,15 +54,32 @@ function PassengerBlockChecker() {
   // Register navigation callbacks for the overlay buttons
   useEffect(() => {
     registerBlockNavigation({
-      toSupport: () => {
-        // نستخدم replace بدل push حتى لا يمر عبر الـ tabs أولاً
-        router.replace("/support/new" as any);
+      toSupport: async () => {
+        // نتحقق من وجود تذكرة مفتوحة للمستخدم أولاً
+        if (passenger?.id) {
+          try {
+            const tickets = await utils.support.getTickets.fetch({ userId: passenger.id, userType: "passenger" });
+            const openTicket = (tickets as any[]).find((t: any) => t.status === "open" || t.status === "in_progress");
+            if (openTicket) {
+              // فتح المحادثة الموجودة مباشرة
+              router.replace({
+                pathname: "/support/chat",
+                params: { ticketId: openTicket.id, subject: openTicket.subject, fromBlocked: "1" },
+              } as any);
+              return;
+            }
+          } catch (e) {
+            // silent fail - go to new ticket
+          }
+        }
+        // لا توجد تذكرة مفتوحة - افتح صفحة تذكرة جديدة
+        router.replace({ pathname: "/support/new", params: { fromBlocked: "1" } } as any);
       },
       toLogin: () => {
         router.replace("/auth/login" as any);
       },
     });
-  }, [registerBlockNavigation]);
+  }, [registerBlockNavigation, passenger?.id]);
 
   useEffect(() => {
     if (!passenger?.id) return;

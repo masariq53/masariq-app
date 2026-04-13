@@ -41,10 +41,22 @@ export default function NewSupportTicketScreen() {
   const userName = isDriverMode ? driver?.name : passenger?.name;
   const userPhone = isDriverMode ? driver?.phone : passenger?.phone;
 
-  const params = useLocalSearchParams<{ prefillSubject?: string; prefillMessage?: string }>();
+  const params = useLocalSearchParams<{ prefillSubject?: string; prefillMessage?: string; fromBlocked?: string }>();
   const [subject, setSubject] = useState(params.prefillSubject ?? "");
   const [message, setMessage] = useState(params.prefillMessage ?? "");
   const [category, setCategory] = useState<Category>(params.prefillSubject ? "account" : "other");
+  const fromBlocked = params.fromBlocked === "1";
+
+  const { setIsBlockedOverlay } = usePassenger();
+  const handleBack = () => {
+    if (fromBlocked) {
+      setIsBlockedOverlay(true);
+    } else if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace("/(tabs)" as any);
+    }
+  };
 
   // حالة الصور المرفقة
   const [attachedImages, setAttachedImages] = useState<{ uri: string; base64: string }[]>([]);
@@ -200,7 +212,7 @@ export default function NewSupportTicketScreen() {
             onPress: () => {
               router.replace({
                 pathname: "/support/chat",
-                params: { ticketId: result.ticketId, subject: subject.trim() },
+                params: { ticketId: result.ticketId, subject: subject.trim(), fromBlocked: fromBlocked ? "1" : "0" },
               } as any);
             },
           },
@@ -224,7 +236,7 @@ export default function NewSupportTicketScreen() {
 
         {/* Header */}
         <View style={[styles.header, { backgroundColor: colors.header }]}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <TouchableOpacity onPress={handleBack} style={styles.backBtn}>
             <Text style={styles.backIcon}>←</Text>
           </TouchableOpacity>
           <Text style={styles.headerTitle}>🎫 {t.help.newTicket}</Text>
