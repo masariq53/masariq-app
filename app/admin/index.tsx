@@ -2187,8 +2187,8 @@ export default function AdminDashboard() {
                       {/* Row 2: Address + Balance */}
                       <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 6 }}>
                         <Text style={{ color: '#9B8EC4', fontSize: 12 }}>📍 {agent.officeAddress}</Text>
-                        {agent.status === 'approved' && (
-                          <Text style={{ color: '#22C55E', fontSize: 13, fontWeight: '700' }}>
+                        {(agent.status === 'approved' || agent.status === 'suspended') && (
+                          <Text style={{ color: agent.status === 'approved' ? '#22C55E' : '#F59E0B', fontSize: 13, fontWeight: '700' }}>
                             💰 {Number(agent.balance).toLocaleString('ar-IQ')} د.ع
                           </Text>
                         )}
@@ -3008,10 +3008,10 @@ export default function AdminDashboard() {
                       <Text style={{ color: '#9B8EC4', fontSize: 13 }}>العنوان:</Text>
                       <Text style={{ color: '#fff', flex: 1, textAlign: 'right', marginRight: 8 }}>{selectedAgent.officeAddress}</Text>
                     </View>
-                    {selectedAgent.status === 'approved' && (
+                    {(selectedAgent.status === 'approved' || selectedAgent.status === 'suspended') && (
                       <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between' }}>
                         <Text style={{ color: '#9B8EC4', fontSize: 13 }}>الرصيد:</Text>
-                        <Text style={{ color: '#22C55E', fontWeight: '800', fontSize: 16 }}>
+                        <Text style={{ color: selectedAgent.status === 'approved' ? '#22C55E' : '#F59E0B', fontWeight: '800', fontSize: 16 }}>
                           {Number(selectedAgent.balance).toLocaleString('ar-IQ')} د.ع
                         </Text>
                       </View>
