@@ -34,58 +34,68 @@ export const unstable_settings = {
 };
 
 /**
- * Polls passenger account status every 5 seconds to detect block/unblock in real-time.
- * Also refetches immediately when app comes to foreground.
- * Must be inside PassengerProvider and trpc.Provider.
+ * Polls passenger account status every 4 seconds using trpc utils directly.
+ * Uses setInterval (not TanStack Query) to ensure reliable real-time block detection.
  */
 function PassengerBlockChecker() {
   const { passenger, logout } = usePassenger();
   const wasBlockedRef = useRef(false);
   const alertShownRef = useRef(false);
-  const blockCheckQuery = trpc.passenger.checkStatus.useQuery(
-    { passengerId: passenger?.id ?? 0 },
-    {
-      enabled: !!passenger?.id,
-      refetchInterval: 5000,
-      staleTime: 0,
-      gcTime: 0,
-      refetchIntervalInBackground: true,
-    }
-  );
+  const utils = trpc.useUtils();
 
-  // Refetch immediately when app comes back to foreground
   useEffect(() => {
-    if (Platform.OS === "web") return;
-    const sub = AppState.addEventListener("change", (state) => {
-      if (state === "active" && passenger?.id) {
-        blockCheckQuery.refetch();
+    if (!passenger?.id) return;
+    const pid = passenger.id;
+
+    const checkBlock = async () => {
+      try {
+        const data = await utils.passenger.checkStatus.fetch(
+          { passengerId: pid },
+          { signal: undefined }
+        );
+        if (!data) return;
+        const { isBlocked, blockReason } = data as { isBlocked: boolean; blockReason: string | null };
+        if (isBlocked && !wasBlockedRef.current) {
+          wasBlockedRef.current = true;
+          if (alertShownRef.current) return;
+          alertShownRef.current = true;
+          const reason = blockReason || "تم تعطيل حسابك من قِبل الإدارة";
+          Alert.alert(
+            "🚫 تم تعطيل حسابك",
+            `السبب: ${reason}\n\nيمكنك التواصل مع الدعم الفني للاستفسار.`,
+            [{ text: "حسناً", onPress: async () => { alertShownRef.current = false; await logout(); router.dismissAll(); router.replace("/login" as any); } }],
+            { cancelable: false }
+          );
+        } else if (!isBlocked && wasBlockedRef.current) {
+          wasBlockedRef.current = false;
+          alertShownRef.current = false;
+          Alert.alert("✅ تم تفعيل حسابك", "تم إعادة تفعيل حسابك. يمكنك الآن استخدام التطبيق!", [{ text: "حسناً" }]);
+        }
+      } catch (e) {
+        // silent fail - will retry next interval
       }
-    });
-    return () => sub.remove();
+    };
+
+    // Check immediately on mount/login
+    checkBlock();
+
+    // Then check every 4 seconds
+    const interval = setInterval(checkBlock, 4000);
+
+    // Also check when app comes back to foreground
+    const appStateSub = Platform.OS !== "web"
+      ? AppState.addEventListener("change", (state) => {
+          if (state === "active") checkBlock();
+        })
+      : null;
+
+    return () => {
+      clearInterval(interval);
+      appStateSub?.remove();
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [passenger?.id]);
 
-  useEffect(() => {
-    if (!blockCheckQuery.data || !passenger?.id) return;
-    const { isBlocked, blockReason } = blockCheckQuery.data as { isBlocked: boolean; blockReason: string | null };
-    if (isBlocked && !wasBlockedRef.current) {
-      wasBlockedRef.current = true;
-      if (alertShownRef.current) return;
-      alertShownRef.current = true;
-      const reason = blockReason || "تم تعطيل حسابك من قِبل الإدارة";
-      Alert.alert(
-        "🚫 تم تعطيل حسابك",
-        `السبب: ${reason}\n\nيمكنك التواصل مع الدعم الفني للاستفسار.`,
-        [{ text: "حسناً", onPress: async () => { alertShownRef.current = false; await logout(); router.dismissAll(); router.replace("/login" as any); } }],
-        { cancelable: false }
-      );
-    } else if (!isBlocked && wasBlockedRef.current) {
-      wasBlockedRef.current = false;
-      alertShownRef.current = false;
-      Alert.alert("✅ تم تفعيل حسابك", "تم إعادة تفعيل حسابك. يمكنك الآن استخدام التطبيق!", [{ text: "حسناً" }]);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [blockCheckQuery.data, passenger?.id]);
   return null;
 }
 

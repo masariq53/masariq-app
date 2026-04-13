@@ -259,6 +259,11 @@ export const appRouter = router({
         if (!isValid) throw new Error("رمز التحقق غير صحيح أو منتهي الصلاحية");
 
         const passenger = await loginExistingPassenger(phone);
+        // Block check: prevent blocked users from logging in
+        if ((passenger as any).isBlocked) {
+          const reason = (passenger as any).blockReason || "تم تعطيل حسابك من قِبل الإدارة";
+          throw new Error(`🚫 تم تعطيل حسابك. السبب: ${reason}\n\nللاستفسار تواصل مع الدعم الفني.`);
+        }
         return { success: true, passenger: { id: passenger.id, phone: passenger.phone, name: passenger.name, photoUrl: passenger.photoUrl ?? null, walletBalance: passenger.walletBalance, totalRides: passenger.totalRides, rating: passenger.rating } };
       }),
 
