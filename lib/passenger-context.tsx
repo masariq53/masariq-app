@@ -292,9 +292,14 @@ export function PassengerProvider({ children }: { children: React.ReactNode }) {
 
   // Handlers for the overlay buttons
   const handleContactSupport = useCallback(() => {
-    if (navCallbacksRef.current.toSupport) {
-      navCallbacksRef.current.toSupport();
-    }
+    // إخفاء الـ overlay أولاً حتى لا تُفتح الصفحة في الخلفية
+    setIsBlockedOverlay(false);
+    // تأخير بسيط لضمان إخفاء الـ overlay قبل الانتقال
+    setTimeout(() => {
+      if (navCallbacksRef.current.toSupport) {
+        navCallbacksRef.current.toSupport();
+      }
+    }, 100);
   }, []);
 
   const handleOverlayLogout = useCallback(async () => {
