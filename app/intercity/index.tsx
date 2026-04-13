@@ -111,13 +111,7 @@ export default function IntercityBrowseScreen() {
   const [gpsLoading, setGpsLoading] = useState(false);
   const [showBookingModal, setShowBookingModal] = useState(false);
 
-  React.useEffect(() => {
-    AsyncStorage.getItem("@masar_passenger").then((raw) => {
-      if (raw) {
-        try { setPassenger(JSON.parse(raw)); } catch {}
-      }
-    });
-  }, []);
+  // passenger data is loaded automatically by PassengerContext - no need to read AsyncStorage here
 
   const { data: trips, isLoading, refetch } = trpc.intercity.listTrips.useQuery({
     fromCity: fromFilter === "الكل" ? undefined : fromFilter,

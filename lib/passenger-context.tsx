@@ -233,11 +233,10 @@ export function PassengerProvider({ children }: { children: React.ReactNode }) {
         ]);
         if (pStr) {
           const p = JSON.parse(pStr) as PassengerProfile;
+          // isBlocked لا يُحفظ في AsyncStorage - نبدأ دائماً بـ false
+          // checkBlock سيتحقق من الحالة الحقيقية من الـ server خلال 4 ثواني
+          p.isBlocked = false;
           setPassengerState(p);
-          // If passenger was blocked when app was closed, show overlay immediately
-          if (p.isBlocked) {
-            setIsBlockedOverlay(true);
-          }
         }
         if (dStr) setDriverState(JSON.parse(dStr));
         if (mStr) setModeState(mStr as AppMode);
@@ -253,7 +252,10 @@ export function PassengerProvider({ children }: { children: React.ReactNode }) {
   const setPassenger = useCallback(async (p: PassengerProfile | null, showOverlay: boolean = true) => {
     setPassengerState(p);
     if (p) {
-      await AsyncStorage.setItem(PASSENGER_KEY, JSON.stringify(p));
+      // لا نحفظ isBlocked في AsyncStorage أبداً - هذه القيمة تأتي دائماً من الـ server
+      // هذا يمنع ظهور overlay الحظر القديم عند تحديث بيانات المستخدم بعد رفع الحظر
+      const { isBlocked: _omit, ...pToStore } = p;
+      await AsyncStorage.setItem(PASSENGER_KEY, JSON.stringify(pToStore));
       // Auto-show/hide overlay based on isBlocked (only if showOverlay is true)
       if (showOverlay) {
         if (p.isBlocked) {

@@ -84,12 +84,8 @@ export default function MyIntercityBookingsScreen() {
   const [page, setPage] = useState(1);
 
   React.useEffect(() => {
-    AsyncStorage.getItem("@masar_passenger").then((raw) => {
-      if (raw) {
-        try { setPassenger(JSON.parse(raw)); } catch {}
-      }
-      setLoaded(true);
-    });
+    // passenger data is loaded automatically by PassengerContext
+    setLoaded(true);
   }, []);
 
   const bookingsQuery = trpc.intercity.myBookingsEnriched.useQuery(
