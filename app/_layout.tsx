@@ -120,7 +120,18 @@ function PassengerBlockChecker() {
           // Overlay is shown automatically via setPassenger -> setIsBlockedOverlay
         } else if (!isBlocked && wasBlockedRef.current) {
           wasBlockedRef.current = false;
-          Alert.alert("✅ تم تفعيل حسابك", "تم إعادة تفعيل حسابك. يمكنك الآن استخدام التطبيق!", [{ text: "حسناً" }]);
+          // إخفاء overlay الحظر فوراً
+          setIsBlockedOverlay(false);
+          // الانتقال للصفحة الرئيسية مع مسح كل الـ stack (لا يمكن الرجوع لصفحات الحظر/الدعم)
+          router.replace("/(tabs)" as any);
+          // رسالة ترحيب بعد الانتقال
+          setTimeout(() => {
+            Alert.alert(
+              "✅ تم تفعيل حسابك",
+              "مرحباً بك مجدداً! تم إعادة تفعيل حسابك ويمكنك الآن استخدام جميع خدمات مسار.",
+              [{ text: "حسناً" }]
+            );
+          }, 500);
         }
       } catch (e) {
         // silent fail - will retry next interval
