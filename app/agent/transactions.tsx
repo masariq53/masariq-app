@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -6,24 +6,35 @@ import {
   StyleSheet,
   FlatList,
   ActivityIndicator,
+  RefreshControl,
 } from "react-native";
 import { router } from "expo-router";
 import { ScreenContainer } from "@/components/screen-container";
 import { usePassenger } from "@/lib/passenger-context";
 import { trpc } from "@/lib/trpc";
 
+type FilterType = "all" | "admin_topup" | "recharge";
+
 export default function AgentTransactionsScreen() {
   const { passenger } = usePassenger();
+  const [filter, setFilter] = useState<FilterType>("all");
+  const [refreshing, setRefreshing] = useState(false);
 
   const { data: agentStatus } = trpc.agents.getMyStatus.useQuery(
     { passengerId: passenger?.id ?? 0 },
     { enabled: !!passenger?.id }
   );
 
-  const { data: transactions, isLoading } = trpc.agents.getTransactions.useQuery(
+  const { data: transactions, isLoading, refetch } = trpc.agents.getFullLedger.useQuery(
     { agentId: agentStatus?.id ?? 0 },
     { enabled: !!agentStatus?.id }
   );
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await refetch();
+    setRefreshing(false);
+  };
 
   const formatDate = (d: Date | string) => {
     const date = new Date(d);
@@ -36,6 +47,11 @@ export default function AgentTransactionsScreen() {
     });
   };
 
+  const filtered = (transactions ?? []).filter((item) => {
+    if (filter === "all") return true;
+    return item.type === filter;
+  });
+
   return (
     <ScreenContainer>
       <View style={styles.header}>
@@ -46,41 +62,87 @@ export default function AgentTransactionsScreen() {
         <View style={{ width: 40 }} />
       </View>
 
+      {/* Filter Tabs */}
+      <View style={styles.filterRow}>
+        {(
+          [
+            ["all", "الكل"],
+            ["admin_topup", "⬆️ شحن من الإدارة"],
+            ["recharge", "⬇️ شحن للعملاء"],
+          ] as [FilterType, string][]
+        ).map(([key, label]) => (
+          <TouchableOpacity
+            key={key}
+            style={[styles.filterBtn, filter === key && styles.filterBtnActive]}
+            onPress={() => setFilter(key)}
+          >
+            <Text style={[styles.filterText, filter === key && styles.filterTextActive]}>
+              {label}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
       {isLoading ? (
         <View style={styles.center}>
           <ActivityIndicator size="large" color="#2ECC71" />
         </View>
-      ) : !transactions || transactions.length === 0 ? (
+      ) : !filtered || filtered.length === 0 ? (
         <View style={styles.center}>
           <Text style={styles.emptyIcon}>📋</Text>
           <Text style={styles.emptyText}>لا توجد معاملات بعد</Text>
         </View>
       ) : (
         <FlatList
-          data={transactions}
+          data={filtered}
           keyExtractor={(item) => String(item.id)}
           contentContainerStyle={styles.list}
-          renderItem={({ item }) => (
-            <View style={styles.txCard}>
-              <View style={styles.txHeader}>
-                <Text style={styles.txAmount}>
-                  -{Number(item.amount).toLocaleString("ar-IQ")} د.ع
-                </Text>
-                <Text style={styles.txType}>
-                  {item.recipientType === "driver" ? "🚗 سائق" : "👤 مستخدم"}
-                </Text>
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#2ECC71" />
+          }
+          renderItem={({ item }) => {
+            const isTopup = item.type === "admin_topup";
+            return (
+              <View style={[styles.txCard, isTopup ? styles.txCardTopup : styles.txCardRecharge]}>
+                <View style={styles.txHeader}>
+                  <Text style={[styles.txAmount, isTopup ? styles.amountGreen : styles.amountRed]}>
+                    {isTopup ? "+" : "-"}
+                    {Number(item.amount).toLocaleString("ar-IQ")} د.ع
+                  </Text>
+                  <View style={[styles.typeBadge, isTopup ? styles.badgeGreen : styles.badgeBlue]}>
+                    <Text style={[styles.typeText, isTopup ? styles.typeTextGreen : styles.typeTextBlue]}>
+                      {isTopup ? "⬆️ شحن من الإدارة" : item.recipientType === "driver" ? "🚗 سائق" : "👤 مستخدم"}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Recipient info (for recharge) */}
+                {!isTopup && (item.recipientName || item.recipientPhone) && (
+                  <>
+                    {item.recipientName && (
+                      <Text style={styles.txName}>{item.recipientName}</Text>
+                    )}
+                    {item.recipientPhone && (
+                      <Text style={styles.txPhone}>{item.recipientPhone}</Text>
+                    )}
+                  </>
+                )}
+
+                {/* Notes */}
+                {item.notes ? (
+                  <Text style={styles.txNotes}>{item.notes}</Text>
+                ) : null}
+
+                {/* Balance before/after */}
+                <View style={styles.txFooter}>
+                  <Text style={styles.txBalance}>
+                    {Number(item.balanceBefore).toLocaleString("ar-IQ")} ← {Number(item.balanceAfter).toLocaleString("ar-IQ")} د.ع
+                  </Text>
+                  <Text style={styles.txDate}>{formatDate(item.createdAt)}</Text>
+                </View>
               </View>
-              <Text style={styles.txName}>{item.recipientName || item.recipientPhone}</Text>
-              <Text style={styles.txPhone}>{item.recipientPhone}</Text>
-              {item.notes && <Text style={styles.txNotes}>{item.notes}</Text>}
-              <View style={styles.txFooter}>
-                <Text style={styles.txBalance}>
-                  الرصيد بعد: {Number(item.agentBalanceAfter).toLocaleString("ar-IQ")} د.ع
-                </Text>
-                <Text style={styles.txDate}>{formatDate(item.createdAt)}</Text>
-              </View>
-            </View>
-          )}
+            );
+          }}
         />
       )}
     </ScreenContainer>
@@ -100,16 +162,39 @@ const styles = StyleSheet.create({
   backBtn: { width: 40, height: 40, justifyContent: "center", alignItems: "center" },
   backText: { fontSize: 22, color: "#2ECC71" },
   headerTitle: { fontSize: 18, fontWeight: "700", color: "#11181C" },
+  filterRow: {
+    flexDirection: "row-reverse",
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#E5E7EB",
+  },
+  filterBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: "#F3F4F6",
+  },
+  filterBtnActive: { backgroundColor: "#14532D" },
+  filterText: { fontSize: 12, color: "#6B7280", fontWeight: "600" },
+  filterTextActive: { color: "#4ADE80" },
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
   emptyIcon: { fontSize: 48, marginBottom: 12 },
   emptyText: { fontSize: 16, color: "#6B7280" },
   list: { padding: 16, paddingBottom: 40 },
   txCard: {
-    backgroundColor: "#F9FAFB",
     borderRadius: 14,
     padding: 14,
     marginBottom: 10,
     borderWidth: 1,
+  },
+  txCardTopup: {
+    backgroundColor: "#F0FDF4",
+    borderColor: "#BBF7D0",
+  },
+  txCardRecharge: {
+    backgroundColor: "#F9FAFB",
     borderColor: "#E5E7EB",
   },
   txHeader: {
@@ -118,9 +203,20 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 6,
   },
-  txAmount: { fontSize: 18, fontWeight: "800", color: "#EF4444" },
-  txType: { fontSize: 13, color: "#6B7280" },
-  txName: { fontSize: 16, fontWeight: "600", color: "#111827", textAlign: "right", marginBottom: 2 },
+  txAmount: { fontSize: 18, fontWeight: "800" },
+  amountGreen: { color: "#16A34A" },
+  amountRed: { color: "#EF4444" },
+  typeBadge: {
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  badgeGreen: { backgroundColor: "#DCFCE7" },
+  badgeBlue: { backgroundColor: "#EFF6FF" },
+  typeText: { fontSize: 11, fontWeight: "700" },
+  typeTextGreen: { color: "#15803D" },
+  typeTextBlue: { color: "#1D4ED8" },
+  txName: { fontSize: 15, fontWeight: "600", color: "#111827", textAlign: "right", marginBottom: 2 },
   txPhone: { fontSize: 13, color: "#6B7280", textAlign: "right", marginBottom: 4 },
   txNotes: { fontSize: 13, color: "#9CA3AF", textAlign: "right", marginBottom: 4, fontStyle: "italic" },
   txFooter: {
