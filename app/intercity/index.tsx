@@ -11,6 +11,7 @@ import { ScreenContainer } from "@/components/screen-container";
 import { trpc } from "@/lib/trpc";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useT } from "@/lib/i18n";
+import { usePassenger } from "@/lib/passenger-context";
 
 const IRAQI_CITIES = [
   "الموصل", "بغداد", "أربيل", "السليمانية", "كركوك",
@@ -95,6 +96,7 @@ function CityPickerModal({
 export default function IntercityBrowseScreen() {
   const t = useT();
   const router = useRouter();
+  const { passenger: passengerCtx, setIsBlockedOverlay } = usePassenger();
   const [passenger, setPassenger] = useState<{ id: number; name: string; phone: string } | null>(null);
   const [fromFilter, setFromFilter] = useState("الكل");
   const [toFilter, setToFilter] = useState("الكل");
@@ -172,6 +174,11 @@ export default function IntercityBrowseScreen() {
         { text: "تسجيل الدخول", onPress: () => router.push("/auth/login") },
         { text: "إلغاء", style: "cancel" },
       ]);
+      return;
+    }
+    // منع المحظورين من الحجز
+    if (passengerCtx?.isBlocked) {
+      setIsBlockedOverlay(true);
       return;
     }
     setSelectedTrip(trip);

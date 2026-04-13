@@ -35,14 +35,25 @@ export const unstable_settings = {
 
 /**
  * Polls passenger account status every 4 seconds using trpc utils directly.
- * On block: immediately redirects to account-blocked screen (full screen, no back).
- * On unblock: shows alert and stays in app.
+ * On block: shows full-screen overlay (via PassengerContext) - NO navigation used.
+ * On unblock: hides overlay and shows alert.
  */
 function PassengerBlockChecker() {
-  const { passenger, logout } = usePassenger();
+  const { passenger, setPassenger, setIsBlockedOverlay, registerBlockNavigation } = usePassenger();
   const wasBlockedRef = useRef(false);
-  const redirectedRef = useRef(false);
   const utils = trpc.useUtils();
+
+  // Register navigation callbacks for the overlay buttons
+  useEffect(() => {
+    registerBlockNavigation({
+      toSupport: () => {
+        router.push("/support/new" as any);
+      },
+      toLogin: () => {
+        router.replace("/auth/login" as any);
+      },
+    });
+  }, [registerBlockNavigation]);
 
   useEffect(() => {
     if (!passenger?.id) return;
@@ -56,22 +67,28 @@ function PassengerBlockChecker() {
         );
         if (!data) return;
         const { isBlocked } = data as { isBlocked: boolean; blockReason: string | null };
+        // Update passenger context with latest isBlocked status
+        // setPassenger already handles setIsBlockedOverlay internally
+        if (passenger && passenger.isBlocked !== isBlocked) {
+          await setPassenger({ ...passenger, isBlocked });
+        } else if (isBlocked && !wasBlockedRef.current) {
+          // Already blocked in context but overlay may not be showing
+          setIsBlockedOverlay(true);
+        }
         if (isBlocked && !wasBlockedRef.current) {
           wasBlockedRef.current = true;
-          if (redirectedRef.current) return;
-          redirectedRef.current = true;
-          // Navigate to full-screen block page immediately
-          router.dismissAll();
-          router.replace("/account-blocked" as any);
+          // Overlay is shown automatically via setPassenger -> setIsBlockedOverlay
         } else if (!isBlocked && wasBlockedRef.current) {
           wasBlockedRef.current = false;
-          redirectedRef.current = false;
           Alert.alert("✅ تم تفعيل حسابك", "تم إعادة تفعيل حسابك. يمكنك الآن استخدام التطبيق!", [{ text: "حسناً" }]);
         }
       } catch (e) {
         // silent fail - will retry next interval
       }
     };
+
+    // Initialize wasBlockedRef from current state
+    wasBlockedRef.current = passenger?.isBlocked ?? false;
 
     // Check immediately on mount/login
     checkBlock();
@@ -306,7 +323,7 @@ export default function RootLayout() {
           {/* in order for ios apps tab switching to work properly, use presentation: "fullScreenModal" for login page, whenever you decide to use presentation: "modal*/}
           <Stack screenOptions={{ headerShown: false }}>
             <Stack.Screen name="(tabs)" />
-            <Stack.Screen name="account-blocked" options={{ headerShown: false, gestureEnabled: false, presentation: "fullScreenModal" }} />
+            <Stack.Screen name="account-blocked" options={{ headerShown: false, gestureEnabled: false }} />
             <Stack.Screen name="onboarding" />
             <Stack.Screen name="auth/login" />
             <Stack.Screen name="login" />
@@ -329,6 +346,9 @@ export default function RootLayout() {
             <Stack.Screen name="captain/trips" options={{ gestureEnabled: false }} />
             <Stack.Screen name="captain/documents" options={{ gestureEnabled: false }} />
             <Stack.Screen name="captain/support" options={{ gestureEnabled: false }} />
+            <Stack.Screen name="support" />
+            <Stack.Screen name="support/new" />
+            <Stack.Screen name="support/chat" />
             <Stack.Screen name="captain/wallet" options={{ gestureEnabled: false }} />
             <Stack.Screen name="captain/intercity-trips" options={{ gestureEnabled: false }} />
             <Stack.Screen name="captain/intercity-schedule" options={{ gestureEnabled: false }} />

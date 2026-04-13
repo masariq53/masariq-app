@@ -11,11 +11,13 @@ import {
 import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { usePassenger } from "@/lib/passenger-context";
 
 const { width } = Dimensions.get("window");
 
 export default function RideTypeSelectScreen() {
   const insets = useSafeAreaInsets();
+  const { passenger, setIsBlockedOverlay } = usePassenger();
 
   // Animations
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -54,10 +56,12 @@ export default function RideTypeSelectScreen() {
   }, []);
 
   const handleCityRide = () => {
+    if (passenger?.isBlocked) { setIsBlockedOverlay(true); return; }
     router.push("/ride/book" as any);
   };
 
   const handleIntercityRide = () => {
+    if (passenger?.isBlocked) { setIsBlockedOverlay(true); return; }
     router.push("/intercity" as any);
   };
 

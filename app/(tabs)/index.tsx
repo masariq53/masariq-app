@@ -27,7 +27,7 @@ const serviceColors = {
 export default function HomeScreen() {
   const t = useT();
   const insets = useSafeAreaInsets();
-  const { passenger } = usePassenger();
+  const { passenger, setIsBlockedOverlay } = usePassenger();
   const { coords, isRealLocation } = useLocation();
   const { colorScheme } = useThemeContext();
   const isDark = colorScheme === "dark";
@@ -72,10 +72,23 @@ export default function HomeScreen() {
   };
 
   const handleService = (id: string) => {
+    // منع الحسابات المحظورة من الوصول لأي خدمة - الـ overlay يُعرض تلقائياً
+    if (passenger?.isBlocked) {
+      setIsBlockedOverlay(true);
+      return;
+    }
     if (id === "ride") router.push("/ride-type-select" as any);
     else if (id === "delivery") router.push("/(tabs)/delivery" as any);
     else if (id === "subscription") router.push("/subscription" as any);
     else if (id === "intercity") router.push("/intercity" as any);
+  };
+
+  const handleBlockedNavigation = (action: () => void) => {
+    if (passenger?.isBlocked) {
+      setIsBlockedOverlay(true);
+      return;
+    }
+    action();
   };
 
   return (
@@ -124,7 +137,7 @@ export default function HomeScreen() {
         <TouchableOpacity
           activeOpacity={0.8}
           style={[styles.searchContainer, { backgroundColor: colors.searchBg }]}
-          onPress={() => router.push("/ride-type-select" as any)}
+          onPress={() => handleBlockedNavigation(() => router.push("/ride-type-select" as any))}
         >
           <Text style={styles.searchIcon}>🔍</Text>
           <Text style={[styles.searchInput, { color: colors.searchPlaceholder }]}>{t.home.whereToGo}</Text>
@@ -168,7 +181,7 @@ export default function HomeScreen() {
             <TouchableOpacity
               key={d.id}
               style={[styles.destCard, { backgroundColor: colors.destCard }]}
-              onPress={() => router.push("/ride-type-select" as any)}
+              onPress={() => handleBlockedNavigation(() => router.push("/ride-type-select" as any))}
             >
               <View style={[styles.destIcon, { backgroundColor: colors.destIconBg }]}>
                 <Text style={styles.destEmoji}>{d.icon}</Text>

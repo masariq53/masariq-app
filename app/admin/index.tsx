@@ -2243,7 +2243,16 @@ export default function AdminDashboard() {
                           {msg.senderName || "المستخدم"}
                         </Text>
                       )}
-                      <Text style={{ color: "#FFFFFF", fontSize: 13, lineHeight: 19 }}>{msg.message}</Text>
+                      {msg.imageUrl ? (
+                        <Image
+                          source={{ uri: msg.imageUrl }}
+                          style={{ width: 200, height: 150, borderRadius: 10, marginBottom: msg.message ? 6 : 0 }}
+                          resizeMode="cover"
+                        />
+                      ) : null}
+                      {msg.message ? (
+                        <Text style={{ color: "#FFFFFF", fontSize: 13, lineHeight: 19 }}>{msg.message}</Text>
+                      ) : null}
                       <Text style={{ color: "rgba(255,255,255,0.5)", fontSize: 10, alignSelf: "flex-end", marginTop: 3 }}>
                         {new Date(msg.createdAt).toLocaleTimeString("ar-IQ", { hour: "2-digit", minute: "2-digit" })}
                       </Text>

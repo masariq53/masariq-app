@@ -49,7 +49,7 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
 };
 
 export default function DeliveryScreen() {
-  const { passenger } = usePassenger();
+  const { passenger, setIsBlockedOverlay } = usePassenger();
   const [activeTab, setActiveTab] = useState<"new" | "history">("new");
 
   const { data: myParcels, isLoading: loadingParcels, refetch } = trpc.parcel.getSenderParcels.useQuery(
@@ -60,6 +60,11 @@ export default function DeliveryScreen() {
   const handleSelectType = (typeId: string) => {
     if (!passenger) {
       router.push("/login" as any);
+      return;
+    }
+    // منع المحظورين من إنشاء طرود
+    if (passenger.isBlocked) {
+      setIsBlockedOverlay(true);
       return;
     }
     router.push({ pathname: "/delivery/new" as any, params: { type: typeId } });

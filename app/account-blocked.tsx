@@ -1,4 +1,4 @@
-import { View, Text, Pressable, Linking } from "react-native";
+import { View, Text, Pressable } from "react-native";
 import { router } from "expo-router";
 import { usePassenger } from "@/lib/passenger-context";
 import { ScreenContainer } from "@/components/screen-container";
@@ -11,16 +11,20 @@ export default function AccountBlockedScreen() {
   const { logout } = usePassenger();
 
   const handleContactSupport = () => {
-    // رقم الدعم الفني عبر واتساب أو اتصال مباشر
-    Linking.openURL("https://wa.me/9647700000000").catch(() => {
-      Linking.openURL("tel:+9647700000000");
+    // Navigate to support/new with prefilled subject about account block
+    router.push({
+      pathname: "/support/new" as any,
+      params: {
+        prefillSubject: "الاعتراض على تعطيل الحساب",
+        prefillMessage: "أرغب في الاستفسار عن سبب تعطيل حسابي والاعتراض على هذا الإجراء.",
+      },
     });
   };
 
   const handleLogout = async () => {
     await logout();
-    router.dismissAll();
-    router.replace("/login" as any);
+    // Replace with auth/login - same screen used in profile.tsx logout
+    router.replace("/auth/login" as any);
   };
 
   return (
@@ -50,7 +54,7 @@ export default function AccountBlockedScreen() {
         للاستفسار أو الاعتراض، يرجى التواصل مع فريق الدعم الفني.
       </Text>
 
-      {/* زر التواصل مع الدعم */}
+      {/* زر التواصل مع الدعم الفني الداخلي */}
       <Pressable
         onPress={handleContactSupport}
         style={({ pressed }) => [
@@ -67,7 +71,7 @@ export default function AccountBlockedScreen() {
           },
         ]}
       >
-        <Text className="text-white font-bold text-base">
+        <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>
           💬 تواصل مع الدعم الفني
         </Text>
       </Pressable>
@@ -88,7 +92,7 @@ export default function AccountBlockedScreen() {
           },
         ]}
       >
-        <Text className="text-error font-semibold text-base">
+        <Text style={{ color: "#EF4444", fontWeight: "600", fontSize: 15 }}>
           تسجيل الخروج
         </Text>
       </Pressable>

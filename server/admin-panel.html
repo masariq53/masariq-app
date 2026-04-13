@@ -126,6 +126,36 @@ input{outline:none;font-family:inherit}
 .quick-stat{background:var(--surface);border:1px solid var(--border);border-top:3px solid;border-radius:14px;padding:16px;display:flex;flex-direction:column;align-items:center;gap:6px}
 .quick-stat-value{font-size:28px;font-weight:900}
 .quick-stat-label{font-size:12px;color:var(--text-muted);text-align:center}
+
+/* ── Support ── */
+.support-layout{display:grid;grid-template-columns:340px 1fr;gap:20px;height:calc(100vh - 120px)}
+.ticket-list{background:var(--surface);border:1px solid var(--border);border-radius:16px;overflow-y:auto;display:flex;flex-direction:column}
+.ticket-list-header{padding:16px 20px;border-bottom:1px solid var(--border);font-size:15px;font-weight:800;display:flex;justify-content:space-between;align-items:center;flex-shrink:0}
+.ticket-item{padding:14px 18px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s}
+.ticket-item:hover{background:rgba(108,63,197,.08)}
+.ticket-item.selected{background:rgba(108,63,197,.18);border-right:3px solid var(--primary-light)}
+.ticket-item:last-child{border-bottom:none}
+.ticket-subject{font-size:14px;font-weight:700;margin-bottom:4px}
+.ticket-meta{font-size:12px;color:var(--text-muted);display:flex;gap:8px;align-items:center}
+.ticket-unread{background:#EF4444;color:#fff;border-radius:10px;padding:1px 7px;font-size:11px;font-weight:700}
+.chat-panel{background:var(--surface);border:1px solid var(--border);border-radius:16px;display:flex;flex-direction:column;overflow:hidden}
+.chat-header{padding:16px 20px;border-bottom:1px solid var(--border);flex-shrink:0}
+.chat-header-title{font-size:15px;font-weight:800}
+.chat-header-meta{font-size:12px;color:var(--text-muted);margin-top:4px}
+.chat-messages{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px}
+.msg-bubble{max-width:75%;padding:10px 14px;border-radius:14px;font-size:14px;line-height:1.5}
+.msg-user{background:var(--surface2);border:1px solid var(--border);align-self:flex-start;border-bottom-right-radius:4px}
+.msg-admin{background:linear-gradient(135deg,#6C3FC5,#8B5CF6);color:#fff;align-self:flex-end;border-bottom-left-radius:4px}
+.msg-time{font-size:11px;color:var(--text-dim);margin-top:4px}
+.msg-img{max-width:220px;max-height:220px;border-radius:10px;cursor:pointer;border:1px solid var(--border);object-fit:cover;display:block;margin-top:4px}
+.chat-input-area{padding:14px 16px;border-top:1px solid var(--border);display:flex;gap:10px;flex-shrink:0}
+.chat-input{flex:1;background:var(--surface2);border:1.5px solid var(--border);border-radius:12px;color:var(--text);font-size:14px;padding:10px 14px;font-family:inherit;resize:none;direction:rtl}
+.chat-input:focus{border-color:var(--primary);outline:none}
+.send-btn{background:var(--primary);color:#fff;border:none;border-radius:12px;padding:10px 20px;font-size:14px;font-weight:700;cursor:pointer;flex-shrink:0}
+.send-btn:hover{opacity:.9}
+.status-select{background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:6px 10px;font-size:13px;font-family:inherit}
+.empty-chat{flex:1;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;color:var(--text-muted)}
+.support-filters{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap}
 </style>
 </head>
 <body>
@@ -204,6 +234,9 @@ input{outline:none;font-family:inherit}
     </button>
     <button class="nav-item" onclick="showPage('passengers',this)">
       <span class="nav-icon">👥</span><span>المستخدمون</span>
+    </button>
+    <button class="nav-item" id="support-nav-btn" onclick="showPage('support',this)">
+      <span class="nav-icon">💬</span><span>الدعم الفني <span id="support-unread-badge" style="display:none;background:#EF4444;color:#fff;border-radius:10px;padding:1px 7px;font-size:11px;margin-right:4px">0</span></span>
     </button>
     <div class="sb-spacer"></div>
     <button class="logout-btn" onclick="doLogout()">
@@ -297,7 +330,202 @@ function showPage(page, btn){
   else if(page==='rides'){ loadRides(); refreshTimer=setInterval(loadRides,20000); }
   else if(page==='drivers'){ loadDrivers(); refreshTimer=setInterval(loadDrivers,20000); }
   else if(page==='passengers'){ loadPassengers(); }
+  else if(page==='support'){ loadSupport(); refreshTimer=setInterval(loadSupport,15000); }
 }
+
+// ── Support ────────────────────────────────────────────────────────────────────────────────
+let allTickets=[], selectedTicketId=null, supportFilter='all', supportMessages=[];
+
+async function loadSupport(){
+  if(currentPage!=='support') return;
+  const mc=document.getElementById('main-content');
+  try{
+    // جلب عدد غير مقروء
+    const unreadData = await q('support.adminUnreadCount');
+    const unreadCount = unreadData?.count || 0;
+    const badge = document.getElementById('support-unread-badge');
+    if(badge){
+      badge.textContent = unreadCount;
+      badge.style.display = unreadCount > 0 ? 'inline' : 'none';
+    }
+    // جلب التذاكر
+    allTickets = await q('support.adminGetTickets',{status:supportFilter==='all'?'all':supportFilter,userType:'all',limit:100,offset:0});
+    if(!Array.isArray(allTickets)) allTickets=[];
+    renderSupport();
+  }catch(e){ mc.innerHTML=`<div class="loading">⚠️ خطأ في تحميل بيانات الدعم</div>`; }
+}
+
+function renderSupport(){
+  const mc=document.getElementById('main-content');
+  const STATUSES=[['all','الكل'],['open','مفتوحة'],['in_progress','جارية'],['resolved','محلولة'],['closed','مغلقة']];
+  const STATUS_COLORS={open:{bg:'rgba(59,130,246,.15)',color:'#93C5FD'},in_progress:{bg:'rgba(245,158,11,.15)',color:'#FCD34D'},resolved:{bg:'rgba(34,197,94,.15)',color:'#86EFAC'},closed:{bg:'rgba(107,114,128,.15)',color:'#9CA3AF'}};
+  const CAT_LABELS={payment:'دفع',ride:'رحلة',account:'حساب',driver:'سائق',passenger:'راكب',app:'تطبيق',other:'أخرى'};
+
+  mc.innerHTML=`
+  <div class="page" style="padding:20px">
+    <div class="page-header">
+      <div><div class="page-title">💬 الدعم الفني</div><div class="page-sub">${allTickets.length} تذكرة</div></div>
+      <button class="refresh-btn" onclick="loadSupport()">🔄 تحديث</button>
+    </div>
+    <div class="support-filters">
+      ${STATUSES.map(([k,l])=>`<button class="filter-btn${supportFilter===k?' active':''}" onclick="setSupportFilter('${k}')">${l}</button>`).join('')}
+    </div>
+    <div class="support-layout">
+      <!-- قائمة التذاكر -->
+      <div class="ticket-list">
+        <div class="ticket-list-header">
+          <span>التذاكر (${allTickets.length})</span>
+        </div>
+        ${allTickets.length===0
+          ? '<div style="text-align:center;padding:40px;color:var(--text-muted)">💬 لا توجد تذاكر</div>'
+          : allTickets.map(t=>{
+              const sc=STATUS_COLORS[t.status]||{bg:'rgba(107,114,128,.15)',color:'#9CA3AF'};
+              return `<div class="ticket-item${selectedTicketId===t.id?' selected':''}" onclick="selectTicket(${t.id})">
+                <div class="ticket-subject">${t.subject||'بدون عنوان'} ${t.unreadByAdmin>0?`<span class="ticket-unread">${t.unreadByAdmin}</span>`:''}</div>
+                <div class="ticket-meta">
+                  <span style="background:${sc.bg};color:${sc.color};border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700">${t.status}</span>
+                  <span>${t.userName||'مجهول'}</span>
+                  <span style="color:var(--text-dim)">${t.createdAt?new Date(t.createdAt).toLocaleDateString('ar-IQ'):''}</span>
+                </div>
+                <div style="font-size:11px;color:var(--text-dim);margin-top:3px">${CAT_LABELS[t.category]||t.category||''} • ${t.userType==='passenger'?'راكب':'سائق'}</div>
+              </div>`;
+            }).join('')
+        }
+      </div>
+      <!-- لوحة المحادثة -->
+      <div class="chat-panel" id="chat-panel">
+        <div class="empty-chat">
+          <span style="font-size:48px">💬</span>
+          <span>اختر تذكرة لعرض المحادثة</span>
+        </div>
+      </div>
+    </div>
+  </div>`;
+
+  // إذا كان هناك تذكرة محددة مسبقاً، أعد فتحها
+  if(selectedTicketId) selectTicket(selectedTicketId);
+}
+
+function setSupportFilter(f){ supportFilter=f; loadSupport(); }
+
+async function selectTicket(ticketId){
+  selectedTicketId=ticketId;
+  // تحديث تمييز التذكرة المحددة
+  document.querySelectorAll('.ticket-item').forEach(el=>{
+    el.classList.toggle('selected', el.onclick?.toString().includes(`selectTicket(${ticketId})`));
+  });
+  const panel=document.getElementById('chat-panel');
+  if(!panel) return;
+  panel.innerHTML='<div class="empty-chat"><span style="font-size:32px">⏳</span><span>جاري تحميل الرسائل...</span></div>';
+  try{
+    const [ticket, msgs] = await Promise.all([
+      q('support.getTicket',{ticketId}),
+      q('support.getMessages',{ticketId})
+    ]);
+    // تحديث التذكرة كمقروءة من الإدارة
+    await m('support.markRead',{ticketId,readerType:'admin'});
+    supportMessages=Array.isArray(msgs)?msgs:[];
+    renderChatPanel(ticket, supportMessages);
+  }catch(e){
+    panel.innerHTML='<div class="empty-chat"><span>⚠️ خطأ في تحميل الرسائل</span></div>';
+  }
+}
+
+function renderChatPanel(ticket, msgs){
+  const panel=document.getElementById('chat-panel');
+  if(!panel) return;
+  const STATUS_COLORS={open:{bg:'rgba(59,130,246,.15)',color:'#93C5FD'},in_progress:{bg:'rgba(245,158,11,.15)',color:'#FCD34D'},resolved:{bg:'rgba(34,197,94,.15)',color:'#86EFAC'},closed:{bg:'rgba(107,114,128,.15)',color:'#9CA3AF'}};
+  const sc=STATUS_COLORS[ticket?.status]||{bg:'rgba(107,114,128,.15)',color:'#9CA3AF'};
+  panel.innerHTML=`
+    <div class="chat-header">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start">
+        <div>
+          <div class="chat-header-title">${ticket?.subject||'بدون عنوان'}</div>
+          <div class="chat-header-meta">
+            ${ticket?.userName||'مجهول'} • ${ticket?.userPhone||''} • ${ticket?.userType==='passenger'?'راكب':'سائق'}
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span style="background:${sc.bg};color:${sc.color};border-radius:8px;padding:4px 10px;font-size:12px;font-weight:700">${ticket?.status||''}</span>
+          <select class="status-select" onchange="changeTicketStatus(${ticket?.id},this.value)">
+            <option value="open">مفتوحة</option>
+            <option value="in_progress">جارية</option>
+            <option value="resolved">محلولة</option>
+            <option value="closed">مغلقة</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="chat-messages" id="chat-messages">
+      ${msgs.length===0
+        ? '<div style="text-align:center;color:var(--text-muted);padding:20px">لا توجد رسائل بعد</div>'
+        : msgs.map(msg=>{
+            const isAdmin=msg.senderType==='admin';
+            const time=msg.createdAt?new Date(msg.createdAt).toLocaleTimeString('ar-IQ',{hour:'2-digit',minute:'2-digit'}):'';
+            // رسالة صورة فقط
+            if(msg.imageUrl && !msg.message){
+              return `<div style="align-self:${isAdmin?'flex-end':'flex-start'};display:flex;flex-direction:column;gap:4px">
+                <img src="${msg.imageUrl}" class="msg-img" onclick="window.open('${msg.imageUrl}','_blank')" onerror="this.style.display='none'" />
+                <span class="msg-time" style="text-align:${isAdmin?'left':'right'}">${time}</span>
+              </div>`;
+            }
+            // رسالة نص مع صورة اختيارية
+            return `<div class="msg-bubble ${isAdmin?'msg-admin':'msg-user'}">
+              ${msg.message?`<div>${msg.message}</div>`:''}
+              ${msg.imageUrl?`<img src="${msg.imageUrl}" class="msg-img" onclick="window.open('${msg.imageUrl}','_blank')" onerror="this.style.display='none'" />`:
+''}
+              <div class="msg-time" style="color:${isAdmin?'rgba(255,255,255,.6)':'var(--text-dim)'}">${isAdmin?'إدارة مسار':msg.senderName||'مستخدم'} • ${time}</div>
+            </div>`;
+          }).join('')
+      }
+    </div>
+    <div class="chat-input-area">
+      <textarea id="admin-reply" class="chat-input" rows="2" placeholder="اكتب ردك هنا..."></textarea>
+      <button class="send-btn" onclick="sendAdminReply(${ticket?.id})">إرسال</button>
+    </div>`;
+
+  // ضبط الحالة المحددة
+  const sel=panel.querySelector('.status-select');
+  if(sel && ticket?.status) sel.value=ticket.status;
+
+  // التمرير لأسفل
+  const chatMsgs=document.getElementById('chat-messages');
+  if(chatMsgs) chatMsgs.scrollTop=chatMsgs.scrollHeight;
+}
+
+async function sendAdminReply(ticketId){
+  const input=document.getElementById('admin-reply');
+  const msg=(input?.value||'').trim();
+  if(!msg) return;
+  input.value='';
+  try{
+    await m('support.sendMessage',{ticketId,senderType:'admin',senderName:'إدارة مسار',message:msg});
+    // إعادة تحميل الرسائل
+    await selectTicket(ticketId);
+  }catch(e){ alert('خطأ في إرسال الرد'); }
+}
+
+async function changeTicketStatus(ticketId, status){
+  try{
+    await m('support.updateStatus',{ticketId,status});
+    await loadSupport();
+    if(selectedTicketId===ticketId) await selectTicket(ticketId);
+  }catch(e){ alert('خطأ في تحديث الحالة'); }
+}
+
+// تحديث شارة الدعم غير المقروء بشكل دوري
+async function updateSupportBadge(){
+  try{
+    const data = await q('support.adminUnreadCount');
+    const count = data?.count || 0;
+    const badge = document.getElementById('support-unread-badge');
+    if(badge){
+      badge.textContent = count;
+      badge.style.display = count > 0 ? 'inline' : 'none';
+    }
+  }catch(e){}
+}
+setInterval(updateSupportBadge, 30000);
 
 // ── Overview ──────────────────────────────────────────────────────────────────
 async function loadOverview(){

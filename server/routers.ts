@@ -2584,23 +2584,22 @@ export const appRouter = router({
           unreadByUser: 0,
         });
         if (ticketId) {
-          // إرسال الرسالة الأولى مع أول صورة مرفقة (إن وجدت)
-          const firstImageUrl = input.imageUrls?.[0];
+          // إرسال الرسالة النصية أولاً (منفصلة تماماً عن الصور)
           await addSupportMessage({
             ticketId,
             senderType: "user",
             senderName: input.userName,
             message: input.message,
-            imageUrl: firstImageUrl,
+            imageUrl: undefined,
           });
-          // إرسال باقي الصور كرسائل منفصلة
-          const extraImages = input.imageUrls?.slice(1) ?? [];
-          for (const imgUrl of extraImages) {
+          // إرسال كل صورة كرسالة منفصلة (بدون نص معها)
+          const imageUrls = input.imageUrls ?? [];
+          for (const imgUrl of imageUrls) {
             await addSupportMessage({
               ticketId,
               senderType: "user",
               senderName: input.userName,
-              message: "📎 صورة مرفقة",
+              message: "",
               imageUrl: imgUrl,
             });
           }
