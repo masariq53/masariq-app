@@ -7,7 +7,7 @@ import {
 import { useRouter } from "expo-router";
 import { ScreenContainer } from "@/components/screen-container";
 import { trpc } from "@/lib/trpc";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { usePassenger } from "@/lib/passenger-context";
 import MapView, { Marker, Polyline, PROVIDER_DEFAULT } from "react-native-maps";
 
 const CITY_COORDS: Record<string, { latitude: number; longitude: number }> = {
@@ -95,18 +95,14 @@ function isInTimeRange(dateVal: string | Date | null | undefined, filter: TimeFi
 
 export default function MyIntercityBookingsScreen() {
   const router = useRouter();
-  const [passenger, setPassenger] = useState<{ id: number } | null>(null);
-  const [loaded, setLoaded] = useState(false);
+  const { passenger: passengerCtx } = usePassenger();
+  const passenger = passengerCtx ? { id: passengerCtx.id } : null;
+  const loaded = true; // passenger is always ready from context
   const [refreshing, setRefreshing] = useState(false);
   const [ratingModal, setRatingModal] = useState<{ bookingId: number; tripId: number } | null>(null);
   const [selectedRating, setSelectedRating] = useState(5);
   const [timeFilter, setTimeFilter] = useState<TimeFilter>("all");
   const [page, setPage] = useState(1);
-
-  React.useEffect(() => {
-    // passenger data is loaded automatically by PassengerContext
-    setLoaded(true);
-  }, []);
 
   const bookingsQuery = trpc.intercity.myBookingsEnriched.useQuery(
     { passengerId: passenger?.id ?? 0 },
