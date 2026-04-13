@@ -2939,17 +2939,30 @@ export default function AdminDashboard() {
                       <TouchableOpacity
                         style={{ backgroundColor: '#22C55E', borderRadius: 10, padding: 12, alignItems: 'center' }}
                         disabled={agentTopupLoading}
-                        onPress={async () => {
+                        onPress={() => {
                           const amt = parseFloat(agentTopupAmount);
                           if (!amt || amt <= 0) { Alert.alert('خطأ', 'أدخل مبلغاً صحيحاً'); return; }
-                          setAgentTopupLoading(true);
-                          try {
-                            await topupAgentMutation.mutateAsync({ agentId: selectedAgent.id, amount: amt });
-                            setAgentTopupAmount('');
-                            Alert.alert('تم', `تم شحن ${amt.toLocaleString('ar-IQ')} د.ع بنجاح`);
-                            setShowAgentModal(false);
-                          } catch (e: any) { Alert.alert('خطأ', e.message); }
-                          setAgentTopupLoading(false);
+                          Alert.alert(
+                            'تأكيد شحن الرصيد',
+                            `هل تريد شحن ${amt.toLocaleString('ar-IQ')} د.ع لحساب الوكيل ${selectedAgent.name}؟`,
+                            [
+                              { text: 'إلغاء', style: 'cancel' },
+                              {
+                                text: 'تأكيد الشحن',
+                                style: 'default',
+                                onPress: async () => {
+                                  setAgentTopupLoading(true);
+                                  try {
+                                    await topupAgentMutation.mutateAsync({ agentId: selectedAgent.id, amount: amt });
+                                    setAgentTopupAmount('');
+                                    Alert.alert('✅ تم بنجاح', `تم شحن ${amt.toLocaleString('ar-IQ')} د.ع لحساب ${selectedAgent.name}`);
+                                    setShowAgentModal(false);
+                                  } catch (e: any) { Alert.alert('خطأ', e.message); }
+                                  setAgentTopupLoading(false);
+                                }
+                              }
+                            ]
+                          );
                         }}
                       >
                         {agentTopupLoading ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontWeight: '700' }}>شحن الرصيد</Text>}
@@ -2982,8 +2995,21 @@ export default function AdminDashboard() {
                       <TouchableOpacity
                         style={{ backgroundColor: '#F59E0B', borderRadius: 10, padding: 12, alignItems: 'center' }}
                         onPress={() => {
-                          suspendAgentMutation.mutate({ agentId: selectedAgent.id });
-                          setShowAgentModal(false);
+                          Alert.alert(
+                            '⚠️ تأكيد إيقاف الحساب',
+                            `هل تريد إيقاف حساب الوكيل ${selectedAgent.name} مؤقتاً؟ لن يتمكن من الوصول إلى التطبيق حتى إعادة التفعيل.`,
+                            [
+                              { text: 'إلغاء', style: 'cancel' },
+                              {
+                                text: 'إيقاف الحساب',
+                                style: 'destructive',
+                                onPress: () => {
+                                  suspendAgentMutation.mutate({ agentId: selectedAgent.id });
+                                  setShowAgentModal(false);
+                                }
+                              }
+                            ]
+                          );
                         }}
                       >
                         <Text style={{ color: '#fff', fontWeight: '700' }}>🚫 إيقاف الحساب</Text>
@@ -2997,20 +3023,7 @@ export default function AdminDashboard() {
                         <Text style={{ color: '#fff', fontWeight: '700' }}>✅ إعادة تفعيل</Text>
                       </TouchableOpacity>
                     )}
-                    <TouchableOpacity
-                      style={{ backgroundColor: '#7F1D1D', borderRadius: 10, padding: 12, alignItems: 'center', borderWidth: 1, borderColor: '#EF4444' }}
-                      onPress={() => {
-                        if (selectedAgent) {
-                          deleteAgentMutation.mutate({ agentId: selectedAgent.id });
-                        }
-                      }}
-                    >
-                      {deleteAgentMutation.isPending ? (
-                        <ActivityIndicator color="#EF4444" />
-                      ) : (
-                        <Text style={{ color: '#EF4444', fontWeight: '700' }}>🗑️ حذف الحساب نهائياً</Text>
-                      )}
-                    </TouchableOpacity>
+
                     <TouchableOpacity
                       style={{ backgroundColor: '#333', borderRadius: 10, padding: 12, alignItems: 'center' }}
                       onPress={() => setShowAgentModal(false)}
