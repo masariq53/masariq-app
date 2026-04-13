@@ -1964,6 +1964,89 @@ export const appRouter = router({
         } catch (e) { console.warn("[Push] passenger block notification error:", e); }
         return { success: true, message: input.isBlocked ? "تم تعطيل حساب المستخدم" : "تم تفعيل حساب المستخدم" };
       }),
+
+    /**
+     * Get driver's city rides history (admin view)
+     */
+    driverCityRides: publicProcedure
+      .input(z.object({ driverId: z.number(), limit: z.number().default(50) }))
+      .query(async ({ input }) => {
+        const db = await getDb();
+        if (!db) return [];
+        const { rides: ridesTable, passengers, walletTransactions: walletTx } = await import("../drizzle/schema");
+        const { eq, desc, and } = await import("drizzle-orm");
+        const ridesList = await db
+          .select()
+          .from(ridesTable)
+          .where(eq(ridesTable.driverId, input.driverId))
+          .orderBy(desc(ridesTable.createdAt))
+          .limit(input.limit);
+        // Enrich with passenger name and wallet transaction
+        const enriched = await Promise.all(ridesList.map(async (r) => {
+          let passengerName: string | null = null;
+          let passengerPhone: string | null = null;
+          try {
+            const [p] = await db.select({ name: passengers.name, phone: passengers.phone }).from(passengers).where(eq(passengers.id, r.passengerId)).limit(1);
+            passengerName = p?.name ?? null;
+            passengerPhone = p?.phone ?? null;
+          } catch {}
+          let walletTxData: { amount: string; balanceBefore: string | null; balanceAfter: string | null; description: string | null } | null = null;
+          try {
+            const [tx] = await db.select({ amount: walletTx.amount, balanceBefore: walletTx.balanceBefore, balanceAfter: walletTx.balanceAfter, description: walletTx.description })
+              .from(walletTx)
+              .where(and(eq(walletTx.rideId, r.id), eq(walletTx.userType, "driver")))
+              .limit(1);
+            if (tx) walletTxData = { amount: tx.amount?.toString() ?? "0", balanceBefore: tx.balanceBefore?.toString() ?? null, balanceAfter: tx.balanceAfter?.toString() ?? null, description: tx.description ?? null };
+          } catch {}
+          return { ...r, passengerName, passengerPhone, walletTx: walletTxData };
+        }));
+        return enriched;
+      }),
+
+    /**
+     * Get driver's intercity trips history (admin view)
+     */
+    driverIntercityTrips: publicProcedure
+      .input(z.object({ driverId: z.number(), limit: z.number().default(50) }))
+      .query(async ({ input }) => {
+        const db = await getDb();
+        if (!db) return [];
+        const { intercityTrips: tripsTable, intercityBookings } = await import("../drizzle/schema");
+        const { eq, desc } = await import("drizzle-orm");
+        const trips = await db
+          .select()
+          .from(tripsTable)
+          .where(eq(tripsTable.driverId, input.driverId))
+          .orderBy(desc(tripsTable.createdAt))
+          .limit(input.limit);
+        // Enrich with bookings count and total earnings
+        const enriched = await Promise.all(trips.map(async (t) => {
+          const bookings = await db.select().from(intercityBookings).where(eq(intercityBookings.tripId, t.id));
+          const confirmedBookings = bookings.filter(b => b.status === "confirmed" || b.status === "completed");
+          const totalEarnings = confirmedBookings.reduce((sum, b) => sum + parseFloat(b.totalPrice?.toString() ?? "0"), 0);
+          const commission = Math.round(totalEarnings * 0.1 * 100) / 100;
+          return { ...t, bookingsCount: bookings.length, confirmedBookings: confirmedBookings.length, totalEarnings: Math.round(totalEarnings), commission: Math.round(commission), passengers: confirmedBookings.map(b => ({ name: b.passengerName, phone: b.passengerPhone, seats: b.seatsBooked, price: b.totalPrice?.toString() })) };
+        }));
+        return enriched;
+      }),
+
+    /**
+     * Get driver's parcel deliveries history (admin view)
+     */
+    driverParcelHistory: publicProcedure
+      .input(z.object({ driverId: z.number(), limit: z.number().default(50) }))
+      .query(async ({ input }) => {
+        const db = await getDb();
+        if (!db) return [];
+        const { parcels: parcelsTable } = await import("../drizzle/schema");
+        const { eq, desc } = await import("drizzle-orm");
+        return db
+          .select()
+          .from(parcelsTable)
+          .where(eq(parcelsTable.driverId, input.driverId))
+          .orderBy(desc(parcelsTable.createdAt))
+          .limit(input.limit);
+      }),
   }),
   // ─── Intercity Trips ───────────────────────────────────────────────────────────
   intercity: router({
