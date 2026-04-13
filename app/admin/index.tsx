@@ -131,6 +131,27 @@ export default function AdminDashboard() {
     { driverId: historyDriverId ?? 0, fromDate: historyFromDate || undefined, toDate: historyToDate || undefined },
     { enabled: !!historyDriverId && historyTabState === 'parcels' }
   );
+  // ─── Passenger History State
+  const [historyPassengerId, setHistoryPassengerId] = useState<number | null>(null);
+  const [historyPassengerName, setHistoryPassengerName] = useState<string>('');
+  const [historyPassengerPhone, setHistoryPassengerPhone] = useState<string>('');
+  const [historyPaxTab, setHistoryPaxTab] = useState<'city' | 'intercity' | 'parcels'>('city');
+  const [historyPaxFrom, setHistoryPaxFrom] = useState<string>('');
+  const [historyPaxTo, setHistoryPaxTo] = useState<string>('');
+
+  const { data: passengerCityRides, isLoading: paxCityLoading } = trpc.admin.passengerCityRides.useQuery(
+    { passengerId: historyPassengerId ?? 0, fromDate: historyPaxFrom || undefined, toDate: historyPaxTo || undefined },
+    { enabled: !!historyPassengerId && historyPaxTab === 'city' }
+  );
+  const { data: passengerIntercityBookings, isLoading: paxIntercityLoading } = trpc.admin.passengerIntercityBookings.useQuery(
+    { passengerId: historyPassengerId ?? 0, fromDate: historyPaxFrom || undefined, toDate: historyPaxTo || undefined },
+    { enabled: !!historyPassengerId && historyPaxTab === 'intercity' }
+  );
+  const { data: passengerParcelHistory, isLoading: paxParcelLoading } = trpc.admin.passengerParcelHistory.useQuery(
+    { passengerId: historyPassengerId ?? 0, fromDate: historyPaxFrom || undefined, toDate: historyPaxTo || undefined },
+    { enabled: !!historyPassengerId && historyPaxTab === 'parcels' }
+  );
+
   const { data: allPassengers, isLoading: passengersLoading, refetch: refetchPassengers } = trpc.admin.passengers.useQuery({ limit: 500 });
   const { data: allRides, isLoading: allRidesLoading, refetch: refetchAllRides } = trpc.admin.rides.useQuery({ limit: 50 });
   const { data: ridesDetailedData, isLoading: ridesDetailedLoading, refetch: refetchRidesDetailed } = trpc.admin.ridesDetailed.useQuery(
@@ -1432,6 +1453,19 @@ export default function AdminDashboard() {
                           <Text style={styles.balanceValue}>{Math.round(parseFloat(p.walletBalance?.toString() || "0")).toLocaleString()}</Text>
                           <Text style={styles.balanceLabel}>دينار</Text>
                         </View>
+                        <TouchableOpacity
+                          style={{ backgroundColor: '#6C3FC522', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, borderWidth: 1, borderColor: '#6C3FC5', marginBottom: 4 }}
+                          onPress={() => {
+                            setHistoryPassengerId(p.id);
+                            setHistoryPassengerName(p.name || p.phone || 'مستخدم');
+                            setHistoryPassengerPhone(p.phone || '');
+                            setHistoryPaxTab('city');
+                            setHistoryPaxFrom('');
+                            setHistoryPaxTo('');
+                          }}
+                        >
+                          <Text style={{ fontSize: 11, color: '#A78BFA', fontWeight: '600' }}>📋 سجل</Text>
+                        </TouchableOpacity>
                         <TouchableOpacity
                           style={{ backgroundColor: isBlocked ? '#22C55E22' : '#EF444422', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, borderWidth: 1, borderColor: isBlocked ? '#22C55E' : '#EF4444' }}
                           onPress={() => {
@@ -2994,6 +3028,216 @@ export default function AdminDashboard() {
           </View>
         </View>
       </Modal>
+      {/* Passenger Ride History Modal */}
+      <Modal visible={!!historyPassengerId} transparent animationType="slide" onRequestClose={() => setHistoryPassengerId(null)}>
+        <View style={styles.modalOverlay}>
+          <View style={{ backgroundColor: '#0D0D1A', borderRadius: 20, padding: 0, width: '96%', maxHeight: '92%', overflow: 'hidden' }}>
+            {/* Header */}
+            <View style={{ backgroundColor: '#1A0533', padding: 16, borderTopLeftRadius: 20, borderTopRightRadius: 20 }}>
+              <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Text style={{ color: '#FFD700', fontSize: 16, fontWeight: '800' }}>
+                  📋 سجل رحلات {historyPassengerName || 'المستخدم'}
+                </Text>
+                <TouchableOpacity onPress={() => setHistoryPassengerId(null)}>
+                  <Text style={{ color: '#9B8EC4', fontSize: 20 }}>✕</Text>
+                </TouchableOpacity>
+              </View>
+              <Text style={{ color: '#9B8EC4', fontSize: 12, marginTop: 4, textAlign: 'right' }}>{historyPassengerPhone}</Text>
+              {/* Date Filter */}
+              <View style={{ flexDirection: 'row-reverse', gap: 8, marginTop: 10 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: '#9B8EC4', fontSize: 10, marginBottom: 3, textAlign: 'right' }}>من تاريخ</Text>
+                  <TextInput
+                    style={{ backgroundColor: '#2D1B4E', color: '#fff', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 6, fontSize: 12, textAlign: 'right' }}
+                    placeholder="YYYY-MM-DD"
+                    placeholderTextColor="#9B8EC4"
+                    value={historyPaxFrom}
+                    onChangeText={setHistoryPaxFrom}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: '#9B8EC4', fontSize: 10, marginBottom: 3, textAlign: 'right' }}>إلى تاريخ</Text>
+                  <TextInput
+                    style={{ backgroundColor: '#2D1B4E', color: '#fff', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 6, fontSize: 12, textAlign: 'right' }}
+                    placeholder="YYYY-MM-DD"
+                    placeholderTextColor="#9B8EC4"
+                    value={historyPaxTo}
+                    onChangeText={setHistoryPaxTo}
+                  />
+                </View>
+                {(historyPaxFrom || historyPaxTo) && (
+                  <TouchableOpacity
+                    style={{ alignSelf: 'flex-end', backgroundColor: '#7C3AED22', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1, borderColor: '#7C3AED' }}
+                    onPress={() => { setHistoryPaxFrom(''); setHistoryPaxTo(''); }}
+                  >
+                    <Text style={{ color: '#A78BFA', fontSize: 11 }}>✕ مسح</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+            {/* Tabs */}
+            <View style={{ flexDirection: 'row-reverse', backgroundColor: '#1A0533', borderBottomWidth: 1, borderBottomColor: '#2D1B4E' }}>
+              {[{ key: 'city', label: '🚗 داخل المدن' }, { key: 'intercity', label: '🚥 بين المدن' }, { key: 'parcels', label: '📦 طرود' }].map(tab => (
+                <TouchableOpacity
+                  key={tab.key}
+                  style={{ flex: 1, paddingVertical: 12, alignItems: 'center', borderBottomWidth: 2, borderBottomColor: historyPaxTab === tab.key ? '#FFD700' : 'transparent' }}
+                  onPress={() => setHistoryPaxTab(tab.key as any)}
+                >
+                  <Text style={{ color: historyPaxTab === tab.key ? '#FFD700' : '#9B8EC4', fontSize: 12, fontWeight: historyPaxTab === tab.key ? '700' : '400' }}>{tab.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 12 }}>
+              {/* City Rides Tab */}
+              {historyPaxTab === 'city' && (
+                paxCityLoading ? <ActivityIndicator color="#FFD700" style={{ marginTop: 40 }} /> :
+                <>
+                  {/* Totals Card */}
+                  {passengerCityRides?.totals && (
+                    <View style={{ backgroundColor: '#1A0533', borderRadius: 12, padding: 12, marginBottom: 12 }}>
+                      <Text style={{ color: '#FFD700', fontSize: 13, fontWeight: '700', marginBottom: 8, textAlign: 'right' }}>📊 إجماليات رحلات داخل المدن</Text>
+                      <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8 }}>
+                        <View style={{ backgroundColor: '#2D1B4E', borderRadius: 8, padding: 8, alignItems: 'center', minWidth: 70 }}>
+                          <Text style={{ color: '#A78BFA', fontSize: 18, fontWeight: '800' }}>{passengerCityRides.totals.count}</Text>
+                          <Text style={{ color: '#9B8EC4', fontSize: 10 }}>إجمالي</Text>
+                        </View>
+                        <View style={{ backgroundColor: '#2D1B4E', borderRadius: 8, padding: 8, alignItems: 'center', minWidth: 70 }}>
+                          <Text style={{ color: '#22C55E', fontSize: 18, fontWeight: '800' }}>{passengerCityRides.totals.completed}</Text>
+                          <Text style={{ color: '#9B8EC4', fontSize: 10 }}>مكتملة</Text>
+                        </View>
+                        <View style={{ backgroundColor: '#2D1B4E', borderRadius: 8, padding: 8, alignItems: 'center', minWidth: 70 }}>
+                          <Text style={{ color: '#EF4444', fontSize: 18, fontWeight: '800' }}>{passengerCityRides.totals.cancelled}</Text>
+                          <Text style={{ color: '#9B8EC4', fontSize: 10 }}>ملغاة</Text>
+                        </View>
+                        <View style={{ backgroundColor: '#2D1B4E', borderRadius: 8, padding: 8, alignItems: 'center', minWidth: 90 }}>
+                          <Text style={{ color: '#FFD700', fontSize: 14, fontWeight: '800' }}>{passengerCityRides.totals.totalFare.toLocaleString()}</Text>
+                          <Text style={{ color: '#9B8EC4', fontSize: 10 }}>د.ع إجمالي</Text>
+                        </View>
+                      </View>
+                    </View>
+                  )}
+                  {passengerCityRides?.rides && passengerCityRides.rides.length > 0 ? passengerCityRides.rides.map((r: any) => (
+                    <View key={r.id} style={{ backgroundColor: '#1A0533', borderRadius: 10, padding: 12, marginBottom: 8 }}>
+                      <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 6 }}>
+                        <Text style={{ color: r.status === 'completed' ? '#22C55E' : r.status === 'cancelled' ? '#EF4444' : '#FFD700', fontSize: 11, fontWeight: '700' }}>
+                          {r.status === 'completed' ? '✅ مكتملة' : r.status === 'cancelled' ? '❌ ملغاة' : r.status === 'in_progress' ? '🟡 جارية' : r.status}
+                        </Text>
+                        <Text style={{ color: '#9B8EC4', fontSize: 11 }}>{r.createdAt ? new Date(r.createdAt).toLocaleDateString('ar-IQ') + ' ' + new Date(r.createdAt).toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit' }) : '—'}</Text>
+                      </View>
+                      <View style={{ flexDirection: 'row-reverse', gap: 6, marginBottom: 4 }}>
+                        <Text style={{ color: '#A78BFA', fontSize: 11 }}>📍 {r.pickupAddress || 'الانطلاق'}</Text>
+                        <Text style={{ color: '#9B8EC4', fontSize: 11 }}>←</Text>
+                        <Text style={{ color: '#A78BFA', fontSize: 11 }}>{r.dropoffAddress || 'الوصول'}</Text>
+                      </View>
+                      {r.driverName && <Text style={{ color: '#9B8EC4', fontSize: 11, textAlign: 'right' }}>🚗 السائق: {r.driverName} {r.driverPhone ? `(${r.driverPhone})` : ''}</Text>}
+                      <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', marginTop: 6, paddingTop: 6, borderTopWidth: 1, borderTopColor: '#2D1B4E' }}>
+                        <Text style={{ color: '#FFD700', fontSize: 13, fontWeight: '700' }}>💰 {r.fare ? Math.round(parseFloat(r.fare)).toLocaleString() : '—'} د.ع</Text>
+                        {r.distance && <Text style={{ color: '#9B8EC4', fontSize: 11 }}>📍 {parseFloat(r.distance).toFixed(1)} كم</Text>}
+                      </View>
+                    </View>
+                  )) : <Text style={{ color: '#9B8EC4', textAlign: 'center', marginTop: 30 }}>لا توجد رحلات داخل المدن</Text>}
+                </>
+              )}
+              {/* Intercity Bookings Tab */}
+              {historyPaxTab === 'intercity' && (
+                paxIntercityLoading ? <ActivityIndicator color="#FFD700" style={{ marginTop: 40 }} /> :
+                <>
+                  {passengerIntercityBookings?.totals && (
+                    <View style={{ backgroundColor: '#1A0533', borderRadius: 12, padding: 12, marginBottom: 12 }}>
+                      <Text style={{ color: '#FFD700', fontSize: 13, fontWeight: '700', marginBottom: 8, textAlign: 'right' }}>📊 إجماليات رحلات بين المدن</Text>
+                      <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8 }}>
+                        <View style={{ backgroundColor: '#2D1B4E', borderRadius: 8, padding: 8, alignItems: 'center', minWidth: 70 }}>
+                          <Text style={{ color: '#A78BFA', fontSize: 18, fontWeight: '800' }}>{passengerIntercityBookings.totals.count}</Text>
+                          <Text style={{ color: '#9B8EC4', fontSize: 10 }}>إجمالي</Text>
+                        </View>
+                        <View style={{ backgroundColor: '#2D1B4E', borderRadius: 8, padding: 8, alignItems: 'center', minWidth: 70 }}>
+                          <Text style={{ color: '#22C55E', fontSize: 18, fontWeight: '800' }}>{passengerIntercityBookings.totals.completed}</Text>
+                          <Text style={{ color: '#9B8EC4', fontSize: 10 }}>مكتملة</Text>
+                        </View>
+                        <View style={{ backgroundColor: '#2D1B4E', borderRadius: 8, padding: 8, alignItems: 'center', minWidth: 70 }}>
+                          <Text style={{ color: '#EF4444', fontSize: 18, fontWeight: '800' }}>{passengerIntercityBookings.totals.cancelled}</Text>
+                          <Text style={{ color: '#9B8EC4', fontSize: 10 }}>ملغاة</Text>
+                        </View>
+                        <View style={{ backgroundColor: '#2D1B4E', borderRadius: 8, padding: 8, alignItems: 'center', minWidth: 90 }}>
+                          <Text style={{ color: '#FFD700', fontSize: 14, fontWeight: '800' }}>{passengerIntercityBookings.totals.totalSpent.toLocaleString()}</Text>
+                          <Text style={{ color: '#9B8EC4', fontSize: 10 }}>د.ع أجمالي</Text>
+                        </View>
+                      </View>
+                    </View>
+                  )}
+                  {passengerIntercityBookings?.bookings && passengerIntercityBookings.bookings.length > 0 ? passengerIntercityBookings.bookings.map((b: any) => (
+                    <View key={b.id} style={{ backgroundColor: '#1A0533', borderRadius: 10, padding: 12, marginBottom: 8 }}>
+                      <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 6 }}>
+                        <Text style={{ color: b.status === 'completed' ? '#22C55E' : b.status === 'cancelled' ? '#EF4444' : '#FFD700', fontSize: 11, fontWeight: '700' }}>
+                          {b.status === 'completed' ? '✅ مكتملة' : b.status === 'cancelled' ? '❌ ملغاة' : b.status === 'confirmed' ? '🟢 مؤكدة' : b.status}
+                        </Text>
+                        <Text style={{ color: '#9B8EC4', fontSize: 11 }}>{b.createdAt ? new Date(b.createdAt).toLocaleDateString('ar-IQ') : '—'}</Text>
+                      </View>
+                      {b.trip && (
+                        <Text style={{ color: '#A78BFA', fontSize: 12, textAlign: 'right', marginBottom: 4 }}>
+                          🚥 {b.trip.fromCity} ← {b.trip.toCity}
+                        </Text>
+                      )}
+                      {b.driverName && <Text style={{ color: '#9B8EC4', fontSize: 11, textAlign: 'right' }}>🚗 السائق: {b.driverName}</Text>}
+                      <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', marginTop: 6, paddingTop: 6, borderTopWidth: 1, borderTopColor: '#2D1B4E' }}>
+                        <Text style={{ color: '#FFD700', fontSize: 13, fontWeight: '700' }}>💰 {b.totalPrice ? Math.round(parseFloat(b.totalPrice)).toLocaleString() : '—'} د.ع</Text>
+                        <Text style={{ color: '#9B8EC4', fontSize: 11 }}>👤 {b.seatsBooked || 1} مقعد</Text>
+                      </View>
+                    </View>
+                  )) : <Text style={{ color: '#9B8EC4', textAlign: 'center', marginTop: 30 }}>لا توجد حجوزات بين المدن</Text>}
+                </>
+              )}
+              {/* Parcels Tab */}
+              {historyPaxTab === 'parcels' && (
+                paxParcelLoading ? <ActivityIndicator color="#FFD700" style={{ marginTop: 40 }} /> :
+                <>
+                  {passengerParcelHistory?.totals && (
+                    <View style={{ backgroundColor: '#1A0533', borderRadius: 12, padding: 12, marginBottom: 12 }}>
+                      <Text style={{ color: '#FFD700', fontSize: 13, fontWeight: '700', marginBottom: 8, textAlign: 'right' }}>📊 إجماليات طرود المستخدم</Text>
+                      <View style={{ flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8 }}>
+                        <View style={{ backgroundColor: '#2D1B4E', borderRadius: 8, padding: 8, alignItems: 'center', minWidth: 70 }}>
+                          <Text style={{ color: '#A78BFA', fontSize: 18, fontWeight: '800' }}>{passengerParcelHistory.totals.count}</Text>
+                          <Text style={{ color: '#9B8EC4', fontSize: 10 }}>إجمالي</Text>
+                        </View>
+                        <View style={{ backgroundColor: '#2D1B4E', borderRadius: 8, padding: 8, alignItems: 'center', minWidth: 70 }}>
+                          <Text style={{ color: '#22C55E', fontSize: 18, fontWeight: '800' }}>{passengerParcelHistory.totals.delivered}</Text>
+                          <Text style={{ color: '#9B8EC4', fontSize: 10 }}>مسلمة</Text>
+                        </View>
+                        <View style={{ backgroundColor: '#2D1B4E', borderRadius: 8, padding: 8, alignItems: 'center', minWidth: 70 }}>
+                          <Text style={{ color: '#EF4444', fontSize: 18, fontWeight: '800' }}>{passengerParcelHistory.totals.cancelled}</Text>
+                          <Text style={{ color: '#9B8EC4', fontSize: 10 }}>ملغاة</Text>
+                        </View>
+                        <View style={{ backgroundColor: '#2D1B4E', borderRadius: 8, padding: 8, alignItems: 'center', minWidth: 90 }}>
+                          <Text style={{ color: '#FFD700', fontSize: 14, fontWeight: '800' }}>{passengerParcelHistory.totals.totalSpent.toLocaleString()}</Text>
+                          <Text style={{ color: '#9B8EC4', fontSize: 10 }}>د.ع أجمالي</Text>
+                        </View>
+                      </View>
+                    </View>
+                  )}
+                  {passengerParcelHistory?.parcels && passengerParcelHistory.parcels.length > 0 ? passengerParcelHistory.parcels.map((p: any) => (
+                    <View key={p.id} style={{ backgroundColor: '#1A0533', borderRadius: 10, padding: 12, marginBottom: 8 }}>
+                      <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 6 }}>
+                        <Text style={{ color: p.status === 'delivered' ? '#22C55E' : p.status === 'cancelled' ? '#EF4444' : '#FFD700', fontSize: 11, fontWeight: '700' }}>
+                          {p.status === 'delivered' ? '✅ مسلم' : p.status === 'cancelled' ? '❌ ملغي' : p.status === 'in_transit' ? '📦 في الطريق' : p.status}
+                        </Text>
+                        <Text style={{ color: '#9B8EC4', fontSize: 11 }}>{p.createdAt ? new Date(p.createdAt).toLocaleDateString('ar-IQ') : '—'}</Text>
+                      </View>
+                      {p.trackingNumber && <Text style={{ color: '#A78BFA', fontSize: 11, textAlign: 'right' }}>🔍 {p.trackingNumber}</Text>}
+                      <Text style={{ color: '#ccc', fontSize: 12, textAlign: 'right', marginTop: 2 }}>📍 {p.deliveryAddress || 'عنوان التوصيل'}</Text>
+                      {p.recipientName && <Text style={{ color: '#9B8EC4', fontSize: 11, textAlign: 'right' }}>👤 المستلم: {p.recipientName}</Text>}
+                      {p.driverName && <Text style={{ color: '#9B8EC4', fontSize: 11, textAlign: 'right' }}>🚗 السائق: {p.driverName}</Text>}
+                      <View style={{ flexDirection: 'row-reverse', justifyContent: 'flex-start', marginTop: 6, paddingTop: 6, borderTopWidth: 1, borderTopColor: '#2D1B4E' }}>
+                        <Text style={{ color: '#FFD700', fontSize: 13, fontWeight: '700' }}>💰 {p.price ? Math.round(parseFloat(p.price)).toLocaleString() : '—'} د.ع</Text>
+                      </View>
+                    </View>
+                  )) : <Text style={{ color: '#9B8EC4', textAlign: 'center', marginTop: 30 }}>لا توجد طرود</Text>}
+                </>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
       {/* Agent Detail Modal */}
       <Modal visible={showAgentModal} transparent animationType="slide" onRequestClose={() => setShowAgentModal(false)}>
         <View style={styles.modalOverlay}>

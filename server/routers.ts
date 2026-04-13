@@ -2073,6 +2073,122 @@ export const appRouter = router({
           totals: { count: parcelsList.length, delivered: delivered.length, cancelled: parcelsList.filter(p => p.status === 'cancelled').length, totalRevenue: Math.round(totalRevenue) }
         };
       }),
+
+    /**
+     * Get passenger's city rides history (admin view)
+     */
+    passengerCityRides: publicProcedure
+      .input(z.object({ passengerId: z.number(), limit: z.number().default(100), fromDate: z.string().optional(), toDate: z.string().optional() }))
+      .query(async ({ input }) => {
+        const db = await getDb();
+        if (!db) return { rides: [], totals: { count: 0, completed: 0, cancelled: 0, totalFare: 0 } };
+        const { rides: ridesTable, drivers } = await import("../drizzle/schema");
+        const { eq, desc, and, gte, lte } = await import("drizzle-orm");
+        const conditions: any[] = [eq(ridesTable.passengerId, input.passengerId)];
+        if (input.fromDate) conditions.push(gte(ridesTable.createdAt, new Date(input.fromDate)));
+        if (input.toDate) { const to = new Date(input.toDate); to.setHours(23,59,59,999); conditions.push(lte(ridesTable.createdAt, to)); }
+        const ridesList = await db
+          .select()
+          .from(ridesTable)
+          .where(and(...conditions))
+          .orderBy(desc(ridesTable.createdAt))
+          .limit(input.limit);
+        const enriched = await Promise.all(ridesList.map(async (r) => {
+          let driverName: string | null = null;
+          let driverPhone: string | null = null;
+          try {
+            if (r.driverId) {
+              const [d] = await db.select({ name: drivers.name, phone: drivers.phone }).from(drivers).where(eq(drivers.id, r.driverId)).limit(1);
+              driverName = d?.name ?? null;
+              driverPhone = d?.phone ?? null;
+            }
+          } catch {}
+          return { ...r, driverName, driverPhone };
+        }));
+        const completed = enriched.filter(r => r.status === 'completed');
+        const totalFare = completed.reduce((s, r) => s + parseFloat(r.fare?.toString() ?? '0'), 0);
+        return {
+          rides: enriched,
+          totals: { count: enriched.length, completed: completed.length, cancelled: enriched.filter(r => r.status === 'cancelled').length, totalFare: Math.round(totalFare) }
+        };
+      }),
+
+    /**
+     * Get passenger's intercity bookings history (admin view)
+     */
+    passengerIntercityBookings: publicProcedure
+      .input(z.object({ passengerId: z.number(), limit: z.number().default(100), fromDate: z.string().optional(), toDate: z.string().optional() }))
+      .query(async ({ input }) => {
+        const db = await getDb();
+        if (!db) return { bookings: [], totals: { count: 0, completed: 0, cancelled: 0, totalSpent: 0 } };
+        const { intercityBookings, intercityTrips: tripsTable, drivers } = await import("../drizzle/schema");
+        const { eq, desc, and, gte, lte } = await import("drizzle-orm");
+        const conditions: any[] = [eq(intercityBookings.passengerId, input.passengerId)];
+        if (input.fromDate) conditions.push(gte(intercityBookings.createdAt, new Date(input.fromDate)));
+        if (input.toDate) { const to = new Date(input.toDate); to.setHours(23,59,59,999); conditions.push(lte(intercityBookings.createdAt, to)); }
+        const bookingsList = await db
+          .select()
+          .from(intercityBookings)
+          .where(and(...conditions))
+          .orderBy(desc(intercityBookings.createdAt))
+          .limit(input.limit);
+        const enriched = await Promise.all(bookingsList.map(async (b) => {
+          let trip: any = null;
+          let driverName: string | null = null;
+          try {
+            const [t] = await db.select().from(tripsTable).where(eq(tripsTable.id, b.tripId)).limit(1);
+            trip = t ?? null;
+            if (t?.driverId) {
+              const [d] = await db.select({ name: drivers.name, phone: drivers.phone }).from(drivers).where(eq(drivers.id, t.driverId)).limit(1);
+              driverName = d?.name ?? null;
+            }
+          } catch {}
+          return { ...b, trip, driverName };
+        }));
+        const completed = enriched.filter(b => b.status === 'completed');
+        const totalSpent = completed.reduce((s, b) => s + parseFloat(b.totalPrice?.toString() ?? '0'), 0);
+        return {
+          bookings: enriched,
+          totals: { count: enriched.length, completed: completed.length, cancelled: enriched.filter(b => b.status === 'cancelled').length, totalSpent: Math.round(totalSpent) }
+        };
+      }),
+
+    /**
+     * Get passenger's parcel orders history (admin view)
+     */
+    passengerParcelHistory: publicProcedure
+      .input(z.object({ passengerId: z.number(), limit: z.number().default(100), fromDate: z.string().optional(), toDate: z.string().optional() }))
+      .query(async ({ input }) => {
+        const db = await getDb();
+        if (!db) return { parcels: [], totals: { count: 0, delivered: 0, cancelled: 0, totalSpent: 0 } };
+        const { parcels: parcelsTable, drivers } = await import("../drizzle/schema");
+        const { eq, desc, and, gte, lte } = await import("drizzle-orm");
+        const conditions: any[] = [eq(parcelsTable.senderId, input.passengerId)];
+        if (input.fromDate) conditions.push(gte(parcelsTable.createdAt, new Date(input.fromDate)));
+        if (input.toDate) { const to = new Date(input.toDate); to.setHours(23,59,59,999); conditions.push(lte(parcelsTable.createdAt, to)); }
+        const parcelsList = await db
+          .select()
+          .from(parcelsTable)
+          .where(and(...conditions))
+          .orderBy(desc(parcelsTable.createdAt))
+          .limit(input.limit);
+        const enriched = await Promise.all(parcelsList.map(async (p) => {
+          let driverName: string | null = null;
+          try {
+            if (p.driverId) {
+              const [d] = await db.select({ name: drivers.name, phone: drivers.phone }).from(drivers).where(eq(drivers.id, p.driverId)).limit(1);
+              driverName = d?.name ?? null;
+            }
+          } catch {}
+          return { ...p, driverName };
+        }));
+        const delivered = enriched.filter(p => p.status === 'delivered');
+        const totalSpent = delivered.reduce((s, p) => s + parseFloat(p.price?.toString() ?? '0'), 0);
+        return {
+          parcels: enriched,
+          totals: { count: enriched.length, delivered: delivered.length, cancelled: enriched.filter(p => p.status === 'cancelled').length, totalSpent: Math.round(totalSpent) }
+        };
+      }),
   }),
   // ─── Intercity Trips ───────────────────────────────────────────────────────────
   intercity: router({
