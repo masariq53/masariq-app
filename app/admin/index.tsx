@@ -195,6 +195,26 @@ export default function AdminDashboard() {
   const [agentSearch, setAgentSearch] = useState("");
   const [agentPage, setAgentPage] = useState(0);
   const AGENT_PAGE_SIZE = 10;
+  // ─── Confirm Dialog (web-compatible replacement for Alert.alert) ───
+  const [confirmDialog, setConfirmDialog] = useState<{
+    visible: boolean;
+    title: string;
+    message: string;
+    confirmText: string;
+    confirmColor: string;
+    onConfirm: () => void;
+  }>({
+    visible: false,
+    title: '',
+    message: '',
+    confirmText: 'تأكيد',
+    confirmColor: '#22C55E',
+    onConfirm: () => {},
+  });
+  const showConfirm = (opts: { title: string; message: string; confirmText: string; confirmColor: string; onConfirm: () => void }) => {
+    setConfirmDialog({ visible: true, ...opts });
+  };
+  const hideConfirm = () => setConfirmDialog(prev => ({ ...prev, visible: false }));
   const [supportStatusFilter, setSupportStatusFilter] = useState<"all" | "open" | "in_progress" | "resolved" | "closed">("all");
   const [supportUserTypeFilter, setSupportUserTypeFilter] = useState<"all" | "passenger" | "driver">("all");
   const [selectedSupportTicketId, setSelectedSupportTicketId] = useState<number | null>(null);
@@ -3031,28 +3051,28 @@ export default function AdminDashboard() {
                         disabled={agentTopupLoading}
                         onPress={() => {
                           const amt = parseFloat(agentTopupAmount);
-                          if (!amt || amt <= 0) { Alert.alert('خطأ', 'أدخل مبلغاً صحيحاً'); return; }
-                          Alert.alert(
-                            'تأكيد شحن الرصيد',
-                            `هل تريد شحن ${amt.toLocaleString('ar-IQ')} د.ع لحساب الوكيل ${selectedAgent.name}؟`,
-                            [
-                              { text: 'إلغاء', style: 'cancel' },
-                              {
-                                text: 'تأكيد الشحن',
-                                style: 'default',
-                                onPress: async () => {
-                                  setAgentTopupLoading(true);
-                                  try {
-                                    await topupAgentMutation.mutateAsync({ agentId: selectedAgent.id, amount: amt });
-                                    setAgentTopupAmount('');
-                                    Alert.alert('✅ تم بنجاح', `تم شحن ${amt.toLocaleString('ar-IQ')} د.ع لحساب ${selectedAgent.name}`);
-                                    setShowAgentModal(false);
-                                  } catch (e: any) { Alert.alert('خطأ', e.message); }
-                                  setAgentTopupLoading(false);
-                                }
+                          if (!amt || amt <= 0) {
+                            showConfirm({ title: 'خطأ', message: 'أدخل مبلغاً صحيحاً أكبر من صفر', confirmText: 'حسناً', confirmColor: '#6366F1', onConfirm: hideConfirm });
+                            return;
+                          }
+                          showConfirm({
+                            title: 'تأكيد شحن الرصيد',
+                            message: `هل تريد شحن ${amt.toLocaleString('ar-IQ')} د.ع لحساب الوكيل ${selectedAgent.name}؟`,
+                            confirmText: '✅ تأكيد الشحن',
+                            confirmColor: '#22C55E',
+                            onConfirm: async () => {
+                              hideConfirm();
+                              setAgentTopupLoading(true);
+                              try {
+                                await topupAgentMutation.mutateAsync({ agentId: selectedAgent.id, amount: amt });
+                                setAgentTopupAmount('');
+                                setShowAgentModal(false);
+                              } catch (e: any) {
+                                showConfirm({ title: 'خطأ', message: (e as any).message ?? 'حدث خطأ أثناء الشحن', confirmText: 'حسناً', confirmColor: '#6366F1', onConfirm: hideConfirm });
                               }
-                            ]
-                          );
+                              setAgentTopupLoading(false);
+                            },
+                          });
                         }}
                       >
                         {agentTopupLoading ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontWeight: '700' }}>شحن الرصيد</Text>}
@@ -3085,21 +3105,17 @@ export default function AdminDashboard() {
                       <TouchableOpacity
                         style={{ backgroundColor: '#F59E0B', borderRadius: 10, padding: 12, alignItems: 'center' }}
                         onPress={() => {
-                          Alert.alert(
-                            '⚠️ تأكيد إيقاف الحساب',
-                            `هل تريد إيقاف حساب الوكيل ${selectedAgent.name} مؤقتاً؟ لن يتمكن من الوصول إلى التطبيق حتى إعادة التفعيل.`,
-                            [
-                              { text: 'إلغاء', style: 'cancel' },
-                              {
-                                text: 'إيقاف الحساب',
-                                style: 'destructive',
-                                onPress: () => {
-                                  suspendAgentMutation.mutate({ agentId: selectedAgent.id });
-                                  setShowAgentModal(false);
-                                }
-                              }
-                            ]
-                          );
+                          showConfirm({
+                            title: '⚠️ تأكيد إيقاف الحساب',
+                            message: `هل تريد إيقاف حساب الوكيل ${selectedAgent.name} مؤقتاً؟\nلن يتمكن من الوصول إلى التطبيق حتى إعادة التفعيل.`,
+                            confirmText: '🚫 إيقاف الحساب',
+                            confirmColor: '#F59E0B',
+                            onConfirm: () => {
+                              hideConfirm();
+                              suspendAgentMutation.mutate({ agentId: selectedAgent.id });
+                              setShowAgentModal(false);
+                            },
+                          });
                         }}
                       >
                         <Text style={{ color: '#fff', fontWeight: '700' }}>🚫 إيقاف الحساب</Text>
@@ -3347,6 +3363,42 @@ export default function AdminDashboard() {
             </View>
           )}
         </TouchableOpacity>
+      </Modal>
+
+      {/* ── Confirm Dialog Modal (web-compatible) ── */}
+      <Modal
+        visible={confirmDialog.visible}
+        transparent
+        animationType="fade"
+        onRequestClose={hideConfirm}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <View style={{ backgroundColor: '#1E0F4A', borderRadius: 20, padding: 24, width: '100%', maxWidth: 400, borderWidth: 1, borderColor: '#3D2B5E' }}>
+            {/* Title */}
+            <Text style={{ color: '#FFFFFF', fontSize: 18, fontWeight: '800', textAlign: 'center', marginBottom: 12 }}>
+              {confirmDialog.title}
+            </Text>
+            {/* Message */}
+            <Text style={{ color: '#C4B5D4', fontSize: 14, textAlign: 'center', lineHeight: 22, marginBottom: 24 }}>
+              {confirmDialog.message}
+            </Text>
+            {/* Buttons */}
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <TouchableOpacity
+                onPress={hideConfirm}
+                style={{ flex: 1, paddingVertical: 12, borderRadius: 12, backgroundColor: '#2D1B4E', alignItems: 'center', borderWidth: 1, borderColor: '#4D3B6E' }}
+              >
+                <Text style={{ color: '#C4B5D4', fontSize: 15, fontWeight: '700' }}>إلغاء</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={confirmDialog.onConfirm}
+                style={{ flex: 1, paddingVertical: 12, borderRadius: 12, backgroundColor: confirmDialog.confirmColor, alignItems: 'center' }}
+              >
+                <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '800' }}>{confirmDialog.confirmText}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
       </Modal>
     </View>
   );
