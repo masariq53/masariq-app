@@ -68,9 +68,9 @@ function formatDate(val: string | Date | null | undefined) {
   const d = typeof val === "string" ? new Date(val) : val;
   if (isNaN(d.getTime())) return "—";
   return (
-    d.toLocaleDateString("ar-IQ", { weekday: "long", month: "short", day: "numeric" }) +
+    d.toLocaleDateString("ar-IQ", { weekday: "long", month: "short", day: "numeric", timeZone: "Asia/Baghdad" }) +
     "  " +
-    d.toLocaleTimeString("ar-IQ", { hour: "2-digit", minute: "2-digit" })
+    d.toLocaleTimeString("ar-IQ", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Baghdad" })
   );
 }
 

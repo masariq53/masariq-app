@@ -95,7 +95,7 @@ export default function CaptainChatScreen() {
   const formatTime = (date: string | Date) => {
     const d = new Date(date);
     if (isNaN(d.getTime())) return "";
-    return d.toLocaleTimeString("ar-IQ", { hour: "2-digit", minute: "2-digit" });
+    return d.toLocaleTimeString("ar-IQ", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Baghdad" });
   };
 
   const renderMessage = ({ item, index }: { item: Message; index: number }) => {
@@ -115,6 +115,7 @@ export default function CaptainChatScreen() {
                 weekday: "short",
                 month: "short",
                 day: "numeric",
+                timeZone: "Asia/Baghdad",
               })}
             </Text>
           </View>

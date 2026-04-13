@@ -48,8 +48,8 @@ function DateTimePicker({
 
   const formatDisplay = (d: Date) =>
     d.toLocaleDateString("ar-IQ", {
-      weekday: "short", year: "numeric", month: "long", day: "numeric",
-    }) + "  " + d.toLocaleTimeString("ar-IQ", { hour: "2-digit", minute: "2-digit" });
+      weekday: "short", year: "numeric", month: "long", day: "numeric", timeZone: "Asia/Baghdad",
+    }) + "  " + d.toLocaleTimeString("ar-IQ", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Baghdad" });
 
   const confirm = () => {
     onChange(tempDate);
@@ -353,8 +353,8 @@ export default function IntercityScheduleScreen() {
             <Text style={styles.summaryTitle}>ملخص الرحلة</Text>
             <Text style={styles.summaryRow}>🛣️ {fromCity} ← {toCity}</Text>
             <Text style={styles.summaryRow}>
-              🕐 {departureDate.toLocaleDateString("ar-IQ", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
-              {"  "}{departureDate.toLocaleTimeString("ar-IQ", { hour: "2-digit", minute: "2-digit" })}
+              🕐 {departureDate.toLocaleDateString("ar-IQ", { weekday: "long", year: "numeric", month: "long", day: "numeric", timeZone: "Asia/Baghdad" })}
+              {"  "}{departureDate.toLocaleTimeString("ar-IQ", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Baghdad" })}
             </Text>
             <Text style={styles.summaryRow}>💺 {totalSeats} مقاعد × {parseInt(pricePerSeat || "0").toLocaleString()} دينار</Text>
             <Text style={styles.summaryTotal}>

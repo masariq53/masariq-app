@@ -47,9 +47,9 @@ const IRAQI_CITIES = [
 function formatDate(dateStr: string | Date) {
   const d = new Date(dateStr);
   return (
-    d.toLocaleDateString("ar-IQ", { weekday: "long", month: "short", day: "numeric" }) +
+    d.toLocaleDateString("ar-IQ", { weekday: "long", month: "short", day: "numeric", timeZone: "Asia/Baghdad" }) +
     "  " +
-    d.toLocaleTimeString("ar-IQ", { hour: "2-digit", minute: "2-digit" })
+    d.toLocaleTimeString("ar-IQ", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Baghdad" })
   );
 }
 
