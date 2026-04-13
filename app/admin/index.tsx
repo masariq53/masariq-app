@@ -217,7 +217,7 @@ export default function AdminDashboard() {
   );
   const { data: chatMessages, isLoading: chatMessagesLoading } = trpc.intercity.getMessages.useQuery(
     { bookingId: chatBookingId! },
-    { enabled: !!chatBookingId && showChatModal, refetchInterval: 5000 }
+    { enabled: !!chatBookingId, refetchInterval: 5000 }
   );
   const cancelIntercityTripMutation = trpc.admin.cancelIntercityTrip.useMutation({
     onSuccess: () => refetchIntercity(),
@@ -1522,9 +1522,10 @@ export default function AdminDashboard() {
           // ─── Filter & Sort Logic
           const formatIntercityDate = (val: string | Date | null | undefined) => {
             if (!val) return "—";
+            // عرض الوقت كما أُدخل من الكابتن (توقيت العراق UTC+3)
             const d = typeof val === "string" ? new Date(val) : val;
             if (isNaN(d.getTime())) return "—";
-            return d.toLocaleDateString("ar-IQ", { weekday: "short", month: "short", day: "numeric" }) + " " + d.toLocaleTimeString("ar-IQ", { hour: "2-digit", minute: "2-digit" });
+            return d.toLocaleDateString("ar-IQ", { weekday: "short", month: "short", day: "numeric", timeZone: "Asia/Baghdad" }) + " " + d.toLocaleTimeString("ar-IQ", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Baghdad" });
           };
           const trips = allIntercityTrips ?? [];
           const filtered = trips
@@ -1731,9 +1732,17 @@ export default function AdminDashboard() {
                       {/* Top Row: Route + Status */}
                       <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
                         <View style={{ flex: 1 }}>
-                          <Text style={{ color: "#FFFFFF", fontSize: 17, fontWeight: "800" }}>
-                            {trip.fromCity} → {trip.toCity}
-                          </Text>
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                            <View style={{ alignItems: "center" }}>
+                              <Text style={{ color: "#9B8EC4", fontSize: 10, marginBottom: 2 }}>من</Text>
+                              <Text style={{ color: "#FFFFFF", fontSize: 16, fontWeight: "800" }}>{trip.fromCity}</Text>
+                            </View>
+                            <Text style={{ color: "#FFD700", fontSize: 18, marginTop: 10 }}>→</Text>
+                            <View style={{ alignItems: "center" }}>
+                              <Text style={{ color: "#9B8EC4", fontSize: 10, marginBottom: 2 }}>إلى</Text>
+                              <Text style={{ color: "#FFFFFF", fontSize: 16, fontWeight: "800" }}>{trip.toCity}</Text>
+                            </View>
+                          </View>
                           <Text style={{ color: "#9B8EC4", fontSize: 12, marginTop: 3 }}>
                             🕐 {formatIntercityDate(trip.departureTime)}
                           </Text>
