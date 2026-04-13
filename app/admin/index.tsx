@@ -1106,6 +1106,12 @@ export default function AdminDashboard() {
                             📍 {[(driver as any).country, (driver as any).city].filter(Boolean).join("، ")}
                           </Text>
                         ) : null}
+                        {/* Wallet Balance */}
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 3 }}>
+                          <Text style={{ fontSize: 11, color: driver.isBlocked ? '#F59E0B' : '#22C55E', fontWeight: '700' }}>
+                            💰 {Math.round(parseFloat((driver as any).walletBalance?.toString() || '0')).toLocaleString('ar-IQ')} د.ع
+                          </Text>
+                        </View>
                         {driver.isBlocked && (
                           <Text style={{ fontSize: 10, color: '#EF4444', marginTop: 2 }}>🚫 محظور: {driver.blockReason || "بدون سبب"}</Text>
                         )}
