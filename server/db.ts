@@ -187,6 +187,19 @@ export async function checkPhoneExists(phone: string): Promise<boolean> {
 }
 
 /**
+ * Get passenger block status by phone number.
+ * Returns null if phone not registered.
+ * Used in sendLogin to prevent OTP for blocked accounts.
+ */
+export async function getPassengerBlockStatus(phone: string): Promise<{ isBlocked: boolean; blockReason: string | null } | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db.select({ isBlocked: passengers.isBlocked, blockReason: passengers.blockReason }).from(passengers).where(eq(passengers.phone, phone)).limit(1);
+  if (result.length === 0) return null;
+  return { isBlocked: result[0]!.isBlocked ?? false, blockReason: result[0]!.blockReason ?? null };
+}
+
+/**
  * Create a brand new passenger (registration flow)
  * Throws if phone already registered
  */

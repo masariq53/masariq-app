@@ -121,6 +121,7 @@ import {
   getActiveParcelAgents,
   createParcelAgent,
   updateParcelAgentStatus,
+  getPassengerBlockStatus,
 } from "./db";
 import { storagePut } from "./storage";
 
@@ -239,6 +240,13 @@ export const appRouter = router({
 
         const exists = await checkPhoneExists(phone);
         if (!exists) throw new Error("رقم الهاتف غير مسجل، يرجى إنشاء حساب جديد");
+
+        // التحقق من حالة الحظر قبل إرسال OTP - منع استنزاف رصيد OTP
+        const blockStatus = await getPassengerBlockStatus(phone);
+        if (blockStatus?.isBlocked) {
+          const reason = blockStatus.blockReason || "تم تعطيل حسابك من قِبل الإدارة";
+          throw new Error(`🚫 تم تعطيل حسابك\n\n${reason}\n\nللاستفسار أو الاعتراض، تواصل مع فريق الدعم الفني.`);
+        }
 
         const code = await createOtp(phone);
         const isDev = process.env.NODE_ENV !== "production";
