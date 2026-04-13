@@ -3124,7 +3124,19 @@ export default function AdminDashboard() {
                     {selectedAgent.status === 'suspended' && (
                       <TouchableOpacity
                         style={{ backgroundColor: '#22C55E', borderRadius: 10, padding: 12, alignItems: 'center' }}
-                        onPress={() => { approveAgentMutation.mutate({ agentId: selectedAgent.id }); setShowAgentModal(false); }}
+                        onPress={() => {
+                          showConfirm({
+                            title: '✅ تأكيد إعادة التفعيل',
+                            message: `هل تريد إعادة تفعيل حساب الوكيل ${selectedAgent.name}؟\nسيتمكن من الوصول إلى التطبيق ومزاولة نشاطه مجدداً.`,
+                            confirmText: '✅ إعادة التفعيل',
+                            confirmColor: '#22C55E',
+                            onConfirm: () => {
+                              hideConfirm();
+                              approveAgentMutation.mutate({ agentId: selectedAgent.id });
+                              setShowAgentModal(false);
+                            },
+                          });
+                        }}
                       >
                         <Text style={{ color: '#fff', fontWeight: '700' }}>✅ إعادة تفعيل</Text>
                       </TouchableOpacity>
