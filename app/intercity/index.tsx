@@ -122,7 +122,8 @@ export default function IntercityBrowseScreen() {
   const t = useT();
   const router = useRouter();
   const { passenger: passengerCtx, setIsBlockedOverlay } = usePassenger();
-  const [passenger, setPassenger] = useState<{ id: number; name: string; phone: string } | null>(null);
+  // Use passengerCtx directly - no local passenger state needed
+  const passenger = passengerCtx ? { id: passengerCtx.id, name: passengerCtx.name, phone: passengerCtx.phone } : null;
   const [fromFilter, setFromFilter] = useState("الكل");
   const [toFilter, setToFilter] = useState("الكل");
   const [showFromPicker, setShowFromPicker] = useState(false);
@@ -135,8 +136,6 @@ export default function IntercityBrowseScreen() {
   const [passengerNote, setPassengerNote] = useState("");
   const [gpsLoading, setGpsLoading] = useState(false);
   const [showBookingModal, setShowBookingModal] = useState(false);
-
-  // passenger data is loaded automatically by PassengerContext - no need to read AsyncStorage here
 
   const { data: trips, isLoading, refetch } = trpc.intercity.listTrips.useQuery({
     fromCity: fromFilter === "الكل" ? undefined : fromFilter,
