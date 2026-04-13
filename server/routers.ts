@@ -122,6 +122,7 @@ import {
   createParcelAgent,
   updateParcelAgentStatus,
   getPassengerBlockStatus,
+  getAllRidesWithDetails,
 } from "./db";
 import { storagePut } from "./storage";
 
@@ -1737,6 +1738,19 @@ export const appRouter = router({
       .input(z.object({ limit: z.number().default(50), offset: z.number().default(0) }))
       .query(async ({ input }) => {
         return getAllRides(input.limit, input.offset);
+      }),
+
+    /**
+     * Get city rides with full details (passenger + driver info) and pagination
+     */
+    ridesDetailed: publicProcedure
+      .input(z.object({
+        page: z.number().default(0),
+        pageSize: z.number().default(10),
+        statusFilter: z.string().optional(),
+      }))
+      .query(async ({ input }) => {
+        return getAllRidesWithDetails(input.page, input.pageSize, input.statusFilter);
       }),
 
     /**

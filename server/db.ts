@@ -755,6 +755,82 @@ export async function getAllRides(limit = 50, offset = 0) {
 }
 
 /**
+ * Get all city rides with full details (passenger + driver names/phones)
+ * Returns paginated results with total count for admin panel
+ */
+export async function getAllRidesWithDetails(page = 0, pageSize = 10, statusFilter?: string, search?: string) {
+  const db = await getDb();
+  if (!db) return { rides: [], total: 0 };
+
+  // Aliases for joins
+  const passengerAlias = passengers;
+  const driverAlias = drivers;
+
+  let query = db
+    .select({
+      id: rides.id,
+      status: rides.status,
+      pickupAddress: rides.pickupAddress,
+      dropoffAddress: rides.dropoffAddress,
+      pickupLat: rides.pickupLat,
+      pickupLng: rides.pickupLng,
+      dropoffLat: rides.dropoffLat,
+      dropoffLng: rides.dropoffLng,
+      fare: rides.fare,
+      estimatedDistance: rides.estimatedDistance,
+      estimatedDuration: rides.estimatedDuration,
+      paymentMethod: rides.paymentMethod,
+      passengerRating: rides.passengerRating,
+      driverRating: rides.driverRating,
+      cancelReason: rides.cancelReason,
+      startedAt: rides.startedAt,
+      completedAt: rides.completedAt,
+      createdAt: rides.createdAt,
+      updatedAt: rides.updatedAt,
+      passengerId: rides.passengerId,
+      driverId: rides.driverId,
+      passengerName: passengerAlias.name,
+      passengerPhone: passengerAlias.phone,
+      driverName: driverAlias.name,
+      driverPhone: driverAlias.phone,
+      driverVehicleModel: driverAlias.vehicleModel,
+      driverVehiclePlate: driverAlias.vehiclePlate,
+    })
+    .from(rides)
+    .leftJoin(passengerAlias, eq(rides.passengerId, passengerAlias.id))
+    .leftJoin(driverAlias, eq(rides.driverId, driverAlias.id));
+
+  // Build where conditions
+  const conditions: any[] = [];
+  if (statusFilter && statusFilter !== 'all') {
+    conditions.push(eq(rides.status, statusFilter as any));
+  }
+
+  // Count query
+  const countQuery = db
+    .select({ count: sql<number>`count(*)` })
+    .from(rides)
+    .leftJoin(passengerAlias, eq(rides.passengerId, passengerAlias.id))
+    .leftJoin(driverAlias, eq(rides.driverId, driverAlias.id));
+
+  let finalQuery: any = query;
+  let finalCountQuery: any = countQuery;
+
+  if (conditions.length > 0) {
+    finalQuery = finalQuery.where(and(...conditions));
+    finalCountQuery = finalCountQuery.where(and(...conditions));
+  }
+
+  const [ridesResult, countResult] = await Promise.all([
+    finalQuery.orderBy(desc(rides.createdAt)).limit(pageSize).offset(page * pageSize),
+    finalCountQuery,
+  ]);
+
+  const total = Number(countResult[0]?.count ?? 0);
+  return { rides: ridesResult, total };
+}
+
+/**
  * Get all passengers
  */
 export async function getAllPassengers(limit = 50, offset = 0) {

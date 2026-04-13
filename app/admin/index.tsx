@@ -75,6 +75,12 @@ export default function AdminDashboard() {
 
   const [driversPage, setDriversPage] = useState(0);
   const [passengersPage, setPassengersPage] = useState(0);
+  const [ridesPage, setRidesPage] = useState(0);
+  const [ridesStatusFilter, setRidesStatusFilter] = useState<"all" | "searching" | "accepted" | "driver_arrived" | "in_progress" | "completed" | "cancelled">("all");
+  const [ridesSearch, setRidesSearch] = useState("");
+  const [showRidesFilters, setShowRidesFilters] = useState(false);
+  const [selectedRide, setSelectedRide] = useState<any | null>(null);
+  const [showRideModal, setShowRideModal] = useState(false);
   const PAGE_SIZE = 10;
 
   // ─── Driver Filters ───────────────────────────────────────────────────────────
@@ -103,6 +109,10 @@ export default function AdminDashboard() {
   const { data: allDrivers, isLoading: driversLoading, refetch: refetchDrivers } = trpc.admin.drivers.useQuery({ limit: 500 });
   const { data: allPassengers, isLoading: passengersLoading, refetch: refetchPassengers } = trpc.admin.passengers.useQuery({ limit: 500 });
   const { data: allRides, isLoading: allRidesLoading, refetch: refetchAllRides } = trpc.admin.rides.useQuery({ limit: 50 });
+  const { data: ridesDetailedData, isLoading: ridesDetailedLoading, refetch: refetchRidesDetailed } = trpc.admin.ridesDetailed.useQuery(
+    { page: ridesPage, pageSize: PAGE_SIZE, statusFilter: ridesStatusFilter === "all" ? undefined : ridesStatusFilter },
+    { enabled: activeTab === "rides" }
+  );
   const { data: pendingDrivers, isLoading: pendingLoading, refetch: refetchPending } = trpc.admin.pendingDrivers.useQuery();
 
   const verifyDriver = trpc.admin.verifyDriver.useMutation({
@@ -241,7 +251,7 @@ export default function AdminDashboard() {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await Promise.all([refetchStats(), refetchRides(), refetchDrivers(), refetchPassengers(), refetchAllRides(), refetchPending(), refetchIntercity(), refetchSupport()]);
+    await Promise.all([refetchStats(), refetchRides(), refetchDrivers(), refetchPassengers(), refetchAllRides(), refetchPending(), refetchIntercity(), refetchSupport(), refetchRidesDetailed()]);
     setRefreshing(false);
   };
 
@@ -251,7 +261,7 @@ export default function AdminDashboard() {
 
   const tabs = [
     { id: "overview", label: "نظرة عامة", icon: "📊" },
-    { id: "rides", label: "الرحلات", icon: "🚗" },
+    { id: "rides", label: "داخل المدن", icon: "🚗" },
     { id: "drivers", label: "السائقون", icon: "👨‍✈️" },
     { id: "passengers", label: "المستخدمون", icon: "👥" },
     { id: "pricing", label: "التسعير", icon: "💰" },
@@ -489,51 +499,376 @@ export default function AdminDashboard() {
               </>
             )}
 
-            {/* ── Rides Tab ── */}
-            {activeTab === "rides" && (
-              <View style={styles.section}>
-                <Text style={styles.sectionTitle}>جميع الرحلات ({allRides?.length ?? 0})</Text>
-                {allRidesLoading ? (
-                  <ActivityIndicator color="#FFD700" style={{ marginVertical: 20 }} />
-                ) : allRides && allRides.length > 0 ? (
-                  allRides.map((ride) => (
-                    <View key={ride.id} style={styles.rideCard}>
-                      <View style={styles.rideCardLeft}>
-                        <Text style={styles.rideId}>#{ride.id}</Text>
-                        <Text style={styles.rideAddress} numberOfLines={1}>
-                          {ride.pickupAddress || `${parseFloat(ride.pickupLat?.toString() || "0").toFixed(4)}, ${parseFloat(ride.pickupLng?.toString() || "0").toFixed(4)}`}
-                        </Text>
-                        <Text style={styles.rideArrow}>↓</Text>
-                        <Text style={styles.rideAddress} numberOfLines={1}>
-                          {ride.dropoffAddress || `${parseFloat(ride.dropoffLat?.toString() || "0").toFixed(4)}, ${parseFloat(ride.dropoffLng?.toString() || "0").toFixed(4)}`}
-                        </Text>
-                        <Text style={styles.rideDate}>
-                          {ride.createdAt ? new Date(ride.createdAt).toLocaleDateString("ar-IQ") : ""}
-                        </Text>
+            {/* ── Rides Tab (داخل المدن) ── */}
+            {activeTab === "rides" && (() => {
+              const rides = ridesDetailedData?.rides ?? [];
+              const totalRides = ridesDetailedData?.total ?? 0;
+              const totalPages = Math.max(1, Math.ceil(totalRides / PAGE_SIZE));
+
+              // Client-side search filter
+              const filteredRides = ridesSearch.trim()
+                ? rides.filter((r: any) => {
+                    const q = ridesSearch.trim().toLowerCase();
+                    return (
+                      (r.passengerName || "").toLowerCase().includes(q) ||
+                      (r.passengerPhone || "").toLowerCase().includes(q) ||
+                      (r.driverName || "").toLowerCase().includes(q) ||
+                      (r.driverPhone || "").toLowerCase().includes(q) ||
+                      (r.pickupAddress || "").toLowerCase().includes(q) ||
+                      (r.dropoffAddress || "").toLowerCase().includes(q) ||
+                      String(r.id).includes(q)
+                    );
+                  })
+                : rides;
+
+              return (
+                <View style={styles.section}>
+                  {/* Header */}
+                  <View style={styles.sectionHeader}>
+                    <Text style={styles.sectionTitle}>🚗 رحلات داخل المدن</Text>
+                    <Text style={{ color: "#9B8EC4", fontSize: 12 }}>{totalRides} رحلة إجمالاً</Text>
+                  </View>
+
+                  {/* Search Bar */}
+                  <View style={styles.filterSearchRow}>
+                    <View style={styles.filterSearchBox}>
+                      <Text style={styles.filterSearchIcon}>🔍</Text>
+                      <TextInput
+                        style={styles.filterSearchInput}
+                        placeholder="بحث بالاسم أو الهاتف أو العنوان..."
+                        placeholderTextColor="#6B7280"
+                        value={ridesSearch}
+                        onChangeText={v => setRidesSearch(v)}
+                        returnKeyType="search"
+                      />
+                      {ridesSearch.length > 0 && (
+                        <TouchableOpacity onPress={() => setRidesSearch("")}>
+                          <Text style={{ color: "#9B8EC4", fontSize: 16, paddingHorizontal: 6 }}>✕</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                    <TouchableOpacity
+                      style={[styles.filterToggleBtn, showRidesFilters && styles.filterToggleBtnActive]}
+                      onPress={() => setShowRidesFilters(v => !v)}
+                    >
+                      <Text style={{ fontSize: 16 }}>⚙️</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Status Filter Panel */}
+                  {showRidesFilters && (
+                    <View style={styles.filterPanel}>
+                      <Text style={styles.filterLabel}>تصفية حسب الحالة</Text>
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                        <View style={{ flexDirection: "row", gap: 6 }}>
+                          {([
+                            { key: "all", label: "الكل" },
+                            { key: "searching", label: "🔍 يبحث" },
+                            { key: "accepted", label: "✅ مقبولة" },
+                            { key: "driver_arrived", label: "📍 السائق وصل" },
+                            { key: "in_progress", label: "🚗 جارية" },
+                            { key: "completed", label: "✔️ مكتملة" },
+                            { key: "cancelled", label: "❌ ملغاة" },
+                          ] as const).map(opt => (
+                            <TouchableOpacity
+                              key={opt.key}
+                              style={[styles.filterChip, ridesStatusFilter === opt.key && styles.filterChipActive]}
+                              onPress={() => { setRidesStatusFilter(opt.key); setRidesPage(0); }}
+                            >
+                              <Text style={[styles.filterChipText, ridesStatusFilter === opt.key && styles.filterChipTextActive]}>{opt.label}</Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      </ScrollView>
+                    </View>
+                  )}
+
+                  {/* Page Info */}
+                  <Text style={[styles.pageInfo, { marginBottom: 10, textAlign: "center" }]}>
+                    صفحة {ridesPage + 1} من {totalPages} — {totalRides} رحلة
+                  </Text>
+
+                  {/* Rides List */}
+                  {ridesDetailedLoading ? (
+                    <ActivityIndicator color="#FFD700" style={{ marginVertical: 30 }} />
+                  ) : filteredRides.length > 0 ? (
+                    filteredRides.map((ride: any) => (
+                      <TouchableOpacity
+                        key={ride.id}
+                        style={styles.rideDetailCard}
+                        onPress={() => { setSelectedRide(ride); setShowRideModal(true); }}
+                        activeOpacity={0.8}
+                      >
+                        {/* Header Row */}
+                        <View style={styles.rideDetailHeader}>
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                            <Text style={styles.rideDetailId}>#{ride.id}</Text>
+                            <StatusBadge status={ride.status} />
+                          </View>
+                          <Text style={styles.rideDetailTime}>
+                            {ride.createdAt ? new Date(ride.createdAt).toLocaleString("ar-IQ", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : ""}
+                          </Text>
+                        </View>
+
+                        {/* Route */}
+                        <View style={styles.rideDetailRoute}>
+                          <View style={styles.rideDetailRouteRow}>
+                            <View style={styles.rideDetailDot} />
+                            <Text style={styles.rideDetailAddress} numberOfLines={1}>
+                              {ride.pickupAddress || `${parseFloat(ride.pickupLat?.toString() || "0").toFixed(4)}°, ${parseFloat(ride.pickupLng?.toString() || "0").toFixed(4)}°`}
+                            </Text>
+                          </View>
+                          <View style={styles.rideDetailLine} />
+                          <View style={styles.rideDetailRouteRow}>
+                            <View style={[styles.rideDetailDot, styles.rideDetailDotEnd]} />
+                            <Text style={styles.rideDetailAddress} numberOfLines={1}>
+                              {ride.dropoffAddress || `${parseFloat(ride.dropoffLat?.toString() || "0").toFixed(4)}°, ${parseFloat(ride.dropoffLng?.toString() || "0").toFixed(4)}°`}
+                            </Text>
+                          </View>
+                        </View>
+
+                        {/* Meta Info */}
+                        <View style={styles.rideDetailMeta}>
+                          <View style={styles.rideDetailMetaItem}>
+                            <Text style={styles.rideDetailMetaLabel}>📏</Text>
+                            <Text style={styles.rideDetailMetaValue}>{parseFloat(ride.estimatedDistance?.toString() || "0").toFixed(1)} كم</Text>
+                          </View>
+                          <View style={styles.rideDetailMetaItem}>
+                            <Text style={styles.rideDetailMetaLabel}>⏱️</Text>
+                            <Text style={styles.rideDetailMetaValue}>
+                              {ride.estimatedDuration ? `${ride.estimatedDuration} د` : "—"}
+                            </Text>
+                          </View>
+                          <View style={styles.rideDetailMetaItem}>
+                            <Text style={styles.rideDetailMetaLabel}>💳</Text>
+                            <Text style={styles.rideDetailMetaValue}>{ride.paymentMethod === "wallet" ? "محفظة" : "نقداً"}</Text>
+                          </View>
+                          {ride.passengerRating && (
+                            <View style={styles.rideDetailMetaItem}>
+                              <Text style={styles.rideDetailMetaLabel}>⭐</Text>
+                              <Text style={styles.rideDetailMetaValue}>{ride.passengerRating}/5</Text>
+                            </View>
+                          )}
+                        </View>
+
+                        {/* Passenger & Driver */}
+                        <View style={styles.rideDetailPeople}>
+                          <View style={styles.rideDetailPerson}>
+                            <Text style={styles.rideDetailPersonLabel}>👤 المستخدم</Text>
+                            <Text style={styles.rideDetailPersonName}>{ride.passengerName || "غير معروف"}</Text>
+                            <Text style={styles.rideDetailPersonPhone}>{ride.passengerPhone || "—"}</Text>
+                          </View>
+                          <View style={styles.rideDetailPerson}>
+                            <Text style={styles.rideDetailPersonLabel}>🚗 السائق</Text>
+                            <Text style={styles.rideDetailPersonName}>{ride.driverName || (ride.status === "searching" ? "لم يُعيَّن بعد" : "غير معروف")}</Text>
+                            <Text style={styles.rideDetailPersonPhone}>{ride.driverPhone || "—"}</Text>
+                            {ride.driverVehicleModel && (
+                              <Text style={styles.rideDetailPersonVehicle}>{ride.driverVehicleModel} {ride.driverVehiclePlate ? `· ${ride.driverVehiclePlate}` : ""}</Text>
+                            )}
+                          </View>
+                        </View>
+
+                        {/* Fare & Cancel */}
+                        <View style={styles.rideDetailFareRow}>
+                          <View>
+                            <Text style={styles.rideDetailFare}>{Math.round(parseFloat(ride.fare?.toString() || "0")).toLocaleString()} د.ع</Text>
+                            <Text style={styles.rideDetailFareSub}>أجرة الرحلة</Text>
+                          </View>
+                          {(ride.status === "searching" || ride.status === "accepted") && (
+                            <TouchableOpacity
+                              style={styles.rideDetailCancelBtn}
+                              onPress={(e) => { e.stopPropagation?.(); cancelRide.mutate({ rideId: ride.id, reason: "إلغاء من الإدارة" }); }}
+                            >
+                              <Text style={styles.rideDetailCancelText}>إلغاء الرحلة</Text>
+                            </TouchableOpacity>
+                          )}
+                          {ride.cancelReason && (
+                            <Text style={{ fontSize: 11, color: "#F87171", flex: 1, textAlign: "right" }} numberOfLines={2}>
+                              سبب الإلغاء: {ride.cancelReason}
+                            </Text>
+                          )}
+                        </View>
+                      </TouchableOpacity>
+                    ))
+                  ) : (
+                    <View style={styles.emptyState}>
+                      <Text style={styles.emptyIcon}>🚗</Text>
+                      <Text style={styles.emptyText}>لا توجد رحلات</Text>
+                      <Text style={styles.emptySubText}>جرّب تغيير فلتر الحالة</Text>
+                    </View>
+                  )}
+
+                  {/* Pagination */}
+                  {!ridesSearch.trim() && (
+                    <View style={styles.paginationRow}>
+                      <TouchableOpacity
+                        style={[styles.pageBtn, ridesPage === 0 && styles.pageBtnDisabled]}
+                        onPress={() => setRidesPage(p => Math.max(0, p - 1))}
+                        disabled={ridesPage === 0}
+                      >
+                        <Text style={styles.pageBtnText}>→ السابق</Text>
+                      </TouchableOpacity>
+                      <Text style={styles.pageInfo}>صفحة {ridesPage + 1} / {totalPages}</Text>
+                      <TouchableOpacity
+                        style={[styles.pageBtn, ridesPage >= totalPages - 1 && styles.pageBtnDisabled]}
+                        onPress={() => setRidesPage(p => Math.min(totalPages - 1, p + 1))}
+                        disabled={ridesPage >= totalPages - 1}
+                      >
+                        <Text style={styles.pageBtnText}>التالي ←</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+              );
+            })()}
+
+            {/* ── Ride Detail Modal ── */}
+            <Modal visible={showRideModal} transparent animationType="slide" onRequestClose={() => setShowRideModal(false)}>
+              <View style={styles.rideModalOverlay}>
+                <View style={styles.rideModalSheet}>
+                  <View style={styles.rideModalHandle} />
+                  <Text style={styles.rideModalTitle}>تفاصيل الرحلة #{selectedRide?.id}</Text>
+                  {selectedRide && (
+                    <ScrollView showsVerticalScrollIndicator={false}>
+                      {/* Status */}
+                      <View style={styles.rideModalSection}>
+                        <Text style={styles.rideModalSectionTitle}>الحالة</Text>
+                        <View style={{ alignItems: "flex-start" }}>
+                          <StatusBadge status={selectedRide.status} />
+                        </View>
                       </View>
-                      <View style={styles.rideCardRight}>
-                        <StatusBadge status={ride.status} />
-                        <Text style={styles.rideFare}>{Math.round(parseFloat(ride.fare?.toString() || "0")).toLocaleString()} د</Text>
-                        <Text style={styles.rideDistance}>{parseFloat(ride.estimatedDistance?.toString() || "0").toFixed(1)} كم</Text>
-                        {(ride.status === "searching" || ride.status === "accepted") && (
-                          <TouchableOpacity
-                            style={styles.cancelSmallBtn}
-                            onPress={() => cancelRide.mutate({ rideId: ride.id })}
-                          >
-                            <Text style={styles.cancelSmallText}>إلغاء</Text>
-                          </TouchableOpacity>
+
+                      {/* Route */}
+                      <View style={styles.rideModalSection}>
+                        <Text style={styles.rideModalSectionTitle}>المسار</Text>
+                        <View style={styles.rideModalRow}>
+                          <Text style={styles.rideModalLabel}>📍 نقطة الانطلاق</Text>
+                          <Text style={styles.rideModalValue} numberOfLines={2}>{selectedRide.pickupAddress || `${selectedRide.pickupLat}, ${selectedRide.pickupLng}`}</Text>
+                        </View>
+                        <View style={styles.rideModalRow}>
+                          <Text style={styles.rideModalLabel}>🏁 الوجهة</Text>
+                          <Text style={styles.rideModalValue} numberOfLines={2}>{selectedRide.dropoffAddress || `${selectedRide.dropoffLat}, ${selectedRide.dropoffLng}`}</Text>
+                        </View>
+                      </View>
+
+                      {/* Passenger */}
+                      <View style={styles.rideModalSection}>
+                        <Text style={styles.rideModalSectionTitle}>المستخدم</Text>
+                        <View style={styles.rideModalRow}>
+                          <Text style={styles.rideModalLabel}>الاسم</Text>
+                          <Text style={styles.rideModalValue}>{selectedRide.passengerName || "غير معروف"}</Text>
+                        </View>
+                        <View style={styles.rideModalRow}>
+                          <Text style={styles.rideModalLabel}>الهاتف</Text>
+                          <Text style={styles.rideModalValue}>{selectedRide.passengerPhone || "—"}</Text>
+                        </View>
+                        {selectedRide.passengerRating && (
+                          <View style={styles.rideModalRow}>
+                            <Text style={styles.rideModalLabel}>تقييم المستخدم للرحلة</Text>
+                            <Text style={styles.rideModalValue}>⭐ {selectedRide.passengerRating}/5</Text>
+                          </View>
                         )}
                       </View>
-                    </View>
-                  ))
-                ) : (
-                  <View style={styles.emptyState}>
-                    <Text style={styles.emptyIcon}>🚗</Text>
-                    <Text style={styles.emptyText}>لا توجد رحلات</Text>
-                  </View>
-                )}
+
+                      {/* Driver */}
+                      <View style={styles.rideModalSection}>
+                        <Text style={styles.rideModalSectionTitle}>السائق</Text>
+                        <View style={styles.rideModalRow}>
+                          <Text style={styles.rideModalLabel}>الاسم</Text>
+                          <Text style={styles.rideModalValue}>{selectedRide.driverName || (selectedRide.status === "searching" ? "لم يُعيَّن بعد" : "غير معروف")}</Text>
+                        </View>
+                        <View style={styles.rideModalRow}>
+                          <Text style={styles.rideModalLabel}>الهاتف</Text>
+                          <Text style={styles.rideModalValue}>{selectedRide.driverPhone || "—"}</Text>
+                        </View>
+                        {selectedRide.driverVehicleModel && (
+                          <View style={styles.rideModalRow}>
+                            <Text style={styles.rideModalLabel}>السيارة</Text>
+                            <Text style={styles.rideModalValue}>{selectedRide.driverVehicleModel} {selectedRide.driverVehiclePlate ? `· ${selectedRide.driverVehiclePlate}` : ""}</Text>
+                          </View>
+                        )}
+                        {selectedRide.driverRating && (
+                          <View style={styles.rideModalRow}>
+                            <Text style={styles.rideModalLabel}>تقييم السائق للرحلة</Text>
+                            <Text style={styles.rideModalValue}>⭐ {selectedRide.driverRating}/5</Text>
+                          </View>
+                        )}
+                      </View>
+
+                      {/* Financial */}
+                      <View style={styles.rideModalSection}>
+                        <Text style={styles.rideModalSectionTitle}>المالية</Text>
+                        <View style={styles.rideModalRow}>
+                          <Text style={styles.rideModalLabel}>الأجرة</Text>
+                          <Text style={[styles.rideModalValue, { color: "#FFD700" }]}>{Math.round(parseFloat(selectedRide.fare?.toString() || "0")).toLocaleString()} د.ع</Text>
+                        </View>
+                        <View style={styles.rideModalRow}>
+                          <Text style={styles.rideModalLabel}>طريقة الدفع</Text>
+                          <Text style={styles.rideModalValue}>{selectedRide.paymentMethod === "wallet" ? "💳 محفظة" : "💵 نقداً"}</Text>
+                        </View>
+                      </View>
+
+                      {/* Trip Details */}
+                      <View style={styles.rideModalSection}>
+                        <Text style={styles.rideModalSectionTitle}>تفاصيل الرحلة</Text>
+                        <View style={styles.rideModalRow}>
+                          <Text style={styles.rideModalLabel}>المسافة التقديرية</Text>
+                          <Text style={styles.rideModalValue}>{parseFloat(selectedRide.estimatedDistance?.toString() || "0").toFixed(1)} كم</Text>
+                        </View>
+                        <View style={styles.rideModalRow}>
+                          <Text style={styles.rideModalLabel}>الوقت التقديري</Text>
+                          <Text style={styles.rideModalValue}>{selectedRide.estimatedDuration ? `${selectedRide.estimatedDuration} دقيقة` : "—"}</Text>
+                        </View>
+                        <View style={styles.rideModalRow}>
+                          <Text style={styles.rideModalLabel}>وقت الطلب</Text>
+                          <Text style={styles.rideModalValue}>
+                            {selectedRide.createdAt ? new Date(selectedRide.createdAt).toLocaleString("ar-IQ", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "—"}
+                          </Text>
+                        </View>
+                        {selectedRide.startedAt && (
+                          <View style={styles.rideModalRow}>
+                            <Text style={styles.rideModalLabel}>وقت البدء</Text>
+                            <Text style={styles.rideModalValue}>
+                              {new Date(selectedRide.startedAt).toLocaleString("ar-IQ", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                            </Text>
+                          </View>
+                        )}
+                        {selectedRide.completedAt && (
+                          <View style={styles.rideModalRow}>
+                            <Text style={styles.rideModalLabel}>وقت الإكمال</Text>
+                            <Text style={styles.rideModalValue}>
+                              {new Date(selectedRide.completedAt).toLocaleString("ar-IQ", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                            </Text>
+                          </View>
+                        )}
+                        {selectedRide.cancelReason && (
+                          <View style={styles.rideModalRow}>
+                            <Text style={styles.rideModalLabel}>سبب الإلغاء</Text>
+                            <Text style={[styles.rideModalValue, { color: "#F87171" }]}>{selectedRide.cancelReason}</Text>
+                          </View>
+                        )}
+                      </View>
+
+                      {/* Cancel Action */}
+                      {(selectedRide.status === "searching" || selectedRide.status === "accepted") && (
+                        <TouchableOpacity
+                          style={[styles.rideDetailCancelBtn, { marginTop: 8, paddingVertical: 12, alignItems: "center" }]}
+                          onPress={() => {
+                            cancelRide.mutate({ rideId: selectedRide.id, reason: "إلغاء من الإدارة" });
+                            setShowRideModal(false);
+                          }}
+                        >
+                          <Text style={[styles.rideDetailCancelText, { fontSize: 14 }]}>🚫 إلغاء هذه الرحلة</Text>
+                        </TouchableOpacity>
+                      )}
+                    </ScrollView>
+                  )}
+                  <TouchableOpacity style={styles.rideModalCloseBtn} onPress={() => setShowRideModal(false)}>
+                    <Text style={styles.rideModalCloseBtnText}>إغلاق</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
-            )}
+            </Modal>
 
             {/* ── Drivers Tab ── */}
             {activeTab === "drivers" && (
@@ -3143,4 +3478,56 @@ const styles = StyleSheet.create({
   pricingBannerTitle: { fontSize: 16, fontWeight: "800", color: "#FFD700" },
   pricingBannerSub: { fontSize: 12, color: "#9B8EC4", marginTop: 2 },
   pricingBannerArrow: { fontSize: 20, color: "#FFD700", fontWeight: "700" },
+
+  // Ride Detail Card
+  rideDetailCard: {
+    backgroundColor: "#1E1035", borderRadius: 16, padding: 14, marginBottom: 10,
+    borderWidth: 1, borderColor: "#2D1B4E",
+  },
+  rideDetailHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 },
+  rideDetailId: { fontSize: 13, fontWeight: "800", color: "#FFD700" },
+  rideDetailTime: { fontSize: 11, color: "#6B7280" },
+  rideDetailRoute: { marginBottom: 10 },
+  rideDetailRouteRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4 },
+  rideDetailDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: "#22C55E" },
+  rideDetailDotEnd: { backgroundColor: "#EF4444" },
+  rideDetailAddress: { fontSize: 12, color: "#ECEDEE", flex: 1 },
+  rideDetailLine: { width: 2, height: 14, backgroundColor: "#2D1B4E", marginLeft: 3, marginBottom: 2 },
+  rideDetailMeta: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 10 },
+  rideDetailMetaItem: { flexDirection: "row", alignItems: "center", gap: 4 },
+  rideDetailMetaLabel: { fontSize: 11, color: "#6B7280" },
+  rideDetailMetaValue: { fontSize: 11, color: "#9B8EC4", fontWeight: "600" },
+  rideDetailPeople: { flexDirection: "row", gap: 10, marginBottom: 10 },
+  rideDetailPerson: { flex: 1, backgroundColor: "rgba(255,255,255,0.04)", borderRadius: 10, padding: 10 },
+  rideDetailPersonLabel: { fontSize: 10, color: "#6B7280", marginBottom: 4, fontWeight: "700", textTransform: "uppercase" as const },
+  rideDetailPersonName: { fontSize: 13, color: "#FFFFFF", fontWeight: "700" },
+  rideDetailPersonPhone: { fontSize: 11, color: "#9B8EC4", marginTop: 2 },
+  rideDetailPersonVehicle: { fontSize: 10, color: "#6B7280", marginTop: 2 },
+  rideDetailFareRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  rideDetailFare: { fontSize: 18, fontWeight: "800", color: "#FFD700" },
+  rideDetailFareSub: { fontSize: 11, color: "#6B7280" },
+  rideDetailCancelBtn: {
+    backgroundColor: "#450A0A", borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8,
+    borderWidth: 1, borderColor: "#EF4444",
+  },
+  rideDetailCancelText: { color: "#F87171", fontSize: 12, fontWeight: "700" },
+
+  // Ride Detail Modal
+  rideModalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.85)", justifyContent: "flex-end" },
+  rideModalSheet: {
+    backgroundColor: "#1A0533", borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    padding: 20, maxHeight: "85%",
+  },
+  rideModalHandle: { width: 40, height: 4, backgroundColor: "#3D2070", borderRadius: 2, alignSelf: "center", marginBottom: 16 },
+  rideModalTitle: { fontSize: 18, fontWeight: "800", color: "#FFD700", marginBottom: 16, textAlign: "center" },
+  rideModalSection: { marginBottom: 14 },
+  rideModalSectionTitle: { fontSize: 12, color: "#9B8EC4", fontWeight: "700", marginBottom: 8, textTransform: "uppercase" as const },
+  rideModalRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: "#2D1B4E" },
+  rideModalLabel: { fontSize: 13, color: "#9B8EC4" },
+  rideModalValue: { fontSize: 13, color: "#FFFFFF", fontWeight: "600", flex: 1, textAlign: "right" },
+  rideModalCloseBtn: {
+    backgroundColor: "#2D1B4E", borderRadius: 12, paddingVertical: 12, alignItems: "center",
+    marginTop: 16, borderWidth: 1, borderColor: "#FFD700",
+  },
+  rideModalCloseBtnText: { color: "#FFD700", fontSize: 15, fontWeight: "800" },
 });
