@@ -99,30 +99,23 @@ function PassengerBlockChecker() {
 
         // إذا كان المستخدم في صفحة الدعم أو جارٍ الانتقال إليها، لا نُظهر overlay الحظر
         if (isBlocked && (onSupportPage || navigatingToSupportRef.current)) {
-          // تحديث الحالة فقط بدون إظهار overlay (showOverlay=false)
-          if (passenger && passenger.isBlocked !== isBlocked) {
-            setPassenger({ ...passenger, isBlocked }, false).catch(() => {});
-          }
           wasBlockedRef.current = true;
           return;
         }
 
-        // Update passenger context with latest isBlocked status
-        // setPassenger already handles setIsBlockedOverlay internally
-        if (passenger && passenger.isBlocked !== isBlocked) {
-          await setPassenger({ ...passenger, isBlocked });
-        } else if (isBlocked && !wasBlockedRef.current) {
-          // Already blocked in context but overlay may not be showing
-          setIsBlockedOverlay(true);
-        }
+        // إدارة overlay الحظر مباشرةً عبر setIsBlockedOverlay - بدون المرور بـ setPassenger
         if (isBlocked && !wasBlockedRef.current) {
+          // تم الحظر للتو - أظهر overlay
           wasBlockedRef.current = true;
-          // Overlay is shown automatically via setPassenger -> setIsBlockedOverlay
+          setIsBlockedOverlay(true);
+        } else if (isBlocked && wasBlockedRef.current) {
+          // لا يزال محظوراً - تأكد من ظهور overlay
+          setIsBlockedOverlay(true);
         } else if (!isBlocked && wasBlockedRef.current) {
+          // رُفع الحظر - أخفِ overlay فوراً
           wasBlockedRef.current = false;
-          // إخفاء overlay الحظر فوراً
           setIsBlockedOverlay(false);
-          // الانتقال للصفحة الرئيسية مع مسح كل الـ stack (لا يمكن الرجوع لصفحات الحظر/الدعم)
+          // الانتقال للصفحة الرئيسية مع مسح كل الـ stack
           router.replace("/(tabs)" as any);
           // رسالة ترحيب بعد الانتقال
           setTimeout(() => {
@@ -133,6 +126,7 @@ function PassengerBlockChecker() {
             );
           }, 500);
         }
+        // لا نستدعي setPassenger هنا لتحديث isBlocked - الـ overlay يُدار مباشرةً
       } catch (e) {
         // silent fail - will retry next interval
       }

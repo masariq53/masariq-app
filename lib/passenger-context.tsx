@@ -55,7 +55,12 @@ type PassengerContextType = {
   navigatingToSupportRef: React.MutableRefObject<boolean>;
   /** Register navigation callbacks so the overlay can navigate without router dependency in context */
   registerBlockNavigation: (callbacks: { toSupport: () => Promise<void>; toLogin: () => void }) => void;
-  setPassenger: (p: PassengerProfile | null, showOverlay?: boolean) => Promise<void>;
+  /**
+   * setPassenger - يُحدّث بيانات المستخدم في الـ state وAsyncStorage.
+   * IMPORTANT: isBlocked يُتجاهل تماماً هنا - لا يُحفظ ولا يُظهر overlay.
+   * الـ overlay يُتحكم فيه فقط من PassengerBlockChecker عبر setIsBlockedOverlay.
+   */
+  setPassenger: (p: PassengerProfile | null) => Promise<void>;
   setDriver: (d: DriverProfile | null) => Promise<void>;
   setMode: (m: AppMode) => Promise<void>;
   logout: () => Promise<void>;
@@ -249,26 +254,26 @@ export function PassengerProvider({ children }: { children: React.ReactNode }) {
     load();
   }, []);
 
-  const setPassenger = useCallback(async (p: PassengerProfile | null, showOverlay: boolean = true) => {
-    setPassengerState(p);
+  const setPassenger = useCallback(async (p: PassengerProfile | null) => {
+    // نحتفظ بقيمة isBlocked الحالية من الـ state (لا نسمح لأي استدعاء خارجي بتغييرها)
+    // isBlocked يُتحكم فيه فقط من PassengerBlockChecker عبر setIsBlockedOverlay
     if (p) {
-      // لا نحفظ isBlocked في AsyncStorage أبداً - هذه القيمة تأتي دائماً من الـ server
-      // هذا يمنع ظهور overlay الحظر القديم عند تحديث بيانات المستخدم بعد رفع الحظر
-      const { isBlocked: _omit, ...pToStore } = p;
+      // احتفظ بـ isBlocked الحالي من الـ state ولا تقبل القيمة الواردة
+      // هذا يمنع edit.tsx أو أي صفحة أخرى من إعادة تشغيل overlay الحظر
+      const currentIsBlocked = passenger?.isBlocked ?? false;
+      const pWithCorrectBlock: PassengerProfile = { ...p, isBlocked: currentIsBlocked };
+      setPassengerState(pWithCorrectBlock);
+      // لا نحفظ isBlocked في AsyncStorage أبداً
+      const { isBlocked: _omit, ...pToStore } = pWithCorrectBlock;
       await AsyncStorage.setItem(PASSENGER_KEY, JSON.stringify(pToStore));
-      // Auto-show/hide overlay based on isBlocked (only if showOverlay is true)
-      if (showOverlay) {
-        if (p.isBlocked) {
-          setIsBlockedOverlay(true);
-        } else {
-          setIsBlockedOverlay(false);
-        }
-      }
+      // لا نُغير setIsBlockedOverlay هنا - يُتحكم فيه فقط من PassengerBlockChecker
     } else {
+      setPassengerState(null);
       await AsyncStorage.removeItem(PASSENGER_KEY);
       setIsBlockedOverlay(false);
     }
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [passenger?.isBlocked]);
 
   const setDriver = useCallback(async (d: DriverProfile | null) => {
     setDriverState(d);

@@ -29,8 +29,11 @@ export const API_BASE_URL = env.apiBaseUrl;
  * Metro runs on 8081, API server runs on 3000.
  * URL pattern: https://PORT-sandboxid.region.domain
  */
+// الـ domain الثابت للمشروع - يُستخدم على الأجهزة الحقيقية (iOS/Android)
+const PRODUCTION_API_URL = "https://mosulride-jlhuqvse.manus.space";
+
 export function getApiBaseUrl(): string {
-  // If API_BASE_URL is set, use it
+  // If API_BASE_URL is set (sandbox dev environment), use it
   if (API_BASE_URL) {
     return API_BASE_URL.replace(/\/$/, "");
   }
@@ -45,8 +48,8 @@ export function getApiBaseUrl(): string {
     }
   }
 
-  // Fallback to empty (will use relative URL)
-  return "";
+  // على الأجهزة الحقيقية (iOS/Android) نستخدم الـ domain الثابت
+  return PRODUCTION_API_URL;
 }
 
 export const SESSION_TOKEN_KEY = "app_session_token";
