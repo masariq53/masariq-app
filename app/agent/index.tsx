@@ -7,6 +7,7 @@ import {
   ScrollView,
   Alert,
   ActivityIndicator,
+  RefreshControl,
 } from "react-native";
 import { router } from "expo-router";
 import { ScreenContainer } from "@/components/screen-container";
@@ -18,11 +19,24 @@ export default function AgentIndexScreen() {
   const { passenger } = usePassenger();
   const colors = useColors();
 
+  const [refreshing, setRefreshing] = useState(false);
+  const [selectedMonthIdx, setSelectedMonthIdx] = useState(0);
+
   const { data: agentStatus, isLoading, refetch } = trpc.agents.getMyStatus.useQuery(
     { passengerId: passenger?.id ?? 0 },
-    { enabled: !!passenger?.id }
+    {
+      enabled: !!passenger?.id,
+      // تحديث تلقائي كل 15 ثانية لالتقاط أي شحن رصيد من لوحة التحكم
+      refetchInterval: 15000,
+      refetchIntervalInBackground: false,
+    }
   );
-  const [selectedMonthIdx, setSelectedMonthIdx] = useState(0);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await refetch();
+    setRefreshing(false);
+  };
   const { data: monthlyStats } = trpc.agents.getMonthlyStats.useQuery(
     { agentId: agentStatus?.id ?? 0, months: 6 },
     { enabled: !!agentStatus?.id && agentStatus?.status === "approved" }
@@ -186,7 +200,17 @@ export default function AgentIndexScreen() {
         <Text style={styles.headerTitle}>لوحة الوكيل</Text>
         <View style={{ width: 40 }} />
       </View>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#2ECC71"
+            colors={["#2ECC71"]}
+          />
+        }
+      >
         {/* بطاقة الرصيد */}
         <View style={styles.balanceCard}>
           <Text style={styles.balanceLabel}>رصيدك الحالي</Text>
