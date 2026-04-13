@@ -70,6 +70,8 @@ export default function AdminDashboard() {
   const [parcelTypeFilter, setParcelTypeFilter] = useState<"all" | "instant" | "intercity">("all");
   const [parcelPage, setParcelPage] = useState(0);
   const PARCEL_PAGE_SIZE = 10;
+  const [selectedParcelId, setSelectedParcelId] = useState<number | null>(null);
+  const [showParcelModal, setShowParcelModal] = useState(false);
 
   const [driversPage, setDriversPage] = useState(0);
   const [passengersPage, setPassengersPage] = useState(0);
@@ -214,6 +216,10 @@ export default function AdminDashboard() {
     { enabled: activeTab === "parcels" || activeTab === "overview" }
   );
   const adminUpdateParcelStatus = trpc.parcel.updateStatus.useMutation({ onSuccess: () => { refetchParcels(); } });
+  const { data: selectedParcelData, isLoading: parcelDetailLoading } = trpc.parcel.getById.useQuery(
+    { parcelId: selectedParcelId! },
+    { enabled: !!selectedParcelId && showParcelModal }
+  );
 
   const supportUnreadCount = supportUnreadData?.count ?? 0;
 
@@ -1787,7 +1793,7 @@ export default function AdminDashboard() {
                   };
                   const statusColor = STATUS_COLORS[parcel.status] ?? '#9B8EC4';
                   return (
-                    <View key={parcel.id} style={{ backgroundColor: '#1E0F4A', borderRadius: 14, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: statusColor + '44' }}>
+                    <TouchableOpacity key={parcel.id} activeOpacity={0.85} onPress={() => { setSelectedParcelId(parcel.id); setShowParcelModal(true); }} style={{ backgroundColor: '#1E0F4A', borderRadius: 14, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: statusColor + '44' }}>
                       {/* Header Row */}
                       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                         <View style={{ backgroundColor: statusColor + '22', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 }}>
@@ -1856,7 +1862,7 @@ export default function AdminDashboard() {
                           )}
                         </View>
                       )}
-                    </View>
+                    </TouchableOpacity>
                   );
                 })}
                 {/* Pagination */}
@@ -1884,6 +1890,217 @@ export default function AdminDashboard() {
 
         <View style={{ height: 40 }} />
       </ScrollView>
+      {/* Parcel Detail Modal */}
+      <Modal
+        visible={showParcelModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => { setShowParcelModal(false); setSelectedParcelId(null); }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={{ backgroundColor: '#1A0533', borderRadius: 20, width: '95%', maxHeight: '90%', overflow: 'hidden' }}>
+            {/* Header */}
+            <View style={{ backgroundColor: '#2D1B4E', padding: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Text style={{ color: '#FFD700', fontSize: 16, fontWeight: '800' }}>📦 تفاصيل الطرد</Text>
+              <TouchableOpacity onPress={() => { setShowParcelModal(false); setSelectedParcelId(null); }} style={{ backgroundColor: '#1A0533', borderRadius: 20, width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ color: '#9B8EC4', fontSize: 18, fontWeight: '700' }}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            {parcelDetailLoading ? (
+              <View style={{ alignItems: 'center', padding: 40 }}>
+                <ActivityIndicator size="large" color="#FFD700" />
+                <Text style={{ color: '#9B8EC4', marginTop: 12 }}>جاري التحميل...</Text>
+              </View>
+            ) : !selectedParcelData ? (
+              <View style={{ alignItems: 'center', padding: 40 }}>
+                <Text style={{ fontSize: 40 }}>❌</Text>
+                <Text style={{ color: '#9B8EC4', marginTop: 8 }}>لم يتم العثور على الطرد</Text>
+              </View>
+            ) : (() => {
+              const p = selectedParcelData;
+              const STATUS_COLORS_M: Record<string, string> = {
+                pending: '#F59E0B', accepted: '#3B82F6', picked_up: '#8B5CF6',
+                in_transit: '#6366F1', delivered: '#22C55E', cancelled: '#EF4444', returned: '#6B7280'
+              };
+              const STATUS_LABELS_M: Record<string, string> = {
+                pending: 'بانتظار الكابتن', accepted: 'تم القبول', picked_up: 'تم الاستلام',
+                in_transit: 'في الطريق', delivered: 'تم التسليم', cancelled: 'ملغي', returned: 'مُعاد'
+              };
+              const TYPE_LABELS_M: Record<string, string> = {
+                instant: '⚡ فوري داخل المدينة', scheduled: '📅 مجدول', intercity: '🚚 بين المدن'
+              };
+              const SIZE_LABELS: Record<string, string> = {
+                small: '📦 صغير (حتى 2 كغ)', medium: '📦 متوسط (2-10 كغ)', large: '📦 كبير (10-30 كغ)', extra_large: '📦 كبير جداً (30+ كغ)'
+              };
+              const sc = STATUS_COLORS_M[p.status] ?? '#9B8EC4';
+              const formatDate = (d: any) => d ? new Date(d).toLocaleString('ar-IQ', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
+              return (
+                <ScrollView style={{ padding: 16 }} showsVerticalScrollIndicator={false}>
+                  {/* Tracking & Status */}
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                    <View style={{ backgroundColor: sc + '22', paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20, borderWidth: 1, borderColor: sc + '55' }}>
+                      <Text style={{ color: sc, fontSize: 13, fontWeight: '800' }}>{STATUS_LABELS_M[p.status] ?? p.status}</Text>
+                    </View>
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text style={{ color: '#FFD700', fontSize: 14, fontWeight: '800' }}>#{p.trackingNumber}</Text>
+                      <Text style={{ color: '#9B8EC4', fontSize: 11, marginTop: 2 }}>{TYPE_LABELS_M[p.deliveryType] ?? p.deliveryType}</Text>
+                    </View>
+                  </View>
+
+                  {/* Addresses */}
+                  <View style={{ backgroundColor: '#0F0628', borderRadius: 14, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: '#2D1B4E' }}>
+                    <Text style={{ color: '#9B8EC4', fontSize: 12, fontWeight: '700', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>📍 العناوين</Text>
+                    <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
+                      <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: '#22C55E', marginTop: 3 }} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: '#9B8EC4', fontSize: 11, marginBottom: 2 }}>عنوان الاستلام</Text>
+                        <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '600' }}>{p.pickupAddress || '—'}</Text>
+                        {p.pickupLat && p.pickupLng && (
+                          <Text style={{ color: '#6B5A8A', fontSize: 10, marginTop: 2 }}>📌 {Number(p.pickupLat).toFixed(5)}, {Number(p.pickupLng).toFixed(5)}</Text>
+                        )}
+                      </View>
+                    </View>
+                    <View style={{ height: 1, backgroundColor: '#2D1B4E', marginBottom: 10 }} />
+                    <View style={{ flexDirection: 'row', gap: 10 }}>
+                      <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: '#EF4444', marginTop: 3 }} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: '#9B8EC4', fontSize: 11, marginBottom: 2 }}>عنوان التسليم</Text>
+                        <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '600' }}>{p.dropoffAddress || '—'}</Text>
+                        {p.dropoffLat && p.dropoffLng && (
+                          <Text style={{ color: '#6B5A8A', fontSize: 10, marginTop: 2 }}>📌 {Number(p.dropoffLat).toFixed(5)}, {Number(p.dropoffLng).toFixed(5)}</Text>
+                        )}
+                        {p.fromCity && p.toCity && (
+                          <Text style={{ color: '#9B8EC4', fontSize: 11, marginTop: 2 }}>🏙️ {p.fromCity} → {p.toCity}</Text>
+                        )}
+                      </View>
+                    </View>
+                  </View>
+
+                  {/* Sender & Recipient */}
+                  <View style={{ flexDirection: 'row', gap: 10, marginBottom: 12 }}>
+                    <View style={{ flex: 1, backgroundColor: '#0F0628', borderRadius: 14, padding: 12, borderWidth: 1, borderColor: '#2D1B4E' }}>
+                      <Text style={{ color: '#9B8EC4', fontSize: 11, fontWeight: '700', marginBottom: 6 }}>📤 المُرسِل</Text>
+                      <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '600' }}>{p.senderName || '—'}</Text>
+                      <Text style={{ color: '#9B8EC4', fontSize: 12, marginTop: 3 }}>{p.senderPhone || '—'}</Text>
+                    </View>
+                    <View style={{ flex: 1, backgroundColor: '#0F0628', borderRadius: 14, padding: 12, borderWidth: 1, borderColor: '#2D1B4E' }}>
+                      <Text style={{ color: '#9B8EC4', fontSize: 11, fontWeight: '700', marginBottom: 6 }}>📥 المُستلِم</Text>
+                      <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '600' }}>{p.recipientName || '—'}</Text>
+                      <Text style={{ color: '#9B8EC4', fontSize: 12, marginTop: 3 }}>{p.recipientPhone || '—'}</Text>
+                    </View>
+                  </View>
+
+                  {/* Parcel Details */}
+                  <View style={{ backgroundColor: '#0F0628', borderRadius: 14, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: '#2D1B4E' }}>
+                    <Text style={{ color: '#9B8EC4', fontSize: 12, fontWeight: '700', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>📋 تفاصيل الطرد</Text>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+                      <Text style={{ color: '#9B8EC4', fontSize: 12 }}>الحجم</Text>
+                      <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '600' }}>{SIZE_LABELS[p.parcelSize ?? ''] ?? p.parcelSize ?? '—'}</Text>
+                    </View>
+                    {p.estimatedWeight && (
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+                        <Text style={{ color: '#9B8EC4', fontSize: 12 }}>الوزن التقريبي</Text>
+                        <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '600' }}>{p.estimatedWeight} كغ</Text>
+                      </View>
+                    )}
+                    {p.parcelDescription && (
+                      <View style={{ marginBottom: 8 }}>
+                        <Text style={{ color: '#9B8EC4', fontSize: 12, marginBottom: 4 }}>الوصف</Text>
+                        <Text style={{ color: '#C4B5D4', fontSize: 12 }}>{p.parcelDescription}</Text>
+                      </View>
+                    )}
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+                      <Text style={{ color: '#9B8EC4', fontSize: 12 }}>طريقة الدفع</Text>
+                      <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '600' }}>{p.paymentMethod === 'cash' ? '💵 نقدي' : p.paymentMethod === 'wallet' ? '👛 محفظة' : p.paymentMethod ?? '—'}</Text>
+                    </View>
+                    {p.price && (
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                        <Text style={{ color: '#9B8EC4', fontSize: 12 }}>الأجرة</Text>
+                        <Text style={{ color: '#FFD700', fontSize: 14, fontWeight: '800' }}>{Number(p.price).toLocaleString()} د.ع</Text>
+                      </View>
+                    )}
+                  </View>
+
+                  {/* Captain Info */}
+                  <View style={{ backgroundColor: '#0F0628', borderRadius: 14, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: p.driverId ? '#9B8EC455' : '#2D1B4E' }}>
+                    <Text style={{ color: '#9B8EC4', fontSize: 12, fontWeight: '700', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>🚗 الكابتن</Text>
+                    {p.driverId ? (
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <View>
+                          <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '700' }}>{(p as any).driverName || 'كابتن'}</Text>
+                          <Text style={{ color: '#9B8EC4', fontSize: 12, marginTop: 3 }}>{(p as any).driverPhone || '—'}</Text>
+                        </View>
+                        <View style={{ backgroundColor: '#22C55E22', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 }}>
+                          <Text style={{ color: '#22C55E', fontSize: 11, fontWeight: '700' }}>مُعيَّن</Text>
+                        </View>
+                      </View>
+                    ) : (
+                      <Text style={{ color: '#F59E0B', fontSize: 13 }}>⏳ لم يُعيَّن كابتن بعد</Text>
+                    )}
+                  </View>
+
+                  {/* Timeline */}
+                  <View style={{ backgroundColor: '#0F0628', borderRadius: 14, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: '#2D1B4E' }}>
+                    <Text style={{ color: '#9B8EC4', fontSize: 12, fontWeight: '700', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>🕐 سجل الحالات</Text>
+                    {[
+                      { label: 'تاريخ الطلب', value: formatDate(p.createdAt), icon: '📝', color: '#9B8EC4', always: true },
+                      { label: 'تاريخ القبول', value: formatDate(p.acceptedAt), icon: '✅', color: '#3B82F6', always: false },
+                      { label: 'تاريخ الاستلام', value: formatDate(p.pickedUpAt), icon: '📦', color: '#8B5CF6', always: false },
+                      { label: 'تاريخ التسليم', value: formatDate(p.deliveredAt), icon: '🎉', color: '#22C55E', always: false },
+                    ].filter(e => e.always || e.value !== '—').map((event, idx) => (
+                      <View key={idx} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 10 }}>
+                        <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: event.color + '22', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: event.color + '55' }}>
+                          <Text style={{ fontSize: 13 }}>{event.icon}</Text>
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ color: '#9B8EC4', fontSize: 11 }}>{event.label}</Text>
+                          <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '600', marginTop: 2 }}>{event.value}</Text>
+                        </View>
+                      </View>
+                    ))}
+                    {p.cancelReason && (
+                      <View style={{ backgroundColor: '#EF444422', borderRadius: 10, padding: 10, borderWidth: 1, borderColor: '#EF444455', marginTop: 4 }}>
+                        <Text style={{ color: '#EF4444', fontSize: 12, fontWeight: '700', marginBottom: 4 }}>❌ سبب الإلغاء</Text>
+                        <Text style={{ color: '#FCA5A5', fontSize: 12 }}>{p.cancelReason}</Text>
+                      </View>
+                    )}
+                  </View>
+
+                  {/* Admin Actions */}
+                  {p.status !== 'delivered' && p.status !== 'cancelled' && p.status !== 'returned' && (
+                    <View style={{ flexDirection: 'row', gap: 10, marginBottom: 20 }}>
+                      {p.status === 'pending' && (
+                        <TouchableOpacity
+                          style={{ flex: 1, backgroundColor: '#EF444422', borderRadius: 12, paddingVertical: 12, alignItems: 'center', borderWidth: 1, borderColor: '#EF4444' }}
+                          onPress={() => Alert.alert('إلغاء الطرد', 'هل تريد إلغاء هذا الطرد؟', [
+                            { text: 'لا', style: 'cancel' },
+                            { text: 'نعم', style: 'destructive', onPress: () => { adminUpdateParcelStatus.mutate({ parcelId: p.id, status: 'cancelled', updatedBy: 'admin', note: 'إلغاء من الإدارة' }); setShowParcelModal(false); } }
+                          ])}
+                        >
+                          <Text style={{ color: '#EF4444', fontSize: 14, fontWeight: '700' }}>❌ إلغاء الطرد</Text>
+                        </TouchableOpacity>
+                      )}
+                      {(p.status === 'accepted' || p.status === 'picked_up' || p.status === 'in_transit') && (
+                        <TouchableOpacity
+                          style={{ flex: 1, backgroundColor: '#22C55E22', borderRadius: 12, paddingVertical: 12, alignItems: 'center', borderWidth: 1, borderColor: '#22C55E' }}
+                          onPress={() => Alert.alert('تسليم الطرد', 'هل تريد تعليم هذا الطرد كمُسلَّم؟', [
+                            { text: 'لا', style: 'cancel' },
+                            { text: 'نعم', onPress: () => { adminUpdateParcelStatus.mutate({ parcelId: p.id, status: 'delivered', updatedBy: 'admin', note: 'تسليم يدوي من الإدارة' }); setShowParcelModal(false); } }
+                          ])}
+                        >
+                          <Text style={{ color: '#22C55E', fontSize: 14, fontWeight: '700' }}>✅ تسليم يدوي</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  )}
+                  <View style={{ height: 20 }} />
+                </ScrollView>
+              );
+            })()}
+          </View>
+        </View>
+      </Modal>
+
       {/* Support Chat Modal */}
       <Modal
         visible={showSupportChatModal}
