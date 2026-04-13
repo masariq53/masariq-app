@@ -580,7 +580,7 @@ export default function CaptainHomeScreen() {
       <View style={[styles.header, { top: insets.top + 8 }]}>
         <TouchableOpacity
           style={styles.backBtn}
-          onPress={() => router.back()}
+          onPress={() => router.replace('/(tabs)/profile' as any)}
         >
           <Text style={styles.backBtnText}>‹</Text>
         </TouchableOpacity>
