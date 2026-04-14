@@ -179,6 +179,8 @@ export const walletTransactions = mysqlTable("walletTransactions", {
   rideId: int("rideId"),
   balanceBefore: decimal("balanceBefore", { precision: 10, scale: 2 }),
   balanceAfter: decimal("balanceAfter", { precision: 10, scale: 2 }),
+  referenceId: int("referenceId"),
+  referenceType: varchar("referenceType", { length: 50 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
@@ -606,3 +608,57 @@ export const userDiscounts = mysqlTable("userDiscounts", {
 });
 export type UserDiscount = typeof userDiscounts.$inferSelect;
 export type InsertUserDiscount = typeof userDiscounts.$inferInsert;
+
+// ─── Wallet Topup Requests ────────────────────────────────────────────────────
+/**
+ * طلبات شحن الرصيد عبر المحافظ الإلكترونية (ماستر كارد، زين كاش، FIB)
+ * يُنشئها المستخدم أو الكابتن، وتُراجعها الإدارة من لوحة التحكم
+ */
+export const walletTopupRequests = mysqlTable("walletTopupRequests", {
+  id: int("id").autoincrement().primaryKey(),
+  // صاحب الطلب
+  userId: int("userId").notNull(),
+  userType: mysqlEnum("userType", ["driver", "passenger"]).notNull(),
+  // طريقة الدفع
+  paymentMethod: mysqlEnum("paymentMethod", ["mastercard", "zaincash", "fib"]).notNull(),
+  // المبلغ المطلوب شحنه
+  amount: decimal("amount", { precision: 15, scale: 2 }).notNull(),
+  // وصل التحويل (رابط صورة)
+  receiptUrl: text("receiptUrl"),
+  // ملاحظة من المستخدم
+  note: varchar("note", { length: 500 }),
+  // حالة الطلب
+  status: mysqlEnum("status", ["pending", "approved", "rejected"]).default("pending").notNull(),
+  // ملاحظة الإدارة عند الرفض
+  adminNote: varchar("adminNote", { length: 500 }),
+  // من راجع الطلب
+  reviewedBy: int("reviewedBy"),
+  reviewedAt: timestamp("reviewedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type WalletTopupRequest = typeof walletTopupRequests.$inferSelect;
+export type InsertWalletTopupRequest = typeof walletTopupRequests.$inferInsert;
+
+// ─── Payment Method Settings ──────────────────────────────────────────────────
+/**
+ * إعدادات محافظ الدفع الإلكترونية (أرقام الحسابات التي تُعرض للمستخدمين)
+ * تُدار من لوحة التحكم الإدارية
+ */
+export const paymentMethodSettings = mysqlTable("paymentMethodSettings", {
+  id: int("id").autoincrement().primaryKey(),
+  method: mysqlEnum("method", ["mastercard", "zaincash", "fib"]).notNull().unique(),
+  // اسم العرض
+  displayName: varchar("displayName", { length: 100 }).notNull(),
+  // رقم الحساب / رقم الهاتف / رقم IBAN
+  accountNumber: varchar("accountNumber", { length: 200 }).notNull(),
+  // اسم صاحب الحساب
+  accountName: varchar("accountName", { length: 200 }),
+  // تعليمات إضافية تُعرض للمستخدم
+  instructions: text("instructions"),
+  // هل هذه الطريقة مفعّلة
+  isActive: boolean("isActive").default(true).notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type PaymentMethodSetting = typeof paymentMethodSettings.$inferSelect;
+export type InsertPaymentMethodSetting = typeof paymentMethodSettings.$inferInsert;

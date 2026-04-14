@@ -63,7 +63,7 @@ function StatCard({
 export default function AdminDashboard() {
   const insets = useSafeAreaInsets();
   const [refreshing, setRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState<"overview" | "rides" | "drivers" | "passengers" | "pricing" | "intercity" | "support" | "agents" | "parcels" | "commissions">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "rides" | "drivers" | "passengers" | "pricing" | "intercity" | "support" | "agents" | "parcels" | "commissions" | "topups">("overview");
   // Parcel filters
   const [parcelSearch, setParcelSearch] = useState("");
   const [parcelStatusFilter, setParcelStatusFilter] = useState<"all" | "pending" | "accepted" | "picked_up" | "in_transit" | "delivered" | "cancelled" | "returned">("all");
@@ -359,6 +359,43 @@ export default function AdminDashboard() {
     undefined,
     { enabled: activeTab === 'commissions' && commTab === 'discounts' }
   );
+  // ─── Topups Section State ─────────────────────────────────────────────────
+  const [topupTab, setTopupTab] = useState<'requests' | 'methods' | 'report'>('requests');
+  const [topupStatusFilter, setTopupStatusFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('pending');
+  const [topupUserTypeFilter, setTopupUserTypeFilter] = useState<'all' | 'driver' | 'passenger'>('all');
+  const [topupReportFrom, setTopupReportFrom] = useState('');
+  const [topupReportTo, setTopupReportTo] = useState('');
+  const [editingPaymentMethod, setEditingPaymentMethod] = useState<string | null>(null);
+  const [pmAccountNumber, setPmAccountNumber] = useState('');
+  const [pmAccountName, setPmAccountName] = useState('');
+  const [pmDisplayName, setPmDisplayName] = useState('');
+  const [pmInstructions, setPmInstructions] = useState('');
+
+  const { data: topupRequests, refetch: refetchTopupRequests } = trpc.wallet.getRequests.useQuery(
+    { status: topupStatusFilter === 'all' ? undefined : topupStatusFilter, userType: topupUserTypeFilter === 'all' ? undefined : topupUserTypeFilter },
+    { enabled: activeTab === 'topups' && topupTab === 'requests' }
+  );
+  const { data: paymentMethods, refetch: refetchPaymentMethods } = trpc.wallet.getPaymentMethods.useQuery(
+    undefined,
+    { enabled: activeTab === 'topups' && topupTab === 'methods' }
+  );
+  const { data: commissionReport, refetch: refetchCommissionReport } = trpc.wallet.getCommissionReport.useQuery(
+    { fromDate: topupReportFrom || undefined, toDate: topupReportTo || undefined },
+    { enabled: activeTab === 'topups' && topupTab === 'report' }
+  );
+  const approveTopupMutation = trpc.wallet.approve.useMutation({
+    onSuccess: () => refetchTopupRequests(),
+    onError: (e) => Alert.alert('خطأ', e.message),
+  });
+  const rejectTopupMutation = trpc.wallet.reject.useMutation({
+    onSuccess: () => refetchTopupRequests(),
+    onError: (e) => Alert.alert('خطأ', e.message),
+  });
+  const updatePaymentMethodMutation = trpc.wallet.updatePaymentMethod.useMutation({
+    onSuccess: () => { refetchPaymentMethods(); setEditingPaymentMethod(null); },
+    onError: (e) => Alert.alert('خطأ', e.message),
+  });
+
   const updateCommSettingMutation = trpc.commission.updateSetting.useMutation({
     onSuccess: () => { refetchCommSettings(); setCommEditingService(null); setCommEditValue(''); },
     onError: (e) => Alert.alert('خطأ', e.message),
@@ -405,6 +442,7 @@ export default function AdminDashboard() {
     { id: "agents", label: "الوكلاء", icon: "💼" },
     { id: "parcels", label: "الطرود", icon: "📦" },
     { id: "commissions", label: "العمولات", icon: "🏦" },
+    { id: "topups", label: "محافظ التعبئة", icon: "💳" },
   ] as const;
 
   return (
@@ -2837,7 +2875,292 @@ export default function AdminDashboard() {
         })()}
 
         <View style={{ height: 40 }} />
+
+        {/* ─── محافظ التعبئة ─── */}
+        {activeTab === 'topups' && (() => {
+          const STATUS_TOPUP: Record<string, { color: string; label: string }> = {
+            pending: { color: '#F59E0B', label: 'بانتظار الموافقة' },
+            approved: { color: '#22C55E', label: 'تمت الموافقة' },
+            rejected: { color: '#EF4444', label: 'مرفوض' },
+          };
+          const PM_ICONS: Record<string, string> = { mastercard: '💳', zaincash: '📱', fib: '🏦' };
+          return (
+            <View style={{ padding: 16 }}>
+              {/* Header */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16, gap: 10 }}>
+                <Text style={{ fontSize: 22 }}>💳</Text>
+                <Text style={{ color: '#FFD700', fontSize: 18, fontWeight: '800' }}>محافظ التعبئة</Text>
+              </View>
+
+              {/* Sub-tabs */}
+              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
+                {([['requests', 'طلبات الشحن'], ['methods', 'طرق الدفع'], ['report', 'تقرير العمولات']] as const).map(([id, label]) => (
+                  <TouchableOpacity
+                    key={id}
+                    style={{ flex: 1, paddingVertical: 10, borderRadius: 12, backgroundColor: topupTab === id ? '#FFD700' : '#1E1035', borderWidth: 1, borderColor: topupTab === id ? '#FFD700' : '#2D1B4E', alignItems: 'center' }}
+                    onPress={() => setTopupTab(id)}
+                  >
+                    <Text style={{ color: topupTab === id ? '#1A0533' : '#9B8EC4', fontSize: 12, fontWeight: '700' }}>{label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* ─── Tab: طلبات الشحن ─── */}
+              {topupTab === 'requests' && (
+                <View>
+                  {/* Filters */}
+                  <View style={{ flexDirection: 'row', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
+                    {([['all', 'الكل'], ['pending', 'بانتظار'], ['approved', 'موافق'], ['rejected', 'مرفوض']] as const).map(([v, l]) => (
+                      <TouchableOpacity key={v} style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: topupStatusFilter === v ? '#FFD700' : '#1E1035', borderWidth: 1, borderColor: topupStatusFilter === v ? '#FFD700' : '#2D1B4E' }} onPress={() => setTopupStatusFilter(v)}>
+                        <Text style={{ color: topupStatusFilter === v ? '#1A0533' : '#9B8EC4', fontSize: 12, fontWeight: '600' }}>{l}</Text>
+                      </TouchableOpacity>
+                    ))}
+                    <View style={{ width: 1, backgroundColor: '#2D1B4E' }} />
+                    {([['all', 'الكل'], ['driver', 'سائق'], ['passenger', 'مستخدم']] as const).map(([v, l]) => (
+                      <TouchableOpacity key={v} style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: topupUserTypeFilter === v ? '#7C3AED' : '#1E1035', borderWidth: 1, borderColor: topupUserTypeFilter === v ? '#7C3AED' : '#2D1B4E' }} onPress={() => setTopupUserTypeFilter(v)}>
+                        <Text style={{ color: topupUserTypeFilter === v ? '#FFFFFF' : '#9B8EC4', fontSize: 12, fontWeight: '600' }}>{l}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+
+                  {!topupRequests ? (
+                    <ActivityIndicator color="#FFD700" style={{ marginTop: 20 }} />
+                  ) : topupRequests.rows.length === 0 ? (
+                    <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                      <Text style={{ fontSize: 40 }}>📥</Text>
+                      <Text style={{ color: '#9B8EC4', marginTop: 8 }}>لا توجد طلبات</Text>
+                    </View>
+                  ) : topupRequests.rows.map((req: any) => (
+                    <View key={req.id} style={{ backgroundColor: '#0F0628', borderRadius: 14, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: req.status === 'pending' ? '#F59E0B44' : req.status === 'approved' ? '#22C55E44' : '#EF444444' }}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                        <View style={{ flex: 1 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                            <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '700' }}>{req.userName}</Text>
+                            <View style={{ backgroundColor: (STATUS_TOPUP[req.status]?.color ?? '#6B7280') + '22', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2, borderWidth: 1, borderColor: (STATUS_TOPUP[req.status]?.color ?? '#6B7280') + '55' }}>
+                              <Text style={{ color: STATUS_TOPUP[req.status]?.color ?? '#6B7280', fontSize: 10, fontWeight: '700' }}>{STATUS_TOPUP[req.status]?.label ?? req.status}</Text>
+                            </View>
+                            <View style={{ backgroundColor: '#7C3AED22', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2, borderWidth: 1, borderColor: '#7C3AED55' }}>
+                              <Text style={{ color: '#C4B5FD', fontSize: 10, fontWeight: '700' }}>{req.userType === 'driver' ? '🚗 سائق' : '👤 مستخدم'}</Text>
+                            </View>
+                          </View>
+                          <Text style={{ color: '#9B8EC4', fontSize: 12 }}>{req.userPhone}</Text>
+                        </View>
+                        <Text style={{ color: '#FFD700', fontSize: 18, fontWeight: '800' }}>{req.amount?.toLocaleString()} د.ع</Text>
+                      </View>
+
+                      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+                        <View style={{ backgroundColor: '#1E1035', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 }}>
+                          <Text style={{ color: '#9B8EC4', fontSize: 11 }}>💳 {req.paymentMethod === 'mastercard' ? 'Mastercard' : req.paymentMethod === 'zaincash' ? 'ZainCash' : req.paymentMethod === 'fib' ? 'FIB' : req.paymentMethod}</Text>
+                        </View>
+                        {req.referenceNumber && (
+                          <View style={{ backgroundColor: '#1E1035', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 }}>
+                            <Text style={{ color: '#9B8EC4', fontSize: 11 }}>🔢 {req.referenceNumber}</Text>
+                          </View>
+                        )}
+                        <View style={{ backgroundColor: '#1E1035', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4 }}>
+                          <Text style={{ color: '#6B7280', fontSize: 11 }}>📅 {new Date(req.createdAt).toLocaleDateString('ar-IQ', { timeZone: 'Asia/Baghdad' })}</Text>
+                        </View>
+                      </View>
+
+                      {req.note && (
+                        <Text style={{ color: '#9B8EC4', fontSize: 12, marginBottom: 8 }}>📝 {req.note}</Text>
+                      )}
+
+                      {req.status === 'pending' && (
+                        <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+                          <TouchableOpacity
+                            style={{ flex: 1, backgroundColor: '#14532D', borderRadius: 10, paddingVertical: 10, alignItems: 'center', borderWidth: 1, borderColor: '#22C55E' }}
+                            onPress={() => showConfirm({ title: 'موافقة على الشحن', message: `موافقة شحن ${req.amount?.toLocaleString()} د.ع لـ ${req.userName}?`, confirmText: 'موافق', confirmColor: '#22C55E', onConfirm: () => approveTopupMutation.mutate({ requestId: req.id }) })}
+                          >
+                            <Text style={{ color: '#22C55E', fontWeight: '700' }}>✅ موافقة</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={{ flex: 1, backgroundColor: '#450A0A', borderRadius: 10, paddingVertical: 10, alignItems: 'center', borderWidth: 1, borderColor: '#EF4444' }}
+                            onPress={() => showConfirm({ title: 'رفض الطلب', message: `رفض طلب شحن ${req.userName}?`, confirmText: 'رفض', confirmColor: '#EF4444', onConfirm: () => rejectTopupMutation.mutate({ requestId: req.id }) })}
+                          >
+                            <Text style={{ color: '#F87171', fontWeight: '700' }}>❌ رفض</Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              {/* ─── Tab: طرق الدفع ─── */}
+              {topupTab === 'methods' && (
+                <View>
+                  {!paymentMethods ? (
+                    <ActivityIndicator color="#FFD700" style={{ marginTop: 20 }} />
+                  ) : paymentMethods.map((pm: any) => (
+                    <View key={pm.method} style={{ backgroundColor: '#0F0628', borderRadius: 14, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: pm.isActive ? '#22C55E44' : '#2D1B4E' }}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                          <Text style={{ fontSize: 24 }}>{PM_ICONS[pm.method] ?? '💰'}</Text>
+                          <View>
+                            <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '700' }}>{pm.displayName}</Text>
+                            <Text style={{ color: pm.isActive ? '#22C55E' : '#EF4444', fontSize: 11, marginTop: 2 }}>{pm.isActive ? '✅ مفعل' : '❌ معطل'}</Text>
+                          </View>
+                        </View>
+                        <TouchableOpacity
+                          style={{ backgroundColor: '#1E1035', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 8, borderWidth: 1, borderColor: '#7C3AED' }}
+                          onPress={() => {
+                            setEditingPaymentMethod(pm.method);
+                            setPmDisplayName(pm.displayName ?? '');
+                            setPmAccountNumber(pm.accountNumber ?? '');
+                            setPmAccountName(pm.accountName ?? '');
+                            setPmInstructions(pm.instructions ?? '');
+                          }}
+                        >
+                          <Text style={{ color: '#C4B5FD', fontSize: 12, fontWeight: '700' }}>✏️ تعديل</Text>
+                        </TouchableOpacity>
+                      </View>
+                      {pm.accountNumber && <Text style={{ color: '#9B8EC4', fontSize: 12 }}>🔢 رقم الحساب: {pm.accountNumber}</Text>}
+                      {pm.accountName && <Text style={{ color: '#9B8EC4', fontSize: 12, marginTop: 3 }}>👤 اسم الحساب: {pm.accountName}</Text>}
+                      {pm.instructions && <Text style={{ color: '#6B7280', fontSize: 11, marginTop: 6, lineHeight: 16 }}>📝 {pm.instructions}</Text>}
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              {/* ─── Tab: تقرير العمولات ─── */}
+              {topupTab === 'report' && (
+                <View>
+                  {/* Date filters */}
+                  <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: '#9B8EC4', fontSize: 11, marginBottom: 4 }}>من تاريخ</Text>
+                      <TextInput
+                        value={topupReportFrom}
+                        onChangeText={setTopupReportFrom}
+                        placeholder="2026-01-01"
+                        placeholderTextColor="#6B5A8A"
+                        style={{ backgroundColor: '#1E1035', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, color: '#FFFFFF', fontSize: 13, borderWidth: 1, borderColor: '#2D1B4E' }}
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: '#9B8EC4', fontSize: 11, marginBottom: 4 }}>إلى تاريخ</Text>
+                      <TextInput
+                        value={topupReportTo}
+                        onChangeText={setTopupReportTo}
+                        placeholder="2026-12-31"
+                        placeholderTextColor="#6B5A8A"
+                        style={{ backgroundColor: '#1E1035', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, color: '#FFFFFF', fontSize: 13, borderWidth: 1, borderColor: '#2D1B4E' }}
+                      />
+                    </View>
+                    <TouchableOpacity
+                      style={{ backgroundColor: '#FFD700', borderRadius: 10, paddingHorizontal: 14, alignSelf: 'flex-end', paddingVertical: 8 }}
+                      onPress={() => refetchCommissionReport()}
+                    >
+                      <Text style={{ color: '#1A0533', fontWeight: '800', fontSize: 13 }}>🔍</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {!commissionReport ? (
+                    <ActivityIndicator color="#FFD700" style={{ marginTop: 20 }} />
+                  ) : (
+                    <View>
+                      {/* Summary Cards */}
+                      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+                        {[
+                          { label: 'عمولة داخل المدن', value: (commissionReport as any).cityTotal ?? 0, color: '#3B82F6' },
+                          { label: 'عمولة بين المدن', value: (commissionReport as any).intercityTotal ?? 0, color: '#8B5CF6' },
+                          { label: 'عمولة الطرود', value: (commissionReport as any).parcelTotal ?? 0, color: '#F59E0B' },
+                          { label: 'إجمالي العمولات', value: (commissionReport as any).grandTotal ?? 0, color: '#22C55E' },
+                        ].map((item) => (
+                          <View key={item.label} style={{ width: '48%', backgroundColor: '#0F0628', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: item.color + '44' }}>
+                            <Text style={{ color: item.color, fontSize: 18, fontWeight: '800' }}>{item.value.toLocaleString()} د.ع</Text>
+                            <Text style={{ color: '#9B8EC4', fontSize: 11, marginTop: 4 }}>{item.label}</Text>
+                          </View>
+                        ))}
+                      </View>
+
+                      {/* Transactions list */}
+                      {((commissionReport as any).transactions ?? []).length === 0 ? (
+                        <Text style={{ color: '#9B8EC4', textAlign: 'center', marginTop: 16 }}>لا توجد بيانات للفترة المحددة</Text>
+                      ) : ((commissionReport as any).transactions ?? []).map((tx: any) => (
+                        <View key={tx.id} style={{ backgroundColor: '#0F0628', borderRadius: 12, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: '#2D1B4E' }}>
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <View style={{ flex: 1 }}>
+                              <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '700' }}>{tx.driverName}</Text>
+                              <Text style={{ color: '#9B8EC4', fontSize: 11, marginTop: 2 }}>{tx.description}</Text>
+                              <Text style={{ color: '#6B7280', fontSize: 10, marginTop: 2 }}>{new Date(tx.createdAt).toLocaleDateString('ar-IQ', { timeZone: 'Asia/Baghdad' })}</Text>
+                            </View>
+                            <Text style={{ color: '#EF4444', fontSize: 16, fontWeight: '800' }}>{Math.abs(tx.amount).toLocaleString()} د.ع</Text>
+                          </View>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              )}
+            </View>
+          );
+        })()}
+
+        <View style={{ height: 40 }} />
       </ScrollView>
+
+      {/* ─── Edit Payment Method Modal ─── */}
+      <Modal visible={!!editingPaymentMethod} transparent animationType="slide" onRequestClose={() => setEditingPaymentMethod(null)}>
+        <View style={styles.modalOverlay}>
+          <View style={{ backgroundColor: '#1A0533', borderRadius: 20, width: '92%', padding: 20 }}>
+            <Text style={{ color: '#FFD700', fontSize: 16, fontWeight: '800', marginBottom: 16, textAlign: 'right' }}>
+              ✏️ تعديل طريقة الدفع
+            </Text>
+            <Text style={{ color: '#9B8EC4', fontSize: 12, marginBottom: 4 }}>اسم العرض</Text>
+            <TextInput
+              value={pmDisplayName}
+              onChangeText={setPmDisplayName}
+              style={{ backgroundColor: '#0F0628', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: '#FFFFFF', fontSize: 14, borderWidth: 1, borderColor: '#2D1B4E', marginBottom: 10, textAlign: 'right' }}
+            />
+            <Text style={{ color: '#9B8EC4', fontSize: 12, marginBottom: 4 }}>رقم الحساب</Text>
+            <TextInput
+              value={pmAccountNumber}
+              onChangeText={setPmAccountNumber}
+              keyboardType="phone-pad"
+              style={{ backgroundColor: '#0F0628', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: '#FFFFFF', fontSize: 14, borderWidth: 1, borderColor: '#2D1B4E', marginBottom: 10, textAlign: 'right' }}
+            />
+            <Text style={{ color: '#9B8EC4', fontSize: 12, marginBottom: 4 }}>اسم الحساب</Text>
+            <TextInput
+              value={pmAccountName}
+              onChangeText={setPmAccountName}
+              style={{ backgroundColor: '#0F0628', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: '#FFFFFF', fontSize: 14, borderWidth: 1, borderColor: '#2D1B4E', marginBottom: 10, textAlign: 'right' }}
+            />
+            <Text style={{ color: '#9B8EC4', fontSize: 12, marginBottom: 4 }}>تعليمات الدفع</Text>
+            <TextInput
+              value={pmInstructions}
+              onChangeText={setPmInstructions}
+              multiline
+              numberOfLines={3}
+              style={{ backgroundColor: '#0F0628', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: '#FFFFFF', fontSize: 13, borderWidth: 1, borderColor: '#2D1B4E', marginBottom: 16, textAlign: 'right', minHeight: 70 }}
+            />
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <TouchableOpacity
+                style={{ flex: 1, backgroundColor: '#1E1035', borderRadius: 12, paddingVertical: 12, alignItems: 'center', borderWidth: 1, borderColor: '#2D1B4E' }}
+                onPress={() => setEditingPaymentMethod(null)}
+              >
+                <Text style={{ color: '#9B8EC4', fontWeight: '700' }}>إلغاء</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{ flex: 2, backgroundColor: '#FFD700', borderRadius: 12, paddingVertical: 12, alignItems: 'center' }}
+                onPress={() => {
+                  if (!editingPaymentMethod) return;
+                  updatePaymentMethodMutation.mutate({
+                    method: editingPaymentMethod as any,
+                    displayName: pmDisplayName,
+                    accountNumber: pmAccountNumber,
+                    accountName: pmAccountName,
+                    instructions: pmInstructions,
+                  });
+                }}
+              >
+                {updatePaymentMethodMutation.isPending ? <ActivityIndicator color="#1A0533" /> : <Text style={{ color: '#1A0533', fontWeight: '800' }}>حفظ</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* ─── Override Commission Modal ─── */}
       <Modal visible={showOverrideModal} transparent animationType="slide" onRequestClose={() => setShowOverrideModal(false)}>

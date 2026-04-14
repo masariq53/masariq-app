@@ -71,7 +71,7 @@ export default function WalletScreen() {
         <Text style={styles.balanceLabel}>الرصيد الحالي</Text>
         <Text style={styles.balanceAmount}>18,000 د.ع</Text>
         <View style={styles.balanceRow}>
-          <TouchableOpacity style={styles.topupBtn} onPress={() => setShowTopup(!showTopup)}>
+          <TouchableOpacity style={styles.topupBtn} onPress={() => router.push("/topup")}>
             <Text style={styles.topupBtnText}>+ شحن الرصيد</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.transferBtn}>

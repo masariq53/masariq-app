@@ -397,6 +397,15 @@ export default function CaptainHomeScreen() {
       if (data?.success === false) {
         setCurrentRequest(null);
         setTimer(30);
+        if (data?.reason === 'insufficient_balance') {
+          const bal = data?.balance ? Math.floor(Number(data.balance)).toLocaleString() : '0';
+          const min = data?.minimum ? Math.floor(Number(data.minimum)).toLocaleString() : '0';
+          Alert.alert(
+            '⚠️ رصيد غير كافي',
+            `رصيدك الحالي: ${bal} د.ع\nالحد الأدنى المطلوب: ${min} د.ع\n\nيرجى شحن محفظتك لتتمكن من قبول الرحلات.`,
+            [{ text: 'شحن الآن', onPress: () => router.push('/captain/wallet' as any) }, { text: 'لاحقاً', style: 'cancel' }]
+          );
+        }
         return;
       }
       const rideId = currentRequest!.id;

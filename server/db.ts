@@ -28,6 +28,14 @@ import {
   agentTopupLogs,
   Agent,
   InsertAgent,
+  parcels,
+  parcelStatusLogs,
+  parcelAgents,
+  commissionSettings,
+  driverCommissionOverrides,
+  userDiscounts,
+  walletTopupRequests,
+  paymentMethodSettings,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
@@ -2683,11 +2691,32 @@ export async function deductDriverCommission(driverId: number, rideId: number, r
     balanceBefore: balanceBefore.toString(),
     balanceAfter: balanceAfter.toString(),
   });
+  // ─── إشعار push عند انخفاض الرصيد عن الحد الأدنى ───
+  const LOW_BALANCE_THRESHOLD = 5000; // تحت 5000 دينار يرسل إشعار
+  if (balanceAfter < LOW_BALANCE_THRESHOLD) {
+    try {
+      const pushToken = await getDriverPushToken(driverId);
+      if (pushToken && pushToken.startsWith('ExponentPushToken[')) {
+        fetch('https://exp.host/--/api/v2/push/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          body: JSON.stringify({
+            to: pushToken,
+            sound: 'default',
+            title: '⚠️ رصيد محفظتك منخفض',
+            body: `رصيدك الحالي ${Math.floor(balanceAfter).toLocaleString()} د.ع. يرجى شحن المحفظة للاستمرار في قبول الرحلات.`,
+            data: { type: 'low_balance', balance: balanceAfter },
+            priority: 'high',
+          }),
+        }).catch(() => {});
+      }
+    } catch {}
+  }
   return { commission, balanceBefore, balanceAfter };
 }
 
 // ─── Parcel Delivery Functions ────────────────────────────────────────────────
-import { parcels, parcelAgents, parcelStatusLogs } from "../drizzle/schema";
+// parcels, parcelAgents, parcelStatusLogs imported at top
 
 function generateTrackingNumber(): string {
   const prefix = "MSR";
@@ -2949,7 +2978,7 @@ export async function updateParcelAgentStatus(agentId: number, isActive: boolean
 }
 
 // ─── Commission System Functions ─────────────────────────────────────────────
-import { commissionSettings, driverCommissionOverrides, userDiscounts } from "../drizzle/schema";
+// commissionSettings, driverCommissionOverrides, userDiscounts imported at top
 
 /**
  * Get the effective commission rate for a driver and service type.
@@ -3313,4 +3342,180 @@ export async function deactivateUserDiscount(discountId: number) {
   if (!db) throw new Error("Database not available");
   await db.update(userDiscounts).set({ isActive: false }).where(eq(userDiscounts.id, discountId));
   return { success: true };
+}
+
+// ─── Wallet Topup Requests ────────────────────────────────────────────────────
+export async function createWalletTopupRequest(data: {
+  userId: number;
+  userType: "driver" | "passenger";
+  paymentMethod: "mastercard" | "zaincash" | "fib";
+  amount: number;
+  receiptUrl?: string;
+  note?: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [result] = await db.insert(walletTopupRequests).values({
+    userId: data.userId,
+    userType: data.userType,
+    paymentMethod: data.paymentMethod,
+    amount: data.amount.toString(),
+    receiptUrl: data.receiptUrl,
+    note: data.note,
+    status: "pending",
+  });
+  return { id: (result as any).insertId };
+}
+
+export async function getWalletTopupRequests(filters?: {
+  status?: "pending" | "approved" | "rejected";
+  userType?: "driver" | "passenger";
+  page?: number;
+  limit?: number;
+}) {
+  const db = await getDb();
+  if (!db) return { rows: [], total: 0 };
+  const page = filters?.page ?? 0;
+  const limit = filters?.limit ?? 20;
+  const conditions: any[] = [];
+  if (filters?.status) conditions.push(eq(walletTopupRequests.status, filters.status));
+  if (filters?.userType) conditions.push(eq(walletTopupRequests.userType, filters.userType));
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+  const rows = await db
+    .select()
+    .from(walletTopupRequests)
+    .where(whereClause)
+    .orderBy(desc(walletTopupRequests.createdAt))
+    .limit(limit)
+    .offset(page * limit);
+  const enriched = await Promise.all(rows.map(async (row) => {
+    let userName = "غير معروف";
+    let userPhone = "";
+    try {
+      if (row.userType === "driver") {
+        const [d] = await db.select({ name: drivers.name, phone: drivers.phone })
+          .from(drivers).where(eq(drivers.id, row.userId)).limit(1);
+        if (d) { userName = d.name ?? "غير معروف"; userPhone = d.phone; }
+      } else {
+        const [p] = await db.select({ name: passengers.name, phone: passengers.phone })
+          .from(passengers).where(eq(passengers.id, row.userId)).limit(1);
+        if (p) { userName = p.name ?? "غير معروف"; userPhone = p.phone; }
+      }
+    } catch {}
+    return { ...row, userName, userPhone };
+  }));
+  return { rows: enriched, total: enriched.length };
+}
+
+export async function getUserWalletTopupRequests(userId: number, userType: "driver" | "passenger") {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(walletTopupRequests)
+    .where(and(eq(walletTopupRequests.userId, userId), eq(walletTopupRequests.userType, userType)))
+    .orderBy(desc(walletTopupRequests.createdAt))
+    .limit(50);
+}
+
+export async function approveWalletTopupRequest(requestId: number, reviewedBy?: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const [req] = await db.select().from(walletTopupRequests)
+    .where(and(eq(walletTopupRequests.id, requestId), eq(walletTopupRequests.status, "pending")))
+    .limit(1);
+  if (!req) throw new Error("الطلب غير موجود أو تمت معالجته مسبقاً");
+  const amount = parseFloat(req.amount.toString());
+  const methodLabel = req.paymentMethod === "mastercard" ? "ماستر كارد" : req.paymentMethod === "zaincash" ? "زين كاش" : "FIB";
+  if (req.userType === "driver") {
+    const [before] = await db.select({ walletBalance: drivers.walletBalance }).from(drivers).where(eq(drivers.id, req.userId)).limit(1);
+    const balanceBefore = parseFloat(before?.walletBalance?.toString() ?? "0");
+    await db.update(drivers).set({ walletBalance: sql`walletBalance + ${amount}` }).where(eq(drivers.id, req.userId));
+    await db.insert(walletTransactions).values({
+      userId: req.userId, userType: "driver", type: "credit",
+      amount: amount.toString(), balanceBefore: balanceBefore.toString(),
+      balanceAfter: (balanceBefore + amount).toString(),
+      description: `شحن رصيد عبر ${methodLabel} - طلب #${requestId}`,
+      referenceId: requestId, referenceType: "topup_request",
+    });
+  } else {
+    const [before] = await db.select({ walletBalance: passengers.walletBalance }).from(passengers).where(eq(passengers.id, req.userId)).limit(1);
+    const balanceBefore = parseFloat(before?.walletBalance?.toString() ?? "0");
+    await db.update(passengers).set({ walletBalance: sql`walletBalance + ${amount}` }).where(eq(passengers.id, req.userId));
+    await db.insert(walletTransactions).values({
+      userId: req.userId, userType: "passenger", type: "credit",
+      amount: amount.toString(), balanceBefore: balanceBefore.toString(),
+      balanceAfter: (balanceBefore + amount).toString(),
+      description: `شحن رصيد عبر ${methodLabel} - طلب #${requestId}`,
+      referenceId: requestId, referenceType: "topup_request",
+    });
+  }
+  await db.update(walletTopupRequests)
+    .set({ status: "approved", reviewedBy, reviewedAt: new Date() })
+    .where(eq(walletTopupRequests.id, requestId));
+  return { success: true };
+}
+
+export async function rejectWalletTopupRequest(requestId: number, adminNote?: string, reviewedBy?: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(walletTopupRequests)
+    .set({ status: "rejected", adminNote, reviewedBy, reviewedAt: new Date() })
+    .where(and(eq(walletTopupRequests.id, requestId), eq(walletTopupRequests.status, "pending")));
+  return { success: true };
+}
+
+// ─── Payment Method Settings ──────────────────────────────────────────────────
+export async function getPaymentMethodSettings() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(paymentMethodSettings).orderBy(paymentMethodSettings.method);
+}
+
+export async function updatePaymentMethodSetting(
+  method: "mastercard" | "zaincash" | "fib",
+  data: { displayName?: string; accountNumber?: string; accountName?: string; instructions?: string; isActive?: boolean }
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(paymentMethodSettings).set(data).where(eq(paymentMethodSettings.method, method));
+  return { success: true };
+}
+
+// ─── Commission Report ────────────────────────────────────────────────────────
+export async function getCommissionReport(filters?: { fromDate?: Date; toDate?: Date }) {
+  const db = await getDb();
+  if (!db) return { total: 0, byService: [], rows: [] };
+  const { gte, lte } = await import("drizzle-orm");
+  const conditions: any[] = [eq(walletTransactions.type, "debit")];
+  if (filters?.fromDate) conditions.push(gte(walletTransactions.createdAt, filters.fromDate));
+  if (filters?.toDate) conditions.push(lte(walletTransactions.createdAt, filters.toDate));
+  const rows = await db.select({
+    referenceType: walletTransactions.referenceType,
+    amount: walletTransactions.amount,
+    createdAt: walletTransactions.createdAt,
+    description: walletTransactions.description,
+    userId: walletTransactions.userId,
+  }).from(walletTransactions).where(and(...conditions)).orderBy(desc(walletTransactions.createdAt)).limit(500);
+  const byService: Record<string, number> = {};
+  let total = 0;
+  for (const row of rows) {
+    const refType = row.referenceType ?? "other";
+    const amt = parseFloat(row.amount?.toString() ?? "0");
+    byService[refType] = (byService[refType] ?? 0) + amt;
+    total += amt;
+  }
+  return {
+    total,
+    byService: Object.entries(byService).map(([service, amount]) => ({ service, amount })),
+    rows: rows.slice(0, 100),
+  };
+}
+
+// ─── Driver Balance Check ─────────────────────────────────────────────────────
+export async function checkDriverBalanceSufficient(driverId: number): Promise<{ sufficient: boolean; balance: number; minRequired: number }> {
+  const db = await getDb();
+  const MIN_BALANCE_REQUIRED = 2000; // الحد الأدنى للرصيد لقبول الرحلات - يمكن تغييره لاحقاً من لوحة التحكم
+  if (!db) return { sufficient: true, balance: 0, minRequired: MIN_BALANCE_REQUIRED };
+  const [driver] = await db.select({ walletBalance: drivers.walletBalance }).from(drivers).where(eq(drivers.id, driverId)).limit(1);
+  const balance = parseFloat(driver?.walletBalance?.toString() ?? "0");
+  return { sufficient: balance >= MIN_BALANCE_REQUIRED, balance, minRequired: MIN_BALANCE_REQUIRED };
 }

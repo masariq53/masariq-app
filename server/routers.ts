@@ -136,6 +136,15 @@ import {
   createUserDiscount,
   createBulkUserDiscounts,
   deactivateUserDiscount,
+  createWalletTopupRequest,
+  getWalletTopupRequests,
+  getUserWalletTopupRequests,
+  approveWalletTopupRequest,
+  rejectWalletTopupRequest,
+  getPaymentMethodSettings,
+  updatePaymentMethodSetting,
+  getCommissionReport,
+  checkDriverBalanceSufficient,
 } from "./db";
 import { storagePut } from "./storage";
 
@@ -565,6 +574,11 @@ export const appRouter = router({
         if (!existingRide || existingRide.status !== "searching") {
           // الرحلة ملغاة أو مقبولة من سائق آخر - رفض القبول
           return { success: false, reason: "ride_not_available" };
+        }
+        // ─── التحقق من رصيد المحفظة قبل قبول الرحلة ───
+        const balanceCheck = await checkDriverBalanceSufficient(input.driverId);
+        if (!balanceCheck.sufficient) {
+          return { success: false, reason: "insufficient_balance", balance: balanceCheck.balance, minimum: balanceCheck.minRequired };
         }
         await updateRideStatus(input.rideId, "accepted", { driverId: input.driverId });
         // جعل السائق غير متاح فوراً لمنع استقبال طلبات جديدة أثناء الرحلة
@@ -3231,7 +3245,15 @@ export const appRouter = router({
       .query(async ({ input }) => getDriverAllParcels(input.driverId, input.page ?? 0, input.limit ?? 20)),
     accept: publicProcedure
       .input(z.object({ parcelId: z.number(), driverId: z.number(), price: z.number() }))
-      .mutation(async ({ input }) => { await acceptParcel(input.parcelId, input.driverId, input.price); return { success: true }; }),
+      .mutation(async ({ input }) => {
+        // ─── التحقق من رصيد المحفظة قبل قبول الطرد ───
+        const balanceCheck = await checkDriverBalanceSufficient(input.driverId);
+        if (!balanceCheck.sufficient) {
+          return { success: false, reason: "insufficient_balance", balance: balanceCheck.balance, minimum: balanceCheck.minRequired };
+        }
+        await acceptParcel(input.parcelId, input.driverId, input.price);
+        return { success: true };
+      }),
 
     updateStatus: publicProcedure
       .input(z.object({
@@ -3407,6 +3429,75 @@ export const appRouter = router({
     deactivate: publicProcedure
       .input(z.object({ discountId: z.number() }))
       .mutation(async ({ input }) => deactivateUserDiscount(input.discountId)),
+  }),
+
+  // ─── Wallet Topup Requests ───────────────────────────────────────────────────────────────
+  wallet: router({
+    // إنشاء طلب شحن رصيد (من كابتن أو مستخدم)
+    requestTopup: publicProcedure
+      .input(z.object({
+        userId: z.number(),
+        userType: z.enum(["driver", "passenger"]),
+        paymentMethod: z.enum(["mastercard", "zaincash", "fib"]),
+        amount: z.number().min(1000).max(10000000),
+        receiptUrl: z.string().optional(),
+        note: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => createWalletTopupRequest(input)),
+
+    // جلب طلبات شحن الرصيد (للإدارة)
+    getRequests: publicProcedure
+      .input(z.object({
+        status: z.enum(["pending", "approved", "rejected"]).optional(),
+        userType: z.enum(["driver", "passenger"]).optional(),
+        page: z.number().optional(),
+        limit: z.number().optional(),
+      }).optional())
+      .query(async ({ input }) => getWalletTopupRequests(input ?? {})),
+
+    // جلب طلبات شحن مستخدم معين
+    getUserRequests: publicProcedure
+      .input(z.object({ userId: z.number(), userType: z.enum(["driver", "passenger"]) }))
+      .query(async ({ input }) => getUserWalletTopupRequests(input.userId, input.userType)),
+
+    // الموافقة على طلب شحن الرصيد
+    approve: publicProcedure
+      .input(z.object({ requestId: z.number(), reviewedBy: z.number().optional() }))
+      .mutation(async ({ input }) => approveWalletTopupRequest(input.requestId, input.reviewedBy)),
+
+    // رفض طلب شحن الرصيد
+    reject: publicProcedure
+      .input(z.object({ requestId: z.number(), adminNote: z.string().optional(), reviewedBy: z.number().optional() }))
+      .mutation(async ({ input }) => rejectWalletTopupRequest(input.requestId, input.adminNote, input.reviewedBy)),
+
+    // جلب إعدادات طرق الدفع
+    getPaymentMethods: publicProcedure
+      .query(async () => getPaymentMethodSettings()),
+
+    // تحديث إعدادات طريقة دفع
+    updatePaymentMethod: publicProcedure
+      .input(z.object({
+        method: z.enum(["mastercard", "zaincash", "fib"]),
+        displayName: z.string().optional(),
+        accountNumber: z.string().optional(),
+        accountName: z.string().optional(),
+        instructions: z.string().optional(),
+        isActive: z.boolean().optional(),
+      }))
+      .mutation(async ({ input }) => updatePaymentMethodSetting(input.method, input)),
+
+    // تقرير العمولات
+    getCommissionReport: publicProcedure
+      .input(z.object({ fromDate: z.string().optional(), toDate: z.string().optional() }).optional())
+      .query(async ({ input }) => getCommissionReport({
+        fromDate: input?.fromDate ? new Date(input.fromDate) : undefined,
+        toDate: input?.toDate ? new Date(input.toDate) : undefined,
+      })),
+
+    // التحقق من رصيد الكابتن
+    checkDriverBalance: publicProcedure
+      .input(z.object({ driverId: z.number() }))
+      .query(async ({ input }) => checkDriverBalanceSufficient(input.driverId)),
   }),
 });
 export type AppRouter = typeof appRouter;

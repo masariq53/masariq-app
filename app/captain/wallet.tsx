@@ -92,6 +92,9 @@ export default function DriverWalletScreen() {
           </Text>
         )}
         <Text style={styles.balanceNote}>تُخصم عمولة الشركة تلقائياً من كل رحلة مكتملة</Text>
+        <TouchableOpacity style={styles.topupBtn} onPress={() => router.push("/captain/topup")}>
+          <Text style={styles.topupBtnText}>⬆️ شحن الرصيد</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Transactions */}
@@ -197,4 +200,12 @@ const styles = StyleSheet.create({
   emptyIcon: { fontSize: 48 },
   emptyText: { fontSize: 18, fontWeight: "700", color: "#FFFFFF" },
   emptySubText: { fontSize: 13, color: "#9B8EC4", textAlign: "center" },
+  topupBtn: {
+    marginTop: 14,
+    backgroundColor: "#6C3FC5",
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 28,
+  },
+  topupBtnText: { fontSize: 14, fontWeight: "700", color: "#FFFFFF" },
 });
