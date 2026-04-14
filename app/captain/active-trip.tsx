@@ -16,6 +16,7 @@ import MapView, { Marker, Polyline, PROVIDER_DEFAULT } from "react-native-maps";
 import { useLocation } from "@/hooks/use-location";
 import { trpc } from "@/lib/trpc";
 import { useDriver } from "@/lib/driver-context";
+import { fetchOsrmRoute, type OsrmRouteResult, type LatLng } from "@/lib/osrm";
 
 // مراحل الرحلة من منظور السائق
 // pickup   → السائق في طريقه لموقع الراكب
@@ -44,6 +45,11 @@ export default function CaptainActiveTripScreen() {
   const mapRef = useRef<MapView>(null);
   // منع useEffect من التراجع عن المرحلة المحلية بعد ضغط الزر
   const localPhaseRef = useRef<TripPhase | null>(null);
+  // مسارات OSRM الحقيقية
+  const [routeToPickup, setRouteToPickup] = useState<OsrmRouteResult | null>(null);
+  const [routeToDropoff, setRouteToDropoff] = useState<OsrmRouteResult | null>(null);
+  const prevDriverLatRef = useRef<number | null>(null);
+  const prevDriverLngRef = useRef<number | null>(null);
 
   const rideId = params.rideId ? parseInt(params.rideId) : 0;
   const driverId = driver?.id ?? 0;
@@ -127,8 +133,36 @@ export default function CaptainActiveTripScreen() {
     );
   }, [isRealLocation, coords.latitude, coords.longitude, isFollowingDriver]);
 
-  const updateStatus = trpc.rides.updateStatus.useMutation();
+   // جلب مسار الراكب → الوجهة (ذهبي) مرة واحدة عند تحميل بيانات الرحلة
+  useEffect(() => {
+    if (!ride) return;
+    const pickup: LatLng = { latitude: ride.pickupLat, longitude: ride.pickupLng };
+    const dropoff: LatLng = { latitude: ride.dropoffLat, longitude: ride.dropoffLng };
+    fetchOsrmRoute(pickup, dropoff).then((res) => {
+      if (res) setRouteToDropoff(res);
+    });
+  }, [ride?.id]);
 
+  // جلب/تحديث مسار السائق → الراكب (أزرق) عند تحرك السائق (فقط في مرحلة pickup و arrived)
+  useEffect(() => {
+    if (!ride || (phase !== "pickup" && phase !== "arrived")) return;
+    const prevLat = prevDriverLatRef.current;
+    const prevLng = prevDriverLngRef.current;
+    if (
+      prevLat !== null && prevLng !== null &&
+      Math.abs(coords.latitude - prevLat) < 0.0001 &&
+      Math.abs(coords.longitude - prevLng) < 0.0001
+    ) return;
+    prevDriverLatRef.current = coords.latitude;
+    prevDriverLngRef.current = coords.longitude;
+    const driverPos: LatLng = { latitude: coords.latitude, longitude: coords.longitude };
+    const pickup: LatLng = { latitude: ride.pickupLat, longitude: ride.pickupLng };
+    fetchOsrmRoute(driverPos, pickup).then((res) => {
+      if (res) setRouteToPickup(res);
+    });
+  }, [coords.latitude, coords.longitude, phase, ride?.id]);
+
+  const updateStatus = trpc.rides.updateStatus.useMutation();
   // فتح خرائط Google Maps أو Apple Maps للملاحة
   const openNavigation = (targetLat: number, targetLng: number, label: string) => {
     const encodedLabel = encodeURIComponent(label);
@@ -344,13 +378,39 @@ export default function CaptainActiveTripScreen() {
               <Text style={{ fontSize: 22 }}>🏁</Text>
             </View>
           </Marker>
-          {/* مسار الرحلة */}
-          <Polyline
-            coordinates={config.route}
-            strokeColor="#FFD700"
-            strokeWidth={4}
-            lineDashPattern={[8, 4]}
-          />
+          {/* مسار السائق → الراكب (أزرق متقطع) - يظهر فقط عند مرحلة pickup و arrived */}
+          {(phase === "pickup" || phase === "arrived") && (
+            routeToPickup && routeToPickup.coords.length >= 2 ? (
+              <Polyline
+                coordinates={routeToPickup.coords}
+                strokeColor="#2196F3"
+                strokeWidth={4}
+                lineDashPattern={[8, 4]}
+              />
+            ) : (
+              <Polyline
+                coordinates={[coords, pickupCoord]}
+                strokeColor="#2196F3"
+                strokeWidth={4}
+                lineDashPattern={[8, 4]}
+              />
+            )
+          )}
+          {/* مسار الراكب → الوجهة (ذهبي متصل) - يظهر دائماً */}
+          {routeToDropoff && routeToDropoff.coords.length >= 2 ? (
+            <Polyline
+              coordinates={routeToDropoff.coords}
+              strokeColor="#FFD700"
+              strokeWidth={4}
+            />
+          ) : (
+            <Polyline
+              coordinates={[pickupCoord, destCoord]}
+              strokeColor="#FFD700"
+              strokeWidth={4}
+              lineDashPattern={[8, 4]}
+            />
+          )}
         </MapView>
       ) : (
         <View style={[styles.map, styles.webMap]}>
