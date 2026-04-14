@@ -100,6 +100,7 @@ export default function TrackingScreen() {
   // مسارات OSRM الحقيقية
   const [routeDriverToPickup, setRouteDriverToPickup] = useState<OsrmRouteResult | null>(null);
   const [routePickupToDropoff, setRoutePickupToDropoff] = useState<OsrmRouteResult | null>(null);
+  const [isLoadingRoute, setIsLoadingRoute] = useState(false);
   const prevDriverLatRef = useRef<number | null>(null);
   const prevDriverLngRef = useRef<number | null>(null);
 
@@ -117,9 +118,10 @@ export default function TrackingScreen() {
     if (!params.pickupLat || !params.dropoffLat) return;
     const pickup: LatLng = { latitude: pickupCoord.latitude, longitude: pickupCoord.longitude };
     const dropoff: LatLng = { latitude: dropoffCoord.latitude, longitude: dropoffCoord.longitude };
+    setIsLoadingRoute(true);
     fetchOsrmRoute(pickup, dropoff).then((res) => {
       if (res) setRoutePickupToDropoff(res);
-    });
+    }).finally(() => setIsLoadingRoute(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.pickupLat, params.pickupLng, params.dropoffLat, params.dropoffLng]);
 
@@ -578,6 +580,14 @@ export default function TrackingScreen() {
         </View>
       )}
 
+      {/* مؤشر تحميل المسار */}
+      {isLoadingRoute && (
+        <View style={styles.routeLoadingBadge}>
+          <ActivityIndicator size="small" color="#FFD700" style={{ marginRight: 6 }} />
+          <Text style={styles.routeLoadingText}>جاري تحميل المسار...</Text>
+        </View>
+      )}
+
       {/* زر الرجوع */}
       <TouchableOpacity
         style={[styles.backBtn, { top: insets.top + 12 }]}
@@ -733,6 +743,21 @@ const styles = StyleSheet.create({
   },
   webMapCar: { fontSize: 56 },
   webMapLabel: { color: "#FFD700", fontSize: 16, fontWeight: "bold", textAlign: "center", paddingHorizontal: 20 },
+  routeLoadingBadge: {
+    position: "absolute",
+    bottom: 260,
+    alignSelf: "center",
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(26,5,51,0.92)",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#FFD700",
+    zIndex: 10,
+  },
+  routeLoadingText: { color: "#FFD700", fontSize: 12, fontWeight: "600" },
   backBtn: {
     position: "absolute",
     left: 16,

@@ -13,6 +13,7 @@ import {
   Image,
   Alert,
   Vibration,
+  ActivityIndicator,
 } from "react-native";
 import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -76,6 +77,7 @@ export default function CaptainHomeScreen() {
   const [routePassengerTrip, setRoutePassengerTrip] = useState<OsrmRouteResult | null>(null);
   const [totalDistanceKm, setTotalDistanceKm] = useState<number>(0);
   const [totalDurationMin, setTotalDurationMin] = useState<number>(0);
+  const [isLoadingDualRoute, setIsLoadingDualRoute] = useState(false);
   // حساب دخل اليوم الحقيقي من السيرفر - يعمل دائماً بغض النظر عن حالة الاتصال
   const todayQuery = trpc.driver.getTrips.useQuery(
     { driverId: driver?.id ?? 0, limit: 200 },
@@ -127,17 +129,19 @@ export default function CaptainHomeScreen() {
       setRoutePassengerTrip(null);
       setTotalDistanceKm(0);
       setTotalDurationMin(0);
+      setIsLoadingDualRoute(false);
       return;
     }
     const driverLoc: LatLng = { latitude: coords.latitude, longitude: coords.longitude };
     const pickup: LatLng = { latitude: currentRequest.pickupLat, longitude: currentRequest.pickupLng };
     const dropoff: LatLng = { latitude: currentRequest.dropoffLat, longitude: currentRequest.dropoffLng };
+    setIsLoadingDualRoute(true);
     fetchDualOsrmRoute(driverLoc, pickup, dropoff).then((res) => {
       setRouteToPassenger(res.toPassenger);
       setRoutePassengerTrip(res.passengerTrip);
       setTotalDistanceKm(res.totalDistanceKm);
       setTotalDurationMin(res.totalDurationMin);
-    });
+    }).finally(() => setIsLoadingDualRoute(false));
   }, [currentRequest?.id]);
 
   // عند العودة لهذه الشاشة (بعد إلغاء أو اكتمال رحلة) - تغيير حالة السائق إلى متاح تلقائياً
@@ -826,36 +830,45 @@ export default function CaptainHomeScreen() {
 
             {/* تفاصيل OSRM المزدوجة */}
             <View style={styles.osrmDetailsBox}>
-              {/* للوصول إلى الراكب */}
-              <View style={styles.osrmRow}>
-                <View style={[styles.osrmDot, { backgroundColor: "#2196F3" }]} />
-                <Text style={styles.osrmLabel}>{t.captain.toPassenger}</Text>
-                <Text style={styles.osrmValue}>
-                  {routeToPassenger
-                    ? `${routeToPassenger.distanceKm} كم • ${routeToPassenger.durationMin} دقيقة`
-                    : `${currentRequest?.estimatedDistance?.toFixed(1) ?? "--"} كم`}
-                </Text>
-              </View>
-              {/* رحلة الراكب */}
-              <View style={styles.osrmRow}>
-                <View style={[styles.osrmDot, { backgroundColor: "#FFD700" }]} />
-                <Text style={styles.osrmLabel}>{t.captain.passengerTrip}</Text>
-                <Text style={styles.osrmValue}>
-                  {routePassengerTrip
-                    ? `${routePassengerTrip.distanceKm} كم • ${routePassengerTrip.durationMin} دقيقة`
-                    : `${currentRequest?.estimatedDistance?.toFixed(1) ?? "--"} كم`}
-                </Text>
-              </View>
-              {/* الإجمالي */}
-              <View style={[styles.osrmRow, styles.osrmTotalRow]}>
-                <View style={[styles.osrmDot, { backgroundColor: "#4CAF50" }]} />
-                <Text style={[styles.osrmLabel, { color: "#4CAF50", fontWeight: "bold" }]}>إجمالي</Text>
-                <Text style={[styles.osrmValue, { color: "#4CAF50", fontWeight: "bold" }]}>
-                  {totalDistanceKm > 0
-                    ? `${totalDistanceKm.toFixed(1)} كم • ${totalDurationMin} دقيقة`
-                    : `${((currentRequest?.estimatedDistance ?? 0) * 1.3).toFixed(1)} كم`}
-                </Text>
-              </View>
+              {isLoadingDualRoute ? (
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 6, gap: 8 }}>
+                  <ActivityIndicator size="small" color="#FFD700" />
+                  <Text style={{ color: "#FFD700", fontSize: 12 }}>جاري تحميل المسارات...</Text>
+                </View>
+              ) : (
+                <>
+                  {/* للوصول إلى الراكب */}
+                  <View style={styles.osrmRow}>
+                    <View style={[styles.osrmDot, { backgroundColor: "#2196F3" }]} />
+                    <Text style={styles.osrmLabel}>{t.captain.toPassenger}</Text>
+                    <Text style={styles.osrmValue}>
+                      {routeToPassenger
+                        ? `${routeToPassenger.distanceKm} كم • ${routeToPassenger.durationMin} دقيقة`
+                        : `${currentRequest?.estimatedDistance?.toFixed(1) ?? "--"} كم`}
+                    </Text>
+                  </View>
+                  {/* رحلة الراكب */}
+                  <View style={styles.osrmRow}>
+                    <View style={[styles.osrmDot, { backgroundColor: "#FFD700" }]} />
+                    <Text style={styles.osrmLabel}>{t.captain.passengerTrip}</Text>
+                    <Text style={styles.osrmValue}>
+                      {routePassengerTrip
+                        ? `${routePassengerTrip.distanceKm} كم • ${routePassengerTrip.durationMin} دقيقة`
+                        : `${currentRequest?.estimatedDistance?.toFixed(1) ?? "--"} كم`}
+                    </Text>
+                  </View>
+                  {/* الإجمالي */}
+                  <View style={[styles.osrmRow, styles.osrmTotalRow]}>
+                    <View style={[styles.osrmDot, { backgroundColor: "#4CAF50" }]} />
+                    <Text style={[styles.osrmLabel, { color: "#4CAF50", fontWeight: "bold" }]}>إجمالي</Text>
+                    <Text style={[styles.osrmValue, { color: "#4CAF50", fontWeight: "bold" }]}>
+                      {totalDistanceKm > 0
+                        ? `${totalDistanceKm.toFixed(1)} كم • ${totalDurationMin} دقيقة`
+                        : `${((currentRequest?.estimatedDistance ?? 0) * 1.3).toFixed(1)} كم`}
+                    </Text>
+                  </View>
+                </>
+              )}
             </View>
 
             {/* التفاصيل القديمة مخفية */}

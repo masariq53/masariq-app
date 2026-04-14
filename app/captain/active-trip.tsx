@@ -48,6 +48,7 @@ export default function CaptainActiveTripScreen() {
   // مسارات OSRM الحقيقية
   const [routeToPickup, setRouteToPickup] = useState<OsrmRouteResult | null>(null);
   const [routeToDropoff, setRouteToDropoff] = useState<OsrmRouteResult | null>(null);
+  const [isLoadingRoute, setIsLoadingRoute] = useState(false);
   const prevDriverLatRef = useRef<number | null>(null);
   const prevDriverLngRef = useRef<number | null>(null);
 
@@ -138,9 +139,10 @@ export default function CaptainActiveTripScreen() {
     if (!ride) return;
     const pickup: LatLng = { latitude: ride.pickupLat, longitude: ride.pickupLng };
     const dropoff: LatLng = { latitude: ride.dropoffLat, longitude: ride.dropoffLng };
+    setIsLoadingRoute(true);
     fetchOsrmRoute(pickup, dropoff).then((res) => {
       if (res) setRouteToDropoff(res);
-    });
+    }).finally(() => setIsLoadingRoute(false));
   }, [ride?.id]);
 
   // جلب/تحديث مسار السائق → الراكب (أزرق) عند تحرك السائق (فقط في مرحلة pickup و arrived)
@@ -419,6 +421,14 @@ export default function CaptainActiveTripScreen() {
         </View>
       )}
 
+      {/* مؤشر تحميل المسار */}
+      {isLoadingRoute && (
+        <View style={styles.routeLoadingBadge}>
+          <ActivityIndicator size="small" color="#FFD700" style={{ marginRight: 6 }} />
+          <Text style={styles.routeLoadingText}>جاري تحميل المسار...</Text>
+        </View>
+      )}
+
       {/* زر إعادة التمركز على الكابتن */}
       {Platform.OS !== "web" && !isFollowingDriver && (
         <TouchableOpacity
@@ -616,6 +626,21 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   webMapLabel: { color: "#FFD700", fontSize: 18, fontWeight: "bold" },
+  routeLoadingBadge: {
+    position: "absolute",
+    bottom: 200,
+    alignSelf: "center",
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(26,5,51,0.92)",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#FFD700",
+    zIndex: 10,
+  },
+  routeLoadingText: { color: "#FFD700", fontSize: 12, fontWeight: "600" },
   backBtn: {
     position: "absolute",
     width: 40,
