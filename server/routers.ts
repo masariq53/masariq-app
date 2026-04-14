@@ -3493,11 +3493,83 @@ export const appRouter = router({
         fromDate: input?.fromDate ? new Date(input.fromDate) : undefined,
         toDate: input?.toDate ? new Date(input.toDate) : undefined,
       })),
-
     // التحقق من رصيد الكابتن
     checkDriverBalance: publicProcedure
       .input(z.object({ driverId: z.number() }))
       .query(async ({ input }) => checkDriverBalanceSufficient(input.driverId)),
+  }),
+
+  // ─── Maps / OSRM Routing (server-side proxy) ─────────────────────────────
+  maps: router({
+    /** جلب مسار OSRM واحد عبر السيرفر لتجنب مشاكل الشبكة على الجهاز المحمول */
+    getRoute: publicProcedure
+      .input(z.object({
+        fromLat: z.number(),
+        fromLng: z.number(),
+        toLat: z.number(),
+        toLng: z.number(),
+      }))
+      .query(async ({ input }) => {
+        const { fromLat, fromLng, toLat, toLng } = input;
+        const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${fromLng},${fromLat};${toLng},${toLat}?overview=full&geometries=geojson`;
+        try {
+          const res = await fetch(osrmUrl, {
+            signal: AbortSignal.timeout(10000),
+            headers: { "User-Agent": "MasarApp/1.0" },
+          });
+          if (!res.ok) return { coords: [], distanceKm: 0, durationMin: 0 };
+          const data = await res.json() as {
+            code: string;
+            routes: Array<{ distance: number; duration: number; geometry: { coordinates: Array<[number, number]> } }>;
+          };
+          if (data.code !== "Ok" || !data.routes?.[0]) return { coords: [], distanceKm: 0, durationMin: 0 };
+          const route = data.routes[0];
+          return {
+            coords: route.geometry.coordinates.map(([lng, lat]: [number, number]) => ({ latitude: lat, longitude: lng })),
+            distanceKm: Math.round((route.distance / 1000) * 10) / 10,
+            durationMin: Math.round(route.duration / 60),
+          };
+        } catch {
+          return { coords: [], distanceKm: 0, durationMin: 0 };
+        }
+      }),
+
+    /** جلب مسارين في وقت واحد: السائق→الراكب + الراكب→الوجهة */
+    getDualRoute: publicProcedure
+      .input(z.object({
+        driverLat: z.number(),
+        driverLng: z.number(),
+        pickupLat: z.number(),
+        pickupLng: z.number(),
+        dropoffLat: z.number(),
+        dropoffLng: z.number(),
+      }))
+      .query(async ({ input }) => {
+        const { driverLat, driverLng, pickupLat, pickupLng, dropoffLat, dropoffLng } = input;
+        const fetchRoute = async (fLat: number, fLng: number, tLat: number, tLng: number) => {
+          const url = `https://router.project-osrm.org/route/v1/driving/${fLng},${fLat};${tLng},${tLat}?overview=full&geometries=geojson`;
+          try {
+            const r = await fetch(url, { signal: AbortSignal.timeout(10000), headers: { "User-Agent": "MasarApp/1.0" } });
+            if (!r.ok) return null;
+            const d = await r.json() as { code: string; routes: Array<{ distance: number; duration: number; geometry: { coordinates: Array<[number, number]> } }> };
+            if (d.code !== "Ok" || !d.routes?.[0]) return null;
+            const rt = d.routes[0];
+            return {
+              coords: rt.geometry.coordinates.map(([lng, lat]: [number, number]) => ({ latitude: lat, longitude: lng })),
+              distanceKm: Math.round((rt.distance / 1000) * 10) / 10,
+              durationMin: Math.round(rt.duration / 60),
+            };
+          } catch { return null; }
+        };
+        const [toPickup, toDropoff] = await Promise.all([
+          fetchRoute(driverLat, driverLng, pickupLat, pickupLng),
+          fetchRoute(pickupLat, pickupLng, dropoffLat, dropoffLng),
+        ]);
+        return {
+          toPickup: toPickup ?? { coords: [], distanceKm: 0, durationMin: 0 },
+          toDropoff: toDropoff ?? { coords: [], distanceKm: 0, durationMin: 0 },
+        };
+      }),
   }),
 });
 export type AppRouter = typeof appRouter;
