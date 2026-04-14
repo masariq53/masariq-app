@@ -3,9 +3,10 @@
  *
  * Fetches real road routes DIRECTLY from Mapbox Directions API.
  * No server dependency — works on Expo Go iOS/Android.
- *
- * Token: EXPO_PUBLIC_MAPBOX_TOKEN (available in app bundle on all platforms)
  */
+
+// Mapbox token — hardcoded to guarantee availability on Expo Go iOS/Android
+const MAPBOX_TOKEN = "pk.eyJ1IjoibXVzdGFmYWlxMSIsImEiOiJjbW56NmpwcXcwOXprMnFzZDl1eTFjZWd0In0.nC_HXss0ue9QkBeyo5ZmQA";
 
 export type LatLng = { latitude: number; longitude: number };
 
@@ -51,13 +52,10 @@ export function clearRouteCache(): void { routeCache.clear(); }
 // ─── Mapbox Direct Fetch ──────────────────────────────────────────────────────
 
 async function fetchMapboxDirect(from: LatLng, to: LatLng): Promise<OsrmRouteResult | null> {
-  const token = process.env.EXPO_PUBLIC_MAPBOX_TOKEN ?? "";
-  if (!token) { console.warn("[osrm] EXPO_PUBLIC_MAPBOX_TOKEN not set"); return null; }
-
   const url =
     `https://api.mapbox.com/directions/v5/mapbox/driving/` +
     `${from.longitude},${from.latitude};${to.longitude},${to.latitude}` +
-    `?access_token=${token}&geometries=geojson&overview=full`;
+    `?access_token=${MAPBOX_TOKEN}&geometries=geojson&overview=full`;
 
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(12000) });
