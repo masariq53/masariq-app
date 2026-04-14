@@ -555,19 +555,12 @@ export default function TrackingScreen() {
               lineDashPattern={[8, 4]}
             />
           )}
-          {/* مسار الراكب → الوجهة (ذهبي) - يظهر دائماً */}
-          {routePickupToDropoff && routePickupToDropoff.coords.length >= 2 ? (
+          {/* مسار الراكب → الوجهة (ذهبي) - Mapbox حقيقي فقط */}
+          {routePickupToDropoff && routePickupToDropoff.coords.length >= 2 && (
             <Polyline
               coordinates={routePickupToDropoff.coords}
               strokeColor="#FFD700"
-              strokeWidth={4}
-            />
-          ) : (
-            <Polyline
-              coordinates={[pickupCoord, dropoffCoord]}
-              strokeColor="#FFD700"
-              strokeWidth={4}
-              lineDashPattern={[10, 5]}
+              strokeWidth={5}
             />
           )}
         </MapView>
