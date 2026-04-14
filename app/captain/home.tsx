@@ -505,22 +505,22 @@ export default function CaptainHomeScreen() {
             </Animated.View>
           </Marker>
 
-          {/* مسار السائق إلى الراكب - أزرق */}
+          {/* مسار السائق → الراكب (أزرق متقطع) - Mapbox حقيقي */}
           {routeToPassenger && routeToPassenger.coords.length >= 2 && (
             <Polyline
               coordinates={routeToPassenger.coords}
               strokeColor="#2196F3"
-              strokeWidth={4}
-              lineDashPattern={[8, 4]}
+              strokeWidth={5}
+              lineDashPattern={[10, 4]}
             />
           )}
 
-          {/* مسار رحلة الراكب - أصفر */}
+          {/* مسار الراكب → الوجهة (ذهبي متصل) - Mapbox حقيقي */}
           {routePassengerTrip && routePassengerTrip.coords.length >= 2 && (
             <Polyline
               coordinates={routePassengerTrip.coords}
               strokeColor="#FFD700"
-              strokeWidth={4}
+              strokeWidth={5}
             />
           )}
 

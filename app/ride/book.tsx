@@ -119,6 +119,7 @@ export default function BookRideScreen() {
   const [routeCoords, setRouteCoords] = useState<Array<{ latitude: number; longitude: number }>>([]);
   const [osrmDistance, setOsrmDistance] = useState<number | null>(null);
   const [osrmDuration, setOsrmDuration] = useState<number | null>(null);
+  const [isLoadingRoute, setIsLoadingRoute] = useState(false);
   const mapRef = useRef<MapView>(null);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -161,41 +162,49 @@ export default function BookRideScreen() {
     });
   }, [isRealLocation]);
 
-  // جلب مسار الطريق الحقيقي من OSRM عند تحديد الوجهة + تكبير الخريطة تلقائياً
+  // جلب مسار حقيقي عبر Mapbox عند تحديد الوجهة + تكبير الخريطة تلقائياً
   useEffect(() => {
     if (!dropPin) {
       setRouteCoords([]);
+      setOsrmDistance(null);
+      setOsrmDuration(null);
       return;
     }
     const fetchRoute = async () => {
-      const result = await fetchOsrmRoute(pickupPin, dropPin);
-      if (result) {
-        setRouteCoords(result.coords);
-        setOsrmDistance(result.distanceKm);
-        setOsrmDuration(result.durationMin);
-        // تكبير الخريطة لتشمل المسار كاملاً
-        if (Platform.OS !== "web" && mapRef.current && result.coords.length >= 2) {
-          setTimeout(() => {
-            mapRef.current?.fitToCoordinates(result.coords, {
-              edgePadding: { top: 80, right: 50, bottom: 280, left: 50 },
-              animated: true,
-            });
-          }, 300);
+      setIsLoadingRoute(true);
+      setRouteCoords([]); // امسح المسار القديم أثناء التحميل
+      try {
+        const result = await fetchOsrmRoute(pickupPin, dropPin);
+        if (result && result.coords.length >= 2) {
+          setRouteCoords(result.coords);
+          setOsrmDistance(result.distanceKm);
+          setOsrmDuration(result.durationMin);
+          // تكبير الخريطة لتشمل المسار كاملاً
+          if (Platform.OS !== "web" && mapRef.current) {
+            setTimeout(() => {
+              mapRef.current?.fitToCoordinates(result.coords, {
+                edgePadding: { top: 80, right: 50, bottom: 280, left: 50 },
+                animated: true,
+              });
+            }, 300);
+          }
+        } else {
+          // فشل جلب المسار - لا نعرض خطاً مستقيماً
+          setRouteCoords([]);
+          setOsrmDistance(null);
+          setOsrmDuration(null);
+          // تكبير الخريطة لتشمل نقطتي البداية والوجهة فقط
+          if (Platform.OS !== "web" && mapRef.current) {
+            setTimeout(() => {
+              mapRef.current?.fitToCoordinates([pickupPin, dropPin], {
+                edgePadding: { top: 80, right: 50, bottom: 280, left: 50 },
+                animated: true,
+              });
+            }, 300);
+          }
         }
-      } else {
-        // fallback: خط مستقيم
-        setRouteCoords([pickupPin, dropPin]);
-        setOsrmDistance(null);
-        setOsrmDuration(null);
-        // تكبير الخريطة لتشمل نقطتي البداية والوجهة
-        if (Platform.OS !== "web" && mapRef.current) {
-          setTimeout(() => {
-            mapRef.current?.fitToCoordinates([pickupPin, dropPin], {
-              edgePadding: { top: 80, right: 50, bottom: 280, left: 50 },
-              animated: true,
-            });
-          }, 300);
-        }
+      } finally {
+        setIsLoadingRoute(false);
       }
     };
     fetchRoute();
@@ -370,11 +379,9 @@ export default function BookRideScreen() {
               <View style={styles.dropMarker}><Text style={{ fontSize: 20 }}>🏁</Text></View>
             </Marker>
           )}
+          {/* مسار حقيقي من Mapbox - يظهر فقط عند توفر النقاط الحقيقية */}
           {routeCoords.length >= 2 && (
             <Polyline coordinates={routeCoords} strokeColor="#FFD700" strokeWidth={4} />
-          )}
-          {routeCoords.length < 2 && dropPin && (
-            <Polyline coordinates={[pickupPin, dropPin]} strokeColor="#FFD700" strokeWidth={3} lineDashPattern={[8, 4]} />
           )}
         </MapView>
       ) : (
@@ -390,6 +397,14 @@ export default function BookRideScreen() {
       <TouchableOpacity style={[styles.backBtn, { top: insets.top + 12 }]} onPress={() => router.back()}>
         <Text style={styles.backIcon}>←</Text>
       </TouchableOpacity>
+
+      {/* مؤشر تحميل المسار الحقيقي */}
+      {isLoadingRoute && (
+        <View style={[styles.routeLoadingBadge, { top: insets.top + 60 }]}>
+          <ActivityIndicator size="small" color="#FFD700" style={{ marginRight: 6 }} />
+          <Text style={styles.routeLoadingText}>جاري تحميل المسار...</Text>
+        </View>
+      )}
 
       {!dropPin && !showSearch && (
         <View style={[styles.mapHint, { top: insets.top + 60 }]}>
@@ -647,4 +662,18 @@ const styles = StyleSheet.create({
   },
   confirmBtnDisabled: { opacity: 0.5 },
   confirmText: { color: "#1A0533", fontSize: 16, fontWeight: "800" },
+  routeLoadingBadge: {
+    position: "absolute",
+    left: 16,
+    right: 16,
+    backgroundColor: "rgba(26,5,51,0.88)",
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 20,
+  },
+  routeLoadingText: { color: "#FFD700", fontSize: 13, fontWeight: "600" },
 });

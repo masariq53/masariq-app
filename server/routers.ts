@@ -3501,7 +3501,7 @@ export const appRouter = router({
 
   // ─── Maps / OSRM Routing (server-side proxy) ─────────────────────────────
   maps: router({
-    /** جلب مسار OSRM واحد عبر السيرفر لتجنب مشاكل الشبكة على الجهاز المحمول */
+    /** جلب مسار حقيقي واحد عبر Mapbox Directions API */
     getRoute: publicProcedure
       .input(z.object({
         fromLat: z.number(),
@@ -3511,18 +3511,16 @@ export const appRouter = router({
       }))
       .query(async ({ input }) => {
         const { fromLat, fromLng, toLat, toLng } = input;
-        const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${fromLng},${fromLat};${toLng},${toLat}?overview=full&geometries=geojson`;
+        const token = process.env.MAPBOX_ACCESS_TOKEN;
+        if (!token) return { coords: [], distanceKm: 0, durationMin: 0 };
+        const mapboxUrl = `https://api.mapbox.com/directions/v5/mapbox/driving/${fromLng},${fromLat};${toLng},${toLat}?access_token=${token}&geometries=geojson&overview=full`;
         try {
-          const res = await fetch(osrmUrl, {
-            signal: AbortSignal.timeout(10000),
-            headers: { "User-Agent": "MasarApp/1.0" },
-          });
+          const res = await fetch(mapboxUrl, { signal: AbortSignal.timeout(10000) });
           if (!res.ok) return { coords: [], distanceKm: 0, durationMin: 0 };
           const data = await res.json() as {
-            code: string;
             routes: Array<{ distance: number; duration: number; geometry: { coordinates: Array<[number, number]> } }>;
           };
-          if (data.code !== "Ok" || !data.routes?.[0]) return { coords: [], distanceKm: 0, durationMin: 0 };
+          if (!data.routes?.[0]) return { coords: [], distanceKm: 0, durationMin: 0 };
           const route = data.routes[0];
           return {
             coords: route.geometry.coordinates.map(([lng, lat]: [number, number]) => ({ latitude: lat, longitude: lng })),
@@ -3534,7 +3532,7 @@ export const appRouter = router({
         }
       }),
 
-    /** جلب مسارين في وقت واحد: السائق→الراكب + الراكب→الوجهة */
+    /** جلب مسارين حقيقيين عبر Mapbox: السائق→الراكب + الراكب→الوجهة */
     getDualRoute: publicProcedure
       .input(z.object({
         driverLat: z.number(),
@@ -3546,13 +3544,18 @@ export const appRouter = router({
       }))
       .query(async ({ input }) => {
         const { driverLat, driverLng, pickupLat, pickupLng, dropoffLat, dropoffLng } = input;
-        const fetchRoute = async (fLat: number, fLng: number, tLat: number, tLng: number) => {
-          const url = `https://router.project-osrm.org/route/v1/driving/${fLng},${fLat};${tLng},${tLat}?overview=full&geometries=geojson`;
+        const token = process.env.MAPBOX_ACCESS_TOKEN;
+        if (!token) return {
+          toPickup: { coords: [], distanceKm: 0, durationMin: 0 },
+          toDropoff: { coords: [], distanceKm: 0, durationMin: 0 },
+        };
+        const fetchMapboxRoute = async (fLat: number, fLng: number, tLat: number, tLng: number) => {
+          const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${fLng},${fLat};${tLng},${tLat}?access_token=${token}&geometries=geojson&overview=full`;
           try {
-            const r = await fetch(url, { signal: AbortSignal.timeout(10000), headers: { "User-Agent": "MasarApp/1.0" } });
+            const r = await fetch(url, { signal: AbortSignal.timeout(10000) });
             if (!r.ok) return null;
-            const d = await r.json() as { code: string; routes: Array<{ distance: number; duration: number; geometry: { coordinates: Array<[number, number]> } }> };
-            if (d.code !== "Ok" || !d.routes?.[0]) return null;
+            const d = await r.json() as { routes: Array<{ distance: number; duration: number; geometry: { coordinates: Array<[number, number]> } }> };
+            if (!d.routes?.[0]) return null;
             const rt = d.routes[0];
             return {
               coords: rt.geometry.coordinates.map(([lng, lat]: [number, number]) => ({ latitude: lat, longitude: lng })),
@@ -3562,8 +3565,8 @@ export const appRouter = router({
           } catch { return null; }
         };
         const [toPickup, toDropoff] = await Promise.all([
-          fetchRoute(driverLat, driverLng, pickupLat, pickupLng),
-          fetchRoute(pickupLat, pickupLng, dropoffLat, dropoffLng),
+          fetchMapboxRoute(driverLat, driverLng, pickupLat, pickupLng),
+          fetchMapboxRoute(pickupLat, pickupLng, dropoffLat, dropoffLng),
         ]);
         return {
           toPickup: toPickup ?? { coords: [], distanceKm: 0, durationMin: 0 },

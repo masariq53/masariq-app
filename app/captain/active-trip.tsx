@@ -380,37 +380,23 @@ export default function CaptainActiveTripScreen() {
               <Text style={{ fontSize: 22 }}>🏁</Text>
             </View>
           </Marker>
-          {/* مسار السائق → الراكب (أزرق متقطع) - يظهر فقط عند مرحلة pickup و arrived */}
-          {(phase === "pickup" || phase === "arrived") && (
-            routeToPickup && routeToPickup.coords.length >= 2 ? (
+          {/* مسار السائق → الراكب (أزرق) - Mapbox - يظهر فقط عند توفر المسار الحقيقي */}
+          {(phase === "pickup" || phase === "arrived") &&
+            routeToPickup && routeToPickup.coords.length >= 2 && (
               <Polyline
                 coordinates={routeToPickup.coords}
                 strokeColor="#2196F3"
-                strokeWidth={4}
-                lineDashPattern={[8, 4]}
-              />
-            ) : (
-              <Polyline
-                coordinates={[coords, pickupCoord]}
-                strokeColor="#2196F3"
-                strokeWidth={4}
-                lineDashPattern={[8, 4]}
+                strokeWidth={5}
+                lineDashPattern={[10, 4]}
               />
             )
-          )}
-          {/* مسار الراكب → الوجهة (ذهبي متصل) - يظهر دائماً */}
-          {routeToDropoff && routeToDropoff.coords.length >= 2 ? (
+          }
+          {/* مسار الراكب → الوجهة (ذهبي) - Mapbox - يظهر فقط عند توفر المسار الحقيقي */}
+          {routeToDropoff && routeToDropoff.coords.length >= 2 && (
             <Polyline
               coordinates={routeToDropoff.coords}
               strokeColor="#FFD700"
-              strokeWidth={4}
-            />
-          ) : (
-            <Polyline
-              coordinates={[pickupCoord, destCoord]}
-              strokeColor="#FFD700"
-              strokeWidth={4}
-              lineDashPattern={[8, 4]}
+              strokeWidth={5}
             />
           )}
         </MapView>
