@@ -122,7 +122,7 @@ export default function CaptainHomeScreen() {
     require("@/assets/sounds/new-ride.mp3")
   );
 
-  // جلب مسارات OSRM المزدوجة عند وصول طلب جديد
+  // جلب مسارات Mapbox المزدوجة عند وصول طلب جديد أو تحديث الموقع الحقيقي
   useEffectOsrm(() => {
     if (!currentRequest) {
       setRouteToPassenger(null);
@@ -132,17 +132,24 @@ export default function CaptainHomeScreen() {
       setIsLoadingDualRoute(false);
       return;
     }
+    // انتظر الموقع الحقيقي قبل جلب المسار
+    if (!isRealLocation) return;
     const driverLoc: LatLng = { latitude: coords.latitude, longitude: coords.longitude };
     const pickup: LatLng = { latitude: currentRequest.pickupLat, longitude: currentRequest.pickupLng };
     const dropoff: LatLng = { latitude: currentRequest.dropoffLat, longitude: currentRequest.dropoffLng };
+    console.log('[Mapbox] جلب مسار:', JSON.stringify(driverLoc), '→', JSON.stringify(pickup), '→', JSON.stringify(dropoff));
     setIsLoadingDualRoute(true);
     fetchDualOsrmRoute(driverLoc, pickup, dropoff).then((res) => {
+      console.log('[Mapbox] نتيجة:', res.toPassenger?.coords.length ?? 0, 'نقطة للراكب،', res.passengerTrip?.coords.length ?? 0, 'نقطة للرحلة');
       setRouteToPassenger(res.toPassenger);
       setRoutePassengerTrip(res.passengerTrip);
       setTotalDistanceKm(res.totalDistanceKm);
       setTotalDurationMin(res.totalDurationMin);
+    }).catch((err) => {
+      console.warn('[Mapbox] خطأ:', err);
     }).finally(() => setIsLoadingDualRoute(false));
-  }, [currentRequest?.id]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentRequest?.id, isRealLocation, coords.latitude, coords.longitude]);
 
   // عند العودة لهذه الشاشة (بعد إلغاء أو اكتمال رحلة) - تغيير حالة السائق إلى متاح تلقائياً
   useFocusEffect(
