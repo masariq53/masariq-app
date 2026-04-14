@@ -111,14 +111,17 @@ export default function TrackingScreen() {
     registerPassengerNotifications();
   }, []);
 
-  // جلب مسار الراكب → الوجهة مرة واحدة عند تحميل الشاشة
+  // جلب مسار الراكب → الوجهة عند توفر الإحداثيات الحقيقية (params)
   useEffect(() => {
+    // تجاهل الإحداثيات الافتراضية - انتظر حتى تصل البيانات الحقيقية
+    if (!params.pickupLat || !params.dropoffLat) return;
     const pickup: LatLng = { latitude: pickupCoord.latitude, longitude: pickupCoord.longitude };
     const dropoff: LatLng = { latitude: dropoffCoord.latitude, longitude: dropoffCoord.longitude };
     fetchOsrmRoute(pickup, dropoff).then((res) => {
       if (res) setRoutePickupToDropoff(res);
     });
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.pickupLat, params.pickupLng, params.dropoffLat, params.dropoffLng]);
 
   // عداد البحث المرئي - يعمل فقط عند currentStep === 0
   useEffect(() => {
