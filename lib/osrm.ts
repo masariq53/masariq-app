@@ -53,7 +53,7 @@ export function clearRouteCache(): void { routeCache.clear(); }
 
 async function fetchMapboxDirect(from: LatLng, to: LatLng): Promise<OsrmRouteResult | null> {
   const url =
-    `https://api.mapbox.com/directions/v5/mapbox/driving/` +
+    `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/` +
     `${from.longitude},${from.latitude};${to.longitude},${to.latitude}` +
     `?access_token=${MAPBOX_TOKEN}&geometries=geojson&overview=full`;
 

@@ -1090,23 +1090,23 @@ export const appRouter = router({
           distance = input.osrmDistanceKm;
           duration = input.osrmDurationMin;
         } else {
-          // محاولة استخدام OSRM للمسار الحقيقي على الطرق
+          // استخدام Mapbox driving-traffic للحصول على وقت دقيق يأخذ حركة المرور بعين الاعتبار
           try {
-            const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${input.pickupLng},${input.pickupLat};${input.dropoffLng},${input.dropoffLat}?overview=false&annotations=false`;
-            const res = await fetch(osrmUrl, {
-              signal: AbortSignal.timeout(5000),
-              headers: { "User-Agent": "MasarApp/1.0" },
+            const MAPBOX_TOKEN = "pk.eyJ1IjoibXVzdGFmYWlxMSIsImEiOiJjbW56NmpwcXcwOXprMnFzZDl1eTFjZWd0In0.nC_HXss0ue9QkBeyo5ZmQA";
+            const mapboxUrl = `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${input.pickupLng},${input.pickupLat};${input.dropoffLng},${input.dropoffLat}?access_token=${MAPBOX_TOKEN}&geometries=geojson&overview=full`;
+            const res = await fetch(mapboxUrl, {
+              signal: AbortSignal.timeout(8000),
             });
             if (res.ok) {
-              const data = await res.json() as { code: string; routes: Array<{ distance: number; duration: number }> };
-              if (data.code === "Ok" && data.routes?.[0]) {
+              const data = await res.json() as { routes?: Array<{ distance: number; duration: number }> };
+              if (data.routes?.[0]) {
                 distance = data.routes[0].distance / 1000;
                 duration = Math.ceil(data.routes[0].duration / 60);
               } else {
-                throw new Error("OSRM no route");
+                throw new Error("Mapbox no route");
               }
             } else {
-              throw new Error("OSRM error");
+              throw new Error("Mapbox error");
             }
           } catch {
             // fallback: خط مستقيم × 1.3
