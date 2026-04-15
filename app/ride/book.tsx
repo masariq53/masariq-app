@@ -69,12 +69,25 @@ type SavedAddress = {
   lng?: number;
 };
 
-async function searchNominatim(query: string): Promise<SearchResult[]> {
+async function searchNominatim(
+  query: string,
+  userLat?: number,
+  userLng?: number
+): Promise<SearchResult[]> {
   if (!query || query.trim().length < 2) return [];
   try {
     const encoded = encodeURIComponent(query);
-    // بحث حر عالمي بدون قيود جغرافية - مثل Waze / Google Maps
-    const url = `https://nominatim.openstreetmap.org/search?q=${encoded}&format=json&limit=8&addressdetails=1&accept-language=ar`;
+    // إذا توفر موقع المستخدم، أضف viewbox حول موقعه (نطاق ~50كم) لإعطاء أولوية للنتائج القريبة
+    let proximityParams = "";
+    if (userLat && userLng) {
+      const delta = 0.5; // ~55كم
+      const minLng = (userLng - delta).toFixed(4);
+      const minLat = (userLat - delta).toFixed(4);
+      const maxLng = (userLng + delta).toFixed(4);
+      const maxLat = (userLat + delta).toFixed(4);
+      proximityParams = `&viewbox=${minLng},${minLat},${maxLng},${maxLat}&bounded=0`;
+    }
+    const url = `https://nominatim.openstreetmap.org/search?q=${encoded}&format=json&limit=8&addressdetails=1&accept-language=ar${proximityParams}`;
     const res = await fetch(url, { headers: { "User-Agent": "MasarApp/1.0" } });
     if (!res.ok) return [];
     return await res.json();
@@ -258,12 +271,11 @@ export default function BookRideScreen() {
     }
     setIsSearching(true);
     searchTimerRef.current = setTimeout(async () => {
-      const results = await searchNominatim(text);
+      const results = await searchNominatim(text, coords.latitude, coords.longitude);
       setSearchResults(results);
       setIsSearching(false);
     }, 600);
-  }, []);
-
+   }, [coords.latitude, coords.longitude]);
   const handleSelectSearchResult = (result: SearchResult) => {
     const lat = parseFloat(result.lat);
     const lon = parseFloat(result.lon);
@@ -445,7 +457,7 @@ export default function BookRideScreen() {
                 value={toInput}
                 onChangeText={handleToInputChange}
                 onFocus={() => setShowSearch(true)}
-                placeholder="ابحث عن وجهتك..."
+                placeholder="ابحث عن وجهتك في مدينتك..."
                 placeholderTextColor="#6B5A8E"
                 returnKeyType="search"
                 textAlign="right"
@@ -479,7 +491,7 @@ export default function BookRideScreen() {
             )}
 
             {toInput.trim().length < 2 && (
-              <Text style={styles.searchSectionTitle}>ابحث عن أي موقع في العالم</Text>
+              <Text style={styles.searchSectionTitle}>نتائج البحث</Text>
             )}
 
             {isSearching && (
