@@ -424,7 +424,8 @@ export const appRouter = router({
           fare = fareResult.fare;
         }
 
-        // ─── خصم رصيد المستخدم إذا اختار الدفع بالمحفظة ───
+        // ─── فحص كفاية الرصيد مسبقاً إذا اختار الدفع بالمحفظة ───
+        // الخصم الفعلي يتم فقط عند ضغطة بدأ الرحلة (in_progress)
         if (input.paymentMethod === "wallet") {
           const { getDb: getDbInner } = await import("./db");
           const { passengers: passengersSchema } = await import("../drizzle/schema");
@@ -457,41 +458,7 @@ export const appRouter = router({
           paymentMethod: input.paymentMethod,
           status: "searching",
         });
-
-        // خصم الرصيد وتسجيل المعاملة بعد إنشاء الرحلة (لإضافة referenceId)
-        if (input.paymentMethod === "wallet") {
-          const { getDb: getDbWallet } = await import("./db");
-          const { passengers: passengersSchemaW, walletTransactions: walletTxSchema } = await import("../drizzle/schema");
-          const { eq: eqW, sql: sqlW } = await import("drizzle-orm");
-          const dbWallet = await getDbWallet();
-          if (dbWallet) {
-            const [passengerRow2] = await dbWallet
-              .select({ walletBalance: passengersSchemaW.walletBalance })
-              .from(passengersSchemaW)
-              .where(eqW(passengersSchemaW.id, input.passengerId))
-              .limit(1);
-            const balanceBefore = parseFloat(passengerRow2?.walletBalance?.toString() ?? "0");
-            const balanceAfter = balanceBefore - fare;
-            // خصم المبلغ من محفظة المستخدم
-            await dbWallet
-              .update(passengersSchemaW)
-              .set({ walletBalance: sqlW`walletBalance - ${fare}` })
-              .where(eqW(passengersSchemaW.id, input.passengerId));
-            // تسجيل معاملة الخصم في سجل المحفظة
-            await dbWallet.insert(walletTxSchema).values({
-              userId: input.passengerId,
-              userType: "passenger",
-              type: "debit",
-              amount: fare.toFixed(2),
-              balanceBefore: balanceBefore.toString(),
-              balanceAfter: balanceAfter.toString(),
-              description: `دفع رحلة داخل المدينة`,
-              referenceId: ride?.id ?? null,
-              referenceType: "city_ride",
-              status: "completed",
-            });
-          }
-        }
+        // ملاحظة: الخصم الفعلي يتم عند بدء الرحلة (in_progress) في updateStatus
 
         // ─── إرسال إشعارات push للسائقين النشطين ───
         // فلتر السائقين النشطين خلال آخر 10 دقائق من قاعدة البيانات - منع إرسال طلبات لسائقين أغلقوا التطبيق منذ فترة طويلة
@@ -566,15 +533,8 @@ export const appRouter = router({
                   }]),
                 }).catch(() => {});
               }
-              // إعادة الرصيد للمستخدم إذا كان قد دفع بالمحفظة
-              if ((currentRide as any).paymentMethod === "wallet" && currentRide.fare && Number(currentRide.fare) > 0) {
-                try {
-                  const { refundFareToPassenger } = await import("./db");
-                  await refundFareToPassenger(input.passengerId, Number(currentRide.fare), ride.id, "لم يتوفر سائق");
-                } catch (e) {
-                  console.warn("[Wallet] Failed to refund fare on auto-cancel:", e);
-                }
-              }
+              // ملاحظة: لا حاجة لاسترداد هنا لأن الخصم يتم فقط عند بدء الرحلة (in_progress)
+              // والإلغاء التلقائي يحدث في مرحلة "searching" قبل قبول أي سائق
             }
           } catch (e) {
             console.warn("[AutoCancel] Error:", e);
@@ -704,6 +664,54 @@ export const appRouter = router({
 
         await updateRideStatus(input.rideId, input.status, extra as any);
 
+        // ─── خصم رصيد المستخدم عند بدء الرحلة ───
+        // يتم الخصم فقط عند ضغط الكابتن على "بدأ الرحلة" وليس عند الطلب
+        if (input.status === "in_progress") {
+          const rideForWallet = await getRideById(input.rideId);
+          if (rideForWallet && (rideForWallet as any).paymentMethod === "wallet" && rideForWallet.fare && Number(rideForWallet.fare) > 0) {
+            try {
+              const { getDb: getDbW } = await import("./db");
+              const { passengers: passengersW, walletTransactions: walletTxW } = await import("../drizzle/schema");
+              const { eq: eqW, sql: sqlW } = await import("drizzle-orm");
+              const dbW = await getDbW();
+              if (dbW) {
+                const fare = Number(rideForWallet.fare);
+                const [passengerRow] = await dbW
+                  .select({ walletBalance: passengersW.walletBalance })
+                  .from(passengersW)
+                  .where(eqW(passengersW.id, rideForWallet.passengerId))
+                  .limit(1);
+                const balanceBefore = parseFloat(passengerRow?.walletBalance?.toString() ?? "0");
+                if (balanceBefore < fare) {
+                  // لو كان الرصيد غير كافٍ عند بدء الرحلة (نادر جداً) - نسجل تحذير ونكمل العملية
+                  console.warn(`[Wallet] Passenger ${rideForWallet.passengerId} has insufficient balance at ride start. Balance: ${balanceBefore}, Fare: ${fare}`);
+                }
+                const balanceAfter = Math.max(0, balanceBefore - fare);
+                // خصم المبلغ من محفظة المستخدم
+                await dbW
+                  .update(passengersW)
+                  .set({ walletBalance: sqlW`GREATEST(0, walletBalance - ${fare})` })
+                  .where(eqW(passengersW.id, rideForWallet.passengerId));
+                // تسجيل معاملة الخصم في سجل المحفظة
+                await dbW.insert(walletTxW).values({
+                  userId: rideForWallet.passengerId,
+                  userType: "passenger",
+                  type: "debit",
+                  amount: fare.toFixed(2),
+                  balanceBefore: balanceBefore.toString(),
+                  balanceAfter: balanceAfter.toString(),
+                  description: `دفع رحلة داخل المدينة #${input.rideId}`,
+                  referenceId: input.rideId,
+                  referenceType: "city_ride",
+                  status: "completed",
+                });
+              }
+            } catch (e) {
+              console.warn("[Wallet] Failed to deduct fare on ride start:", e);
+            }
+          }
+        }
+
         // On completion: increment totalRides, keep driver online but set available=true (ready for new rides)
         if (input.status === "completed") {
           const ride = await getRideById(input.rideId);
@@ -751,8 +759,11 @@ export const appRouter = router({
             // عند الإلغاء: أعد السائق لحالة متاح حتى يستقبل طلبات جديدة
             await setDriverOnlineStatus(ride.driverId, true, true);
           }
-          // إذا كانت طريقة الدفع بالمحفظة: استرداد الأجرة للمستخدم
-          if (ride && (ride as any).paymentMethod === "wallet" && ride.fare && Number(ride.fare) > 0) {
+          // إذا كانت طريقة الدفع بالمحفظة وكانت الرحلة قد بدأت فعلاً (in_progress): استرداد الأجرة للمستخدم
+          // الخصم يتم فقط عند in_progress لذلك لا نسترد إلا إذا كان الخصم قد تم فعلاً
+          const rideStatusBeforeCancel = ride?.status;
+          const deductionAlreadyDone = rideStatusBeforeCancel === "in_progress";
+          if (ride && (ride as any).paymentMethod === "wallet" && ride.fare && Number(ride.fare) > 0 && deductionAlreadyDone) {
             try {
               const { refundFareToPassenger } = await import("./db");
               const cancelReason = input.cancelReason ?? "إلغاء الرحلة";
