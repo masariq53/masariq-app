@@ -533,7 +533,7 @@ export default function BookRideScreen() {
 
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={0}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 24}
       >
       <View style={styles.bottomSheet}>
         <View style={styles.handle} />
