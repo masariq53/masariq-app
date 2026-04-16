@@ -157,6 +157,13 @@ export default function BookRideScreen() {
   // العناوين المفضلة - تحرير
   const [editFavModal, setEditFavModal] = useState<{ type: "home" | "work" } | null>(null);
   const [favInput, setFavInput] = useState("");
+  // تعديل موقع الانطلاق
+  const [showPickupSearch, setShowPickupSearch] = useState(false);
+  const [pickupInput, setPickupInput] = useState("");
+  const [pickupSearchResults, setPickupSearchResults] = useState<SearchResult[]>([]);
+  const [isPickupSearching, setIsPickupSearching] = useState(false);
+  const [isPickupManual, setIsPickupManual] = useState(false);
+  const pickupSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // اختيار طريقة الدفع
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [pendingPaymentMethod, setPendingPaymentMethod] = useState<"cash" | "wallet">("cash");
@@ -254,9 +261,9 @@ export default function BookRideScreen() {
     }
   };
 
-  // تحديث موقع الانطلاق بـ GPS + Reverse Geocoding
+  // تحديث موقع الانطلاق بـ GPS + Reverse Geocoding (فقط إذا لم يعدل المستخدم يدوياً)
   useEffect(() => {
-    if (!isRealLocation) return;
+    if (!isRealLocation || isPickupManual) return;
     setPickupPin({ latitude: coords.latitude, longitude: coords.longitude });
     if (mapRef.current) {
       mapRef.current.animateToRegion(
@@ -436,6 +443,64 @@ export default function BookRideScreen() {
     }
   };
 
+  // بحث موقع الانطلاق
+  const handlePickupInputChange = useCallback((text: string) => {
+    setPickupInput(text);
+    if (pickupSearchTimerRef.current) clearTimeout(pickupSearchTimerRef.current);
+    if (text.trim().length < 2) {
+      setPickupSearchResults([]);
+      setIsPickupSearching(false);
+      return;
+    }
+    setIsPickupSearching(true);
+    pickupSearchTimerRef.current = setTimeout(async () => {
+      const results = await searchNominatim(text, coords.latitude, coords.longitude);
+      setPickupSearchResults(results);
+      setIsPickupSearching(false);
+    }, 600);
+  }, [coords.latitude, coords.longitude]);
+
+  const handleSelectPickupResult = (result: SearchResult) => {
+    const lat = parseFloat(result.lat);
+    const lon = parseFloat(result.lon);
+    const shortName = shortenAddress(result.display_name);
+    setPickupPin({ latitude: lat, longitude: lon });
+    setFrom(shortName);
+    setPickupInput(shortName);
+    setPickupSearchResults([]);
+    setIsPickupManual(true);
+    setShowPickupSearch(false);
+    Keyboard.dismiss();
+    mapRef.current?.animateToRegion({ latitude: lat, longitude: lon, latitudeDelta: 0.03, longitudeDelta: 0.03 }, 800);
+  };
+
+  const handleSelectPickupSavedAddress = (addr: SavedAddress) => {
+    if (!addr.lat || !addr.lng) return;
+    setPickupPin({ latitude: addr.lat, longitude: addr.lng });
+    setFrom(addr.address);
+    setPickupInput(addr.address);
+    setPickupSearchResults([]);
+    setIsPickupManual(true);
+    setShowPickupSearch(false);
+    Keyboard.dismiss();
+    mapRef.current?.animateToRegion({ latitude: addr.lat, longitude: addr.lng, latitudeDelta: 0.03, longitudeDelta: 0.03 }, 800);
+  };
+
+  const handleResetPickupToGPS = () => {
+    setIsPickupManual(false);
+    setPickupInput("");
+    setPickupSearchResults([]);
+    setShowPickupSearch(false);
+    // سيتم تحديث الموقع تلقائياً من useEffect بعد إعادة تعيين isPickupManual = false
+    if (isRealLocation) {
+      setPickupPin({ latitude: coords.latitude, longitude: coords.longitude });
+      reverseGeocodeNominatim(coords.latitude, coords.longitude).then((address) => {
+        if (address) setFrom(address);
+        else setFrom("موقعي الحالي");
+      });
+    }
+  };
+
   const handleConfirm = () => {
     if (!dropPin) {
       Alert.alert("تنبيه", "يرجى تحديد وجهتك");
@@ -565,10 +630,18 @@ export default function BookRideScreen() {
             <View style={styles.dotRed} />
           </View>
           <View style={styles.locationInputs}>
-            <TouchableOpacity style={styles.locationInput}>
-              <Text style={styles.locationLabel}>من</Text>
-              <Text style={styles.locationValue} numberOfLines={1}>{from}</Text>
-            </TouchableOpacity>
+            <View style={[styles.locationInput, { flexDirection: "row", alignItems: "center" }]}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.locationLabel}>من</Text>
+                <Text style={styles.locationValue} numberOfLines={1}>{from}</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.editPickupBtn}
+                onPress={() => { setPickupInput(from); setShowPickupSearch(true); }}
+              >
+                <Text style={styles.editPickupIcon}>✏️</Text>
+              </TouchableOpacity>
+            </View>
             <View style={styles.inputDivider} />
             <View style={[styles.locationInput, { flexDirection: "row", alignItems: "center" }]}>
               <Text style={styles.locationLabel}>إلى</Text>
@@ -790,7 +863,109 @@ export default function BookRideScreen() {
         </View>
       </Modal>
 
-      {/* Modal تعيين عنوان مفضل */}
+      {/* Modal بحث موقع الانطلاق */}
+      <Modal
+        visible={showPickupSearch}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowPickupSearch(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalBox, { paddingBottom: 32 }]}>
+            <Text style={styles.modalTitle}>تعديل موقع الانطلاق</Text>
+
+            {/* زر إعادة الموقع الحالي */}
+            <TouchableOpacity
+              style={styles.resetGpsBtn}
+              onPress={handleResetPickupToGPS}
+            >
+              <Text style={styles.resetGpsIcon}>📍</Text>
+              <Text style={styles.resetGpsText}>استخدام موقعي الحالي (GPS)</Text>
+            </TouchableOpacity>
+
+            {/* حقل بحث */}
+            <View style={styles.pickupSearchInputRow}>
+              <TextInput
+                style={styles.pickupSearchInput}
+                value={pickupInput}
+                onChangeText={handlePickupInputChange}
+                placeholder="ابحث عن موقع الانطلاق..."
+                placeholderTextColor="#6B5A8E"
+                returnKeyType="search"
+                textAlign="right"
+                autoFocus
+              />
+              {pickupInput.length > 0 && (
+                <TouchableOpacity
+                  style={styles.clearPickupBtn}
+                  onPress={() => { setPickupInput(""); setPickupSearchResults([]); }}
+                >
+                  <Text style={styles.clearPickupText}>✕</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* نتائج البحث */}
+            {isPickupSearching && (
+              <View style={styles.searchLoadingRow}>
+                <ActivityIndicator color="#FFD700" size="small" />
+                <Text style={styles.searchLoadingText}>جاري البحث...</Text>
+              </View>
+            )}
+
+            {!isPickupSearching && pickupSearchResults.length > 0 && (
+              <ScrollView style={{ maxHeight: 200 }} keyboardShouldPersistTaps="handled">
+                {pickupSearchResults.map((item) => (
+                  <TouchableOpacity
+                    key={item.place_id}
+                    style={styles.searchResultItem}
+                    onPress={() => handleSelectPickupResult(item)}
+                  >
+                    <Text style={styles.searchResultIcon}>📍</Text>
+                    <View style={styles.searchResultInfo}>
+                      <Text style={styles.searchResultName} numberOfLines={1}>{shortenAddress(item.display_name)}</Text>
+                      <Text style={styles.searchResultAddr} numberOfLines={1}>
+                        {item.address?.city || item.address?.town || item.address?.state || ""}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
+
+            {/* العناوين المحفوظة */}
+            {pickupInput.trim().length < 2 && (
+              <>
+                <Text style={[styles.searchSectionTitle, { marginTop: 12 }]}>عناوين محفوظة</Text>
+                <ScrollView style={{ maxHeight: 180 }} keyboardShouldPersistTaps="handled">
+                  {allSavedAddresses.filter((a) => a.lat && a.lng).map((addr) => (
+                    <TouchableOpacity
+                      key={addr.id}
+                      style={styles.searchResultItem}
+                      onPress={() => handleSelectPickupSavedAddress(addr)}
+                    >
+                      <Text style={styles.searchResultIcon}>{addr.icon}</Text>
+                      <View style={styles.searchResultInfo}>
+                        <Text style={styles.searchResultName}>{addr.label}</Text>
+                        <Text style={styles.searchResultAddr} numberOfLines={1}>{addr.address}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </>
+            )}
+
+            <TouchableOpacity
+              style={[styles.modalCancelBtn, { marginTop: 16 }]}
+              onPress={() => setShowPickupSearch(false)}
+            >
+              <Text style={styles.modalCancelText}>إلغاء</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal تعديل عنوان مفضل */}
       <Modal
         visible={!!editFavModal}
         transparent
@@ -965,4 +1140,14 @@ const styles = StyleSheet.create({
   payMethodDesc: { color: "#6B5A8E", fontSize: 12, marginTop: 2, textAlign: "right" },
   payRadio: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: "#3D2070", backgroundColor: "transparent" },
   payRadioActive: { borderColor: "#FFD700", backgroundColor: "#FFD700" },
+  // بحث موقع الانطلاق
+  editPickupBtn: { width: 30, height: 30, borderRadius: 15, backgroundColor: "#3D2070", alignItems: "center", justifyContent: "center", marginLeft: 6 },
+  editPickupIcon: { fontSize: 14 },
+  resetGpsBtn: { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: "rgba(76,175,80,0.12)", borderRadius: 12, padding: 12, marginBottom: 12, borderWidth: 1, borderColor: "rgba(76,175,80,0.3)" },
+  resetGpsIcon: { fontSize: 18 },
+  resetGpsText: { color: "#4CAF50", fontSize: 13, fontWeight: "600", textAlign: "right", flex: 1 },
+  pickupSearchInputRow: { flexDirection: "row", alignItems: "center", backgroundColor: "#2D1B4E", borderRadius: 12, borderWidth: 1, borderColor: "#3D2070", marginBottom: 8, paddingHorizontal: 12 },
+  pickupSearchInput: { flex: 1, color: "#FFFFFF", fontSize: 14, paddingVertical: 12, textAlign: "right" },
+  clearPickupBtn: { width: 24, height: 24, borderRadius: 12, backgroundColor: "#3D2070", alignItems: "center", justifyContent: "center", marginLeft: 6 },
+  clearPickupText: { color: "#9B8EC4", fontSize: 11 },
 });
