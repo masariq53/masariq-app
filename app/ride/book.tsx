@@ -164,6 +164,7 @@ export default function BookRideScreen() {
   const [isPickupSearching, setIsPickupSearching] = useState(false);
   const [isPickupManual, setIsPickupManual] = useState(false);
   const pickupSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pickupInputRef = useRef<TextInput>(null);
   // اختيار طريقة الدفع
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [pendingPaymentMethod, setPendingPaymentMethod] = useState<"cash" | "wallet">("cash");
@@ -637,7 +638,11 @@ export default function BookRideScreen() {
               </View>
               <TouchableOpacity
                 style={styles.editPickupBtn}
-                onPress={() => { setPickupInput(from); setShowPickupSearch(true); }}
+                onPress={() => {
+                  Keyboard.dismiss();
+                  setPickupInput(from);
+                  setTimeout(() => setShowPickupSearch(true), 100);
+                }}
               >
                 <Text style={styles.editPickupIcon}>✏️</Text>
               </TouchableOpacity>
@@ -869,6 +874,7 @@ export default function BookRideScreen() {
         transparent
         animationType="slide"
         onRequestClose={() => setShowPickupSearch(false)}
+        onShow={() => setTimeout(() => pickupInputRef.current?.focus(), 300)}
       >
         <View style={styles.modalOverlay}>
           <View style={[styles.modalBox, { paddingBottom: 32 }]}>
@@ -893,7 +899,7 @@ export default function BookRideScreen() {
                 placeholderTextColor="#6B5A8E"
                 returnKeyType="search"
                 textAlign="right"
-                autoFocus
+                ref={pickupInputRef}
               />
               {pickupInput.length > 0 && (
                 <TouchableOpacity
