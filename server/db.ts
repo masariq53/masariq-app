@@ -3621,3 +3621,97 @@ export async function getPassengerWalletTransactions(passengerId: number, limit 
     .limit(limit);
   return rows;
 }
+
+/**
+ * تحويل أجرة الرحلة المدفوعة بالمحفظة إلى محفظة الكابتن
+ * يُستدعى عند اكتمال الرحلة إذا كانت طريقة الدفع = wallet
+ */
+export async function transferFareToDriver(
+  driverId: number,
+  passengerId: number,
+  fare: number,
+  rideId: number,
+  rideType: "city" | "intercity" = "city"
+) {
+  const db = await getDb();
+  if (!db) return;
+
+  // جلب رصيد الكابتن الحالي
+  const [driver] = await db
+    .select({ walletBalance: drivers.walletBalance })
+    .from(drivers)
+    .where(eq(drivers.id, driverId))
+    .limit(1);
+  if (!driver) return;
+
+  const driverBalanceBefore = parseFloat(driver.walletBalance?.toString() ?? "0");
+  const driverBalanceAfter = driverBalanceBefore + fare;
+
+  // إضافة الأجرة لمحفظة الكابتن
+  await db.update(drivers)
+    .set({ walletBalance: sql`walletBalance + ${fare}` })
+    .where(eq(drivers.id, driverId));
+
+  // تسجيل معاملة إضافة في سجل الكابتن
+  await db.insert(walletTransactions).values({
+    userId: driverId,
+    userType: "driver",
+    type: "credit",
+    amount: fare.toString(),
+    description: rideType === "intercity"
+      ? `أجرة رحلة بين المدن #${rideId} (دفع بالمحفظة)`
+      : `أجرة رحلة داخل المدينة #${rideId} (دفع بالمحفظة)`,
+    rideId,
+    balanceBefore: driverBalanceBefore.toString(),
+    balanceAfter: driverBalanceAfter.toString(),
+    referenceType: rideType === "intercity" ? "intercity_ride" : "city_ride",
+    status: "completed",
+  });
+
+  return { driverBalanceBefore, driverBalanceAfter };
+}
+
+/**
+ * استرداد أجرة الرحلة المدفوعة بالمحفظة إلى المستخدم عند الإلغاء
+ */
+export async function refundFareToPassenger(
+  passengerId: number,
+  fare: number,
+  rideId: number,
+  reason: string = "إلغاء الرحلة"
+) {
+  const db = await getDb();
+  if (!db) return;
+
+  // جلب رصيد المستخدم الحالي
+  const [passenger] = await db
+    .select({ walletBalance: passengers.walletBalance })
+    .from(passengers)
+    .where(eq(passengers.id, passengerId))
+    .limit(1);
+  if (!passenger) return;
+
+  const balanceBefore = parseFloat(passenger.walletBalance?.toString() ?? "0");
+  const balanceAfter = balanceBefore + fare;
+
+  // إعادة المبلغ لمحفظة المستخدم
+  await db.update(passengers)
+    .set({ walletBalance: sql`walletBalance + ${fare}` })
+    .where(eq(passengers.id, passengerId));
+
+  // تسجيل معاملة استرداد في سجل المستخدم
+  await db.insert(walletTransactions).values({
+    userId: passengerId,
+    userType: "passenger",
+    type: "credit",
+    amount: fare.toString(),
+    description: `استرداد أجرة رحلة #${rideId} - ${reason}`,
+    rideId,
+    balanceBefore: balanceBefore.toString(),
+    balanceAfter: balanceAfter.toString(),
+    referenceType: "ride_refund",
+    status: "completed",
+  });
+
+  return { balanceBefore, balanceAfter };
+}

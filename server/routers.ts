@@ -665,6 +665,15 @@ export const appRouter = router({
                   } catch (e) {
                     console.warn("[Commission] Failed to deduct commission:", e);
                   }
+                  // إذا كانت طريقة الدفع بالمحفظة: تحويل الأجرة لمحفظة الكابتن
+                  if ((ride as any).paymentMethod === "wallet") {
+                    try {
+                      const { transferFareToDriver } = await import("./db");
+                      await transferFareToDriver(ride.driverId, ride.passengerId, Number(ride.fare), ride.id, "city");
+                    } catch (e) {
+                      console.warn("[Wallet] Failed to transfer fare to driver:", e);
+                    }
+                  }
                 }
               }
               await db.update(passengersTable)
@@ -680,6 +689,16 @@ export const appRouter = router({
           if (ride?.driverId) {
             // عند الإلغاء: أعد السائق لحالة متاح حتى يستقبل طلبات جديدة
             await setDriverOnlineStatus(ride.driverId, true, true);
+          }
+          // إذا كانت طريقة الدفع بالمحفظة: استرداد الأجرة للمستخدم
+          if (ride && (ride as any).paymentMethod === "wallet" && ride.fare && Number(ride.fare) > 0) {
+            try {
+              const { refundFareToPassenger } = await import("./db");
+              const cancelReason = input.cancelReason ?? "إلغاء الرحلة";
+              await refundFareToPassenger(ride.passengerId, Number(ride.fare), ride.id, cancelReason);
+            } catch (e) {
+              console.warn("[Wallet] Failed to refund fare to passenger:", e);
+            }
           }
           // إرسال Push Notification للمستخدم عند إلغاء السائق
           const isDriverCancel = input.cancelReason?.includes("سائق") || input.cancelReason?.includes("driver");
@@ -2394,6 +2413,13 @@ export const appRouter = router({
       .input(z.object({ bookingId: z.number(), passengerId: z.number() }))
       .mutation(async ({ input }) => {
         const result = await cancelIntercityBooking(input.bookingId, input.passengerId);
+        // إذا كانت طريقة الدفع بالمحفظة: استرداد الأجرة للمستخدم
+        if (result?.booking && (result.booking as any).paymentMethod === "wallet" && result.booking.totalPrice && Number(result.booking.totalPrice) > 0) {
+          try {
+            const { refundFareToPassenger } = await import("./db");
+            await refundFareToPassenger(input.passengerId, Number(result.booking.totalPrice), input.bookingId, "إلغاء حجز رحلة بين المدن");
+          } catch (e) { console.warn("[Wallet] Failed to refund intercity booking:", e); }
+        }
         // إرسال إشعار للكابتن
         try {
           if (result?.booking?.tripId) {
@@ -2616,8 +2642,16 @@ export const appRouter = router({
               const [booking] = await db.select().from(bookingsTable).where(eqFn(bookingsTable.id, input.bookingId)).limit(1);
               if (booking) {
                 await db.update(bookingsTable).set({ status: "completed" } as any).where(eqFn(bookingsTable.id, input.bookingId));
-                // إرسال إشعار للمسافر
-                const [trip] = await db.select({ fromCity: tripsTable.fromCity, toCity: tripsTable.toCity }).from(tripsTable).where(eqFn(tripsTable.id, booking.tripId)).limit(1);
+                // إذا كانت طريقة الدفع بالمحفظة: تحويل الأجرة لمحفظة الكابتن
+                const [trip] = await db.select({ fromCity: tripsTable.fromCity, toCity: tripsTable.toCity, driverId: tripsTable.driverId }).from(tripsTable).where(eqFn(tripsTable.id, booking.tripId)).limit(1);
+                if ((booking as any).paymentMethod === "wallet" && booking.totalPrice && Number(booking.totalPrice) > 0 && trip?.driverId) {
+                  try {
+                    const { transferFareToDriver } = await import("./db");
+                    await transferFareToDriver(trip.driverId, booking.passengerId, Number(booking.totalPrice), input.bookingId, "intercity");
+                  } catch (e) {
+                    console.warn("[Wallet] Failed to transfer intercity fare to driver:", e);
+                  }
+                }
                 const passengerToken = await getPassengerPushToken(booking.passengerId);
                 if (passengerToken && passengerToken.startsWith("ExponentPushToken[")) {
                   fetch("https://exp.host/--/api/v2/push/send", {
