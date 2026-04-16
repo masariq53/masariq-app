@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import {
   View,
   Text,
@@ -46,7 +46,7 @@ export default function WalletScreen() {
   const insets = useSafeAreaInsets();
   const { colorScheme } = useThemeContext();
   const isDark = colorScheme === "dark";
-  const { passenger } = usePassenger();
+  const { passenger, setPassenger } = usePassenger();
 
   const colors = {
     scrollBg: isDark ? "#0D0019" : "#F5F7FA",
@@ -59,10 +59,29 @@ export default function WalletScreen() {
 
   const txQuery = trpc.rides.getPassengerTransactions.useQuery(
     { passengerId: passenger?.id ?? 0, limit: 50 },
-    { enabled: !!passenger?.id }
+    { enabled: !!passenger?.id, refetchOnMount: true, staleTime: 0 }
   );
 
-  const walletBalance = passenger?.walletBalance
+  // جلب الرصيد الحقيقي من الـ server عند فتح الشاشة
+  const profileQuery = trpc.passenger.get.useQuery(
+    { passengerId: passenger?.id ?? 0 },
+    { enabled: !!passenger?.id, refetchOnMount: true, staleTime: 0 }
+  );
+
+  // تحديث الـ passenger context بالرصيد الجديد من الـ server
+  useEffect(() => {
+    if (profileQuery.data && passenger) {
+      const serverBalance = profileQuery.data.walletBalance?.toString() ?? "0";
+      if (serverBalance !== passenger.walletBalance) {
+        setPassenger({ ...passenger, walletBalance: serverBalance });
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profileQuery.data?.walletBalance]);
+
+  const walletBalance = profileQuery.data?.walletBalance
+    ? parseFloat(profileQuery.data.walletBalance.toString()).toLocaleString("ar-IQ")
+    : passenger?.walletBalance
     ? parseFloat(passenger.walletBalance).toLocaleString("ar-IQ")
     : "0";
 

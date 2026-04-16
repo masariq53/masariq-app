@@ -38,7 +38,7 @@ export default function DriverWalletScreen() {
 
   const txQuery = trpc.driverWallet.getTransactions.useQuery(
     { driverId: driver?.id ?? 0, limit: 100 },
-    { enabled: !!driver?.id }
+    { enabled: !!driver?.id, refetchOnMount: true, staleTime: 0 }
   );
 
   const balance = balanceQuery.data?.balance ?? driver?.walletBalance?.toString() ?? "0";

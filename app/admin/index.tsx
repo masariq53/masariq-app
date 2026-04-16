@@ -2970,13 +2970,13 @@ export default function AdminDashboard() {
                         <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
                           <TouchableOpacity
                             style={{ flex: 1, backgroundColor: '#14532D', borderRadius: 10, paddingVertical: 10, alignItems: 'center', borderWidth: 1, borderColor: '#22C55E' }}
-                            onPress={() => showConfirm({ title: 'موافقة على الشحن', message: `موافقة شحن ${req.amount?.toLocaleString()} د.ع لـ ${req.userName}?`, confirmText: 'موافق', confirmColor: '#22C55E', onConfirm: () => approveTopupMutation.mutate({ requestId: req.id }) })}
+                            onPress={() => showConfirm({ title: 'موافقة على الشحن', message: `موافقة شحن ${req.amount?.toLocaleString()} د.ع لـ ${req.userName}?`, confirmText: 'موافق', confirmColor: '#22C55E', onConfirm: () => { hideConfirm(); approveTopupMutation.mutate({ requestId: req.id }); } })}
                           >
                             <Text style={{ color: '#22C55E', fontWeight: '700' }}>✅ موافقة</Text>
                           </TouchableOpacity>
                           <TouchableOpacity
                             style={{ flex: 1, backgroundColor: '#450A0A', borderRadius: 10, paddingVertical: 10, alignItems: 'center', borderWidth: 1, borderColor: '#EF4444' }}
-                            onPress={() => showConfirm({ title: 'رفض الطلب', message: `رفض طلب شحن ${req.userName}?`, confirmText: 'رفض', confirmColor: '#EF4444', onConfirm: () => rejectTopupMutation.mutate({ requestId: req.id }) })}
+                            onPress={() => showConfirm({ title: 'رفض الطلب', message: `رفض طلب شحن ${req.userName}?`, confirmText: 'رفض', confirmColor: '#EF4444', onConfirm: () => { hideConfirm(); rejectTopupMutation.mutate({ requestId: req.id }); } })}
                           >
                             <Text style={{ color: '#F87171', fontWeight: '700' }}>❌ رفض</Text>
                           </TouchableOpacity>
