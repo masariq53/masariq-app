@@ -25,6 +25,7 @@ import { usePassenger } from "@/lib/passenger-context";
 import { useLocation } from "@/hooks/use-location";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { fetchOsrmRoute } from "@/lib/osrm";
+import { formatIQD } from "@/lib/utils";
 import { useAudioRecorder, useAudioRecorderState, RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync } from "expo-audio";
 import * as FileSystem from "expo-file-system/legacy";
 
@@ -156,6 +157,9 @@ export default function BookRideScreen() {
   // العناوين المفضلة - تحرير
   const [editFavModal, setEditFavModal] = useState<{ type: "home" | "work" } | null>(null);
   const [favInput, setFavInput] = useState("");
+  // اختيار طريقة الدفع
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [pendingPaymentMethod, setPendingPaymentMethod] = useState<"cash" | "wallet">("cash");
   const [allSavedAddresses, setAllSavedAddresses] = useState<SavedAddress[]>([
     { id: "home", type: "home", label: "البيت", address: "", icon: "🏠" },
     { id: "work", type: "work", label: "العمل", address: "", icon: "🏢" },
@@ -439,6 +443,20 @@ export default function BookRideScreen() {
     }
     const multiplier = rideTypes.find((r) => r.id === selectedRide)?.multiplier ?? 1;
     const quotedFare = fareQuery.data ? Math.round(fareQuery.data.fare * multiplier) : undefined;
+    const walletBalance = parseFloat(passenger?.walletBalance ?? "0");
+    // إذا كان الرصيد يكفي → اعرض modal اختيار طريقة الدفع
+    if (quotedFare && walletBalance >= quotedFare) {
+      setShowPaymentModal(true);
+      return;
+    }
+    // وإلا → دفع كاش مباشرة
+    submitRide("cash");
+  };
+
+  const submitRide = (paymentMethod: "cash" | "wallet") => {
+    if (!dropPin) return;
+    const multiplier = rideTypes.find((r) => r.id === selectedRide)?.multiplier ?? 1;
+    const quotedFare = fareQuery.data ? Math.round(fareQuery.data.fare * multiplier) : undefined;
     const quotedDuration = fareQuery.data?.duration;
     requestRide.mutate({
       passengerId: passenger?.id ?? 1,
@@ -448,7 +466,7 @@ export default function BookRideScreen() {
       dropoffLat: dropPin.latitude,
       dropoffLng: dropPin.longitude,
       dropoffAddress: to,
-      paymentMethod: "cash",
+      paymentMethod,
       quotedFare,
       quotedDuration,
     });
@@ -713,6 +731,65 @@ export default function BookRideScreen() {
       </View>
       </KeyboardAvoidingView>
 
+      {/* Modal اختيار طريقة الدفع */}
+      <Modal
+        visible={showPaymentModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowPaymentModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalBox, { paddingBottom: 24 }]}>
+            <Text style={[styles.modalTitle, { marginBottom: 6 }]}>اختر طريقة الدفع</Text>
+            {(() => {
+              const multiplier = rideTypes.find((r) => r.id === selectedRide)?.multiplier ?? 1;
+              const fare = fareQuery.data ? Math.round(fareQuery.data.fare * multiplier) : 0;
+              const walletBal = parseFloat(passenger?.walletBalance ?? "0");
+              return (
+                <Text style={{ color: "#9B8EC4", fontSize: 13, textAlign: "center", marginBottom: 20 }}>
+                  قيمة الرحلة: {formatIQD(fare)} د.ع{"\n"}رصيدك: {formatIQD(walletBal)} د.ع
+                </Text>
+              );
+            })()}
+            {/* خيار كاش */}
+            <TouchableOpacity
+              style={[styles.payMethodBtn, pendingPaymentMethod === "cash" && styles.payMethodBtnActive]}
+              onPress={() => setPendingPaymentMethod("cash")}
+            >
+              <Text style={styles.payMethodIcon}>💵</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.payMethodLabel, pendingPaymentMethod === "cash" && styles.payMethodLabelActive]}>كاش</Text>
+                <Text style={styles.payMethodDesc}>ادفع نقداً للسائق</Text>
+              </View>
+              <View style={[styles.payRadio, pendingPaymentMethod === "cash" && styles.payRadioActive]} />
+            </TouchableOpacity>
+            {/* خيار المحفظة */}
+            <TouchableOpacity
+              style={[styles.payMethodBtn, pendingPaymentMethod === "wallet" && styles.payMethodBtnActive]}
+              onPress={() => setPendingPaymentMethod("wallet")}
+            >
+              <Text style={styles.payMethodIcon}>💳</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.payMethodLabel, pendingPaymentMethod === "wallet" && styles.payMethodLabelActive]}>محفظة التطبيق</Text>
+                <Text style={styles.payMethodDesc}>رصيدك: {formatIQD(passenger?.walletBalance)} د.ع</Text>
+              </View>
+              <View style={[styles.payRadio, pendingPaymentMethod === "wallet" && styles.payRadioActive]} />
+            </TouchableOpacity>
+            <View style={[styles.modalBtns, { marginTop: 20 }]}>
+              <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setShowPaymentModal(false)}>
+                <Text style={styles.modalCancelText}>إلغاء</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalSaveBtn}
+                onPress={() => { setShowPaymentModal(false); submitRide(pendingPaymentMethod); }}
+              >
+                <Text style={styles.modalSaveText}>تأكيد الطلب</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {/* Modal تعيين عنوان مفضل */}
       <Modal
         visible={!!editFavModal}
@@ -876,4 +953,16 @@ const styles = StyleSheet.create({
     zIndex: 20,
   },
   routeLoadingText: { color: "#FFD700", fontSize: 13, fontWeight: "600" },
+  payMethodBtn: {
+    flexDirection: "row", alignItems: "center", gap: 12,
+    backgroundColor: "#2D1B4E", borderRadius: 14, padding: 14, marginBottom: 10,
+    borderWidth: 2, borderColor: "transparent",
+  },
+  payMethodBtnActive: { borderColor: "#FFD700", backgroundColor: "rgba(255,215,0,0.08)" },
+  payMethodIcon: { fontSize: 24 },
+  payMethodLabel: { color: "#C4B5D4", fontSize: 14, fontWeight: "700", textAlign: "right" },
+  payMethodLabelActive: { color: "#FFD700" },
+  payMethodDesc: { color: "#6B5A8E", fontSize: 12, marginTop: 2, textAlign: "right" },
+  payRadio: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: "#3D2070", backgroundColor: "transparent" },
+  payRadioActive: { borderColor: "#FFD700", backgroundColor: "#FFD700" },
 });

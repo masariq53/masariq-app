@@ -1,0 +1,2 @@
+ALTER TABLE `parcels` MODIFY COLUMN `paymentMethod` enum('cash','wallet') NOT NULL DEFAULT 'cash';--> statement-breakpoint
+ALTER TABLE `intercityBookings` ADD `paymentMethod` enum('cash','wallet') DEFAULT 'cash' NOT NULL;

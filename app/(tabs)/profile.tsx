@@ -22,6 +22,7 @@ import { trpc } from "@/lib/trpc";
 import { getApiBaseUrl } from "@/constants/oauth";
 import { getSessionToken } from "@/lib/_core/auth";
 import { useLanguage, useT, type Language } from "@/lib/i18n";
+import { formatIQD } from "@/lib/utils";
 
 const DARK_MODE_KEY = "@masar_dark_mode";
 
@@ -290,7 +291,7 @@ export default function ProfileScreen() {
           <View style={styles.statsRow}>
             {[
               { label: t.captain.totalRides, value: String(passenger?.totalRides || 0), icon: "🚗" },
-              { label: t.wallet.balance, value: `${passenger?.walletBalance || '0'} د`, icon: "💰" },
+              { label: t.wallet.balance, value: `${formatIQD(passenger?.walletBalance)} د.ع`, icon: "💰" },
               { label: t.common.rating, value: String(passenger?.rating || '5.0'), icon: "⭐" },
             ].map((s, i) => (
               <View key={i} style={[styles.statCard, { backgroundColor: colors.card }]}>

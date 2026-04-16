@@ -1680,6 +1680,7 @@ export async function bookIntercityWithGPS(data: {
   pickupLat: number;
   pickupLng: number;
   passengerNote?: string;
+  paymentMethod?: "cash" | "wallet";
 }) {
   const db = await getDb();
   if (!db) return null;
@@ -1705,6 +1706,22 @@ export async function bookIntercityWithGPS(data: {
     .limit(1);
   if (existingBooking.length > 0) throw new Error("لقد حجزت هذه الرحلة مسبقاً");
   const totalPrice = parseFloat(trip.pricePerSeat) * data.seatsBooked;
+  const paymentMethod = data.paymentMethod ?? "cash";
+  // خصم الرصيد إذا اختار الدفع بالمحفظة
+  if (paymentMethod === "wallet") {
+    const [passengerRow] = await db.select({ walletBalance: passengers.walletBalance }).from(passengers).where(eq(passengers.id, data.passengerId)).limit(1);
+    const balance = parseFloat(passengerRow?.walletBalance?.toString() ?? "0");
+    if (balance < totalPrice) throw new Error("رصيدك غير كافٍ للدفع من المحفظة");
+    const balanceAfter = balance - totalPrice;
+    await db.update(passengers).set({ walletBalance: sql`walletBalance - ${totalPrice}` }).where(eq(passengers.id, data.passengerId));
+    await db.insert(walletTransactions).values({
+      userId: data.passengerId, userType: "passenger", type: "debit",
+      amount: totalPrice.toString(), balanceBefore: balance.toString(),
+      balanceAfter: balanceAfter.toString(),
+      description: `دفع رحلة بين المدن - ${trip.fromCity} → ${trip.toCity}`,
+      referenceType: "intercity_booking", status: "completed",
+    });
+  }
   await db.insert(intercityBookings).values({
     tripId: data.tripId,
     passengerId: data.passengerId,
@@ -1717,6 +1734,7 @@ export async function bookIntercityWithGPS(data: {
     pickupLat: data.pickupLat.toString(),
     pickupLng: data.pickupLng.toString(),
     passengerNote: data.passengerNote ?? null,
+    paymentMethod,
     pickupStatus: "waiting",
   });
   await db
@@ -2749,9 +2767,12 @@ export async function createParcel(data: {
   parcelPhotoUrl?: string;
   scheduledDate?: string;
   scheduledTimeSlot?: string;
+  paymentMethod?: "cash" | "wallet";
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
+  const paymentMethod = data.paymentMethod ?? "cash";
+  // خصم الرصيد إذا اختار الدفع بالمحفظة (سيتم خصم السعر عند تحديده لاحقاً من الكابتن)
   const trackingNumber = generateTrackingNumber();
   const deliveryOtp = generateDeliveryOtp();
   const [result] = await db.insert(parcels).values({
@@ -2759,7 +2780,7 @@ export async function createParcel(data: {
     trackingNumber,
     deliveryOtp,
     status: "pending",
-    paymentMethod: "cash",
+    paymentMethod,
     pickupLat: data.pickupLat?.toString() as any,
     pickupLng: data.pickupLng?.toString() as any,
     dropoffLat: data.dropoffLat?.toString() as any,

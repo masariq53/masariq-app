@@ -218,6 +218,13 @@
       "when": 1776347004750,
       "tag": "0030_fresh_dragon_man",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "5",
+      "when": 1776351777801,
+      "tag": "0031_simple_the_hunter",
+      "breakpoints": true
     }
   ]
 }

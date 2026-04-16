@@ -2552,6 +2552,7 @@ export const appRouter = router({
         pickupLat: z.number(),
         pickupLng: z.number(),
         passengerNote: z.string().optional(),
+        paymentMethod: z.enum(["cash", "wallet"]).default("cash").optional(),
       }))
       .mutation(async ({ input }) => {
         const booking = await bookIntercityWithGPS(input);
@@ -3225,6 +3226,7 @@ export const appRouter = router({
         parcelPhotoUrl: z.string().optional(),
         scheduledDate: z.string().optional(),
         scheduledTimeSlot: z.string().optional(),
+        paymentMethod: z.enum(["cash", "wallet"]).default("cash").optional(),
       }))
       .mutation(async ({ input }) => {
         const passengerCheckP = await getPassengerById(input.senderId);

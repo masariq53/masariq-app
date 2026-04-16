@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Location from "expo-location";
 import { trpc } from "@/lib/trpc";
 import { usePassenger } from "@/lib/passenger-context";
+import { formatIQD } from "@/lib/utils";
 
 const PARCEL_SIZES = [
   { id: "small", icon: "📦", label: "صغير", desc: "حتى 2 كغ", example: "مستندات، ملابس" },
@@ -68,6 +69,7 @@ export default function NewDeliveryScreen() {
   const [destinationCity, setDestinationCity] = useState("");
   const [originCity, setOriginCity] = useState("الموصل");
   const [showCityPicker, setShowCityPicker] = useState<"origin" | "destination" | null>(null);
+  const [deliveryPaymentMethod, setDeliveryPaymentMethod] = useState<"cash" | "wallet">("cash");
 
   const createParcel = trpc.parcel.create.useMutation({
     onSuccess: (data: any) => {
@@ -208,7 +210,8 @@ export default function NewDeliveryScreen() {
       parcelDescription: notes || undefined,
       fromCity: deliveryType === "intercity" ? originCity : undefined,
       toCity: deliveryType === "intercity" ? destinationCity : undefined,
-    });
+      paymentMethod: deliveryPaymentMethod,
+    } as any);
   };
 
   return (
@@ -444,6 +447,48 @@ export default function NewDeliveryScreen() {
           />
         </View>
 
+        {/* طريقة الدفع */}
+        {(() => {
+          const walletBal = parseFloat(passenger?.walletBalance ?? "0");
+          return (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>طريقة الدفع</Text>
+              <TouchableOpacity
+                style={[styles.payRow, deliveryPaymentMethod === "cash" && styles.payRowActive]}
+                onPress={() => setDeliveryPaymentMethod("cash")}
+              >
+                <Text style={styles.payRowIcon}>💵</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.payRowLabel, deliveryPaymentMethod === "cash" && styles.payRowLabelActive]}>كاش</Text>
+                  <Text style={styles.payRowDesc}>ادفع نقداً للكابتن</Text>
+                </View>
+                <View style={[styles.payRadio, deliveryPaymentMethod === "cash" && styles.payRadioActive]} />
+              </TouchableOpacity>
+              {walletBal > 0 ? (
+                <TouchableOpacity
+                  style={[styles.payRow, deliveryPaymentMethod === "wallet" && styles.payRowActive]}
+                  onPress={() => setDeliveryPaymentMethod("wallet")}
+                >
+                  <Text style={styles.payRowIcon}>💳</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.payRowLabel, deliveryPaymentMethod === "wallet" && styles.payRowLabelActive]}>محفظة التطبيق</Text>
+                    <Text style={styles.payRowDesc}>رصيدك: {formatIQD(walletBal)} د.ع</Text>
+                  </View>
+                  <View style={[styles.payRadio, deliveryPaymentMethod === "wallet" && styles.payRadioActive]} />
+                </TouchableOpacity>
+              ) : (
+                <View style={[styles.payRow, { opacity: 0.45 }]}>
+                  <Text style={styles.payRowIcon}>💳</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.payRowLabel}>محفظة التطبيق</Text>
+                    <Text style={styles.payRowDesc}>رصيدك صفر - اشحن محفظتك أولاً</Text>
+                  </View>
+                </View>
+              )}
+            </View>
+          );
+        })()}
+
         {/* Submit */}
         <TouchableOpacity
           style={[styles.submitBtn, createParcel.isPending && styles.submitBtnDisabled]}
@@ -574,4 +619,16 @@ const styles = StyleSheet.create({
   },
   submitBtnDisabled: { opacity: 0.7 },
   submitBtnText: { color: "#1A0533", fontSize: 17, fontWeight: "800" },
+  payRow: {
+    flexDirection: "row", alignItems: "center", gap: 12,
+    backgroundColor: "#2D1B69", borderRadius: 14, padding: 14, marginBottom: 10,
+    borderWidth: 2, borderColor: "transparent",
+  },
+  payRowActive: { borderColor: "#FFD700", backgroundColor: "rgba(255,215,0,0.08)" },
+  payRowIcon: { fontSize: 22 },
+  payRowLabel: { color: "#C4B5D4", fontSize: 14, fontWeight: "700", textAlign: "right" },
+  payRowLabelActive: { color: "#FFD700" },
+  payRowDesc: { color: "#6B5B8A", fontSize: 12, marginTop: 2, textAlign: "right" },
+  payRadio: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: "#3D2580", backgroundColor: "transparent" },
+  payRadioActive: { borderColor: "#FFD700", backgroundColor: "#FFD700" },
 });

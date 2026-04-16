@@ -294,8 +294,9 @@ export const intercityBookings = mysqlTable("intercityBookings", {
   pickupAddress: text("pickupAddress"),
   pickupLat: decimal("pickupLat", { precision: 10, scale: 7 }),
   pickupLng: decimal("pickupLng", { precision: 10, scale: 7 }),
-  passengerNote: text("passengerNote"),
-  pickupStatus: mysqlEnum("pickupStatus", ["waiting", "picked_up", "arrived"]).default("waiting"),
+  passengerNote: text('passengerNote'),
+  paymentMethod: mysqlEnum('paymentMethod', ['cash', 'wallet']).default('cash').notNull(),
+  pickupStatus: mysqlEnum('pickupStatus', ['waiting', 'picked_up', 'arrived']).default('waiting'),
   // حالة توجه الكابتن نحو الراكب المعين
   driverApproachStatus: mysqlEnum("driverApproachStatus", ["idle", "heading", "arrived_at_pickup"]).default("idle"),
   // وقت الوصول التقديري بالدقائق عند ضغطة "التوجه إليه"
@@ -499,7 +500,7 @@ export const parcels = mysqlTable("parcels", {
   parcelPhotoUrl: text("parcelPhotoUrl"),
   estimatedWeight: varchar("estimatedWeight", { length: 50 }),
   price: decimal("price", { precision: 10, scale: 2 }),
-  paymentMethod: mysqlEnum("paymentMethod", ["cash"]).default("cash").notNull(),
+  paymentMethod: mysqlEnum('paymentMethod', ['cash', 'wallet']).default('cash').notNull(),
   scheduledDate: varchar("scheduledDate", { length: 20 }),
   scheduledTimeSlot: varchar("scheduledTimeSlot", { length: 50 }),
   driverId: int("driverId"),

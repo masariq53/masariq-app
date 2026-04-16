@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useThemeContext } from "@/lib/theme-provider";
 import { usePassenger } from "@/lib/passenger-context";
 import { trpc } from "@/lib/trpc";
+import { formatIQD } from "@/lib/utils";
 
 function formatDate(dateStr: string | Date | null): string {
   if (!dateStr) return "";
@@ -79,11 +80,7 @@ export default function WalletScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profileQuery.data?.walletBalance]);
 
-  const walletBalance = profileQuery.data?.walletBalance
-    ? parseFloat(profileQuery.data.walletBalance.toString()).toLocaleString("ar-IQ")
-    : passenger?.walletBalance
-    ? parseFloat(passenger.walletBalance).toLocaleString("ar-IQ")
-    : "0";
+  const walletBalance = formatIQD(profileQuery.data?.walletBalance ?? passenger?.walletBalance ?? 0);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -149,7 +146,7 @@ export default function WalletScreen() {
                 <View style={[styles.txCard, { backgroundColor: colors.txCard, opacity: isRejected ? 0.75 : 1 }]}>
                   <View style={styles.txLeft}>
                     <Text style={[styles.txAmount, { color: amountColor }]}>
-                      {isPending ? "" : isRejected ? "" : isCredit ? "+" : "-"}{amount.toLocaleString("ar-IQ")} د.ع
+                      {isPending ? "" : isRejected ? "" : isCredit ? "+" : "-"}{formatIQD(amount)} د.ع
                     </Text>
                     {isPending && (
                       <View style={styles.statusBadgePending}>

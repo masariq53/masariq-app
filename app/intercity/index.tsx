@@ -13,6 +13,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useT } from "@/lib/i18n";
 import { usePassenger } from "@/lib/passenger-context";
 import MapView, { Marker, Polyline, PROVIDER_DEFAULT } from "react-native-maps";
+import { formatIQD } from "@/lib/utils";
 
 // إحداثيات المدن العراقية الرئيسية
 const CITY_COORDS: Record<string, { latitude: number; longitude: number }> = {
@@ -136,6 +137,7 @@ export default function IntercityBrowseScreen() {
   const [passengerNote, setPassengerNote] = useState("");
   const [gpsLoading, setGpsLoading] = useState(false);
   const [showBookingModal, setShowBookingModal] = useState(false);
+  const [intercityPaymentMethod, setIntercityPaymentMethod] = useState<"cash" | "wallet">("cash");
 
   const { data: trips, isLoading, refetch } = trpc.intercity.listTrips.useQuery({
     fromCity: fromFilter === "الكل" ? undefined : fromFilter,
@@ -143,7 +145,7 @@ export default function IntercityBrowseScreen() {
   });
 
   const bookTrip = trpc.intercity.bookWithGPS.useMutation({
-    onSuccess: () => {
+    onSuccess: (_, vars) => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setShowBookingModal(false);
       setSelectedTrip(null);
@@ -152,7 +154,9 @@ export default function IntercityBrowseScreen() {
       setPickupLng(null);
       setPassengerNote("");
       setSeatsToBook(1);
-      Alert.alert("✅ تم الحجز بنجاح", "تم حجز مقعدك. الدفع كاش عند الركوب.", [
+      const pm = (vars as any).paymentMethod ?? "cash";
+      const msg = pm === "wallet" ? "تم حجز مقعدك. تم خصم المبلغ من محفظتك." : "تم حجز مقعدك. الدفع كاش عند الركوب.";
+      Alert.alert("✅ تم الحجز بنجاح", msg, [
         { text: "عرض حجوزاتي", onPress: () => router.push("/intercity/my-bookings") },
         { text: "حسناً" },
       ]);
@@ -232,7 +236,8 @@ export default function IntercityBrowseScreen() {
       pickupLat,
       pickupLng,
       passengerNote: passengerNote.trim() || undefined,
-    });
+      paymentMethod: intercityPaymentMethod,
+    } as any);
   };
 
   // ملخص الفلتر
@@ -577,13 +582,55 @@ export default function IntercityBrowseScreen() {
                     numberOfLines={2}
                   />
 
-                  {/* Total */}
-                  <View style={styles.totalRow}>
-                    <Text style={styles.totalLabel}>الإجمالي (كاش عند الركوب)</Text>
-                    <Text style={styles.totalAmount}>
-                      {(seatsToBook * parseInt(selectedTrip.pricePerSeat)).toLocaleString()} دينار
-                    </Text>
-                  </View>
+                  {/* اختيار طريقة الدفع */}
+                  {(() => {
+                    const totalFare = seatsToBook * parseInt(selectedTrip.pricePerSeat);
+                    const walletBal = parseFloat(passengerCtx?.walletBalance ?? "0");
+                    const canPayWallet = walletBal >= totalFare;
+                    return (
+                      <>
+                        {/* Total */}
+                        <View style={styles.totalRow}>
+                          <Text style={styles.totalLabel}>الإجمالي</Text>
+                          <Text style={styles.totalAmount}>{formatIQD(totalFare)} د.ع</Text>
+                        </View>
+                        {/* طريقة الدفع */}
+                        <Text style={[styles.fieldLabel, { marginBottom: 8 }]}>طريقة الدفع</Text>
+                        <TouchableOpacity
+                          style={[styles.payMethodRow, intercityPaymentMethod === "cash" && styles.payMethodRowActive]}
+                          onPress={() => setIntercityPaymentMethod("cash")}
+                        >
+                          <Text style={styles.payMethodRowIcon}>💵</Text>
+                          <View style={{ flex: 1 }}>
+                            <Text style={[styles.payMethodRowLabel, intercityPaymentMethod === "cash" && styles.payMethodRowLabelActive]}>كاش</Text>
+                            <Text style={styles.payMethodRowDesc}>ادفع نقداً عند الركوب</Text>
+                          </View>
+                          <View style={[styles.payRadio, intercityPaymentMethod === "cash" && styles.payRadioActive]} />
+                        </TouchableOpacity>
+                        {canPayWallet ? (
+                          <TouchableOpacity
+                            style={[styles.payMethodRow, intercityPaymentMethod === "wallet" && styles.payMethodRowActive]}
+                            onPress={() => setIntercityPaymentMethod("wallet")}
+                          >
+                            <Text style={styles.payMethodRowIcon}>💳</Text>
+                            <View style={{ flex: 1 }}>
+                              <Text style={[styles.payMethodRowLabel, intercityPaymentMethod === "wallet" && styles.payMethodRowLabelActive]}>محفظة التطبيق</Text>
+                              <Text style={styles.payMethodRowDesc}>رصيدك: {formatIQD(walletBal)} د.ع</Text>
+                            </View>
+                            <View style={[styles.payRadio, intercityPaymentMethod === "wallet" && styles.payRadioActive]} />
+                          </TouchableOpacity>
+                        ) : (
+                          <View style={[styles.payMethodRow, { opacity: 0.5 }]}>
+                            <Text style={styles.payMethodRowIcon}>💳</Text>
+                            <View style={{ flex: 1 }}>
+                              <Text style={styles.payMethodRowLabel}>محفظة التطبيق</Text>
+                              <Text style={styles.payMethodRowDesc}>رصيدك غير كافٍ ({formatIQD(walletBal)} د.ع)</Text>
+                            </View>
+                          </View>
+                        )}
+                      </>
+                    );
+                  })()}
 
                   {/* Confirm */}
                   <TouchableOpacity
@@ -815,4 +862,16 @@ const styles = StyleSheet.create({
   confirmBtn: { backgroundColor: "#FFD700", borderRadius: 14, paddingVertical: 14, alignItems: "center" },
   confirmBtnDisabled: { backgroundColor: "#6B5B2E", opacity: 0.6 },
   confirmBtnText: { color: "#1A0533", fontSize: 16, fontWeight: "bold" },
+  payMethodRow: {
+    flexDirection: "row", alignItems: "center", gap: 12,
+    backgroundColor: "#2D1B4E", borderRadius: 14, padding: 14, marginBottom: 10,
+    borderWidth: 2, borderColor: "transparent",
+  },
+  payMethodRowActive: { borderColor: "#FFD700", backgroundColor: "rgba(255,215,0,0.08)" },
+  payMethodRowIcon: { fontSize: 22 },
+  payMethodRowLabel: { color: "#C4B5D4", fontSize: 14, fontWeight: "700", textAlign: "right" },
+  payMethodRowLabelActive: { color: "#FFD700" },
+  payMethodRowDesc: { color: "#6B5A8E", fontSize: 12, marginTop: 2, textAlign: "right" },
+  payRadio: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: "#3D2070", backgroundColor: "transparent" },
+  payRadioActive: { borderColor: "#FFD700", backgroundColor: "#FFD700" },
 });

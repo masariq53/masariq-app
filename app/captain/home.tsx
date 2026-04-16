@@ -25,6 +25,7 @@ import { useLocation } from "@/hooks/use-location";
 import { trpc } from "@/lib/trpc";
 import { useT } from "@/lib/i18n";
 import { fetchDualOsrmRoute, type OsrmRouteResult, type LatLng } from "@/lib/osrm";
+import { formatIQD } from "@/lib/utils";
 
 const { width } = Dimensions.get("window");
 
@@ -626,7 +627,7 @@ export default function CaptainHomeScreen() {
             onPress={() => router.push("/captain/wallet" as any)}
           >
             <Text style={styles.walletIcon}>💰</Text>
-            <Text style={styles.walletAmount}>{Number(walletBalance).toLocaleString("ar-IQ")}</Text>
+            <Text style={styles.walletAmount}>{formatIQD(walletBalance)}</Text>
             <Text style={styles.walletCurrency}>د.ع</Text>
           </TouchableOpacity>
           <TouchableOpacity

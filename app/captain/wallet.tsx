@@ -11,6 +11,7 @@ import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useDriver } from "@/lib/driver-context";
 import { trpc } from "@/lib/trpc";
+import { formatIQD } from "@/lib/utils";
 
 function formatDate(dateStr: string | Date) {
   const d = new Date(dateStr);
@@ -24,7 +25,7 @@ function formatDate(dateStr: string | Date) {
 }
 
 function formatAmount(amount: string | number) {
-  return Number(amount).toLocaleString("ar-IQ");
+  return formatIQD(amount);
 }
 
 export default function DriverWalletScreen() {
