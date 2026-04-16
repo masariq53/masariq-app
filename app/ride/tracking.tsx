@@ -277,6 +277,9 @@ export default function TrackingScreen() {
         driverRating: ride.driver?.rating?.toString() ?? "5.0",
         fare: (ride.fare ?? fare).toString(),
         rideId: rideId.toString(),
+        dropoffAddress: params.dropoffAddress ?? "",
+        dropoffLat: dropoffCoord.latitude.toString(),
+        dropoffLng: dropoffCoord.longitude.toString(),
       };
       // انتظر 1.8 ثانية حتى يرى الراكب رسالة "وصلت“ ثم ينتقل
       setTimeout(() => {

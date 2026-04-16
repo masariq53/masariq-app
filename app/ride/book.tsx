@@ -64,7 +64,7 @@ type SearchResult = {
 
 type SavedAddress = {
   id: string;
-  type: "home" | "work" | "custom";
+  type: "home" | "work" | "other" | "custom";
   label: string;
   address: string;
   icon: string;
@@ -175,7 +175,8 @@ export default function BookRideScreen() {
           const parsed = JSON.parse(raw) as SavedAddress[];
           const home = parsed.find((a) => a.id === "home") ?? { id: "home", type: "home" as const, label: "البيت", address: "", icon: "🏠" };
           const work = parsed.find((a) => a.id === "work") ?? { id: "work", type: "work" as const, label: "العمل", address: "", icon: "🏢" };
-          setAllSavedAddresses([home, work]);
+          const customs = parsed.filter((a) => a.type === "other" || a.type === "custom");
+          setAllSavedAddresses([home, work, ...customs]);
           setSavedAddresses(parsed.filter((a) => a.lat && a.lng));
         } catch {}
       }
@@ -600,9 +601,11 @@ export default function BookRideScreen() {
                         {addr.address || "اضغط لتعيين العنوان"}
                       </Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.editFavBtn} onPress={() => { setFavInput(addr.address || ""); setEditFavModal({ type: addr.type as "home" | "work" }); }}>
-                      <Text style={styles.editFavIcon}>✏️</Text>
-                    </TouchableOpacity>
+                    {(addr.type === "home" || addr.type === "work") && (
+                      <TouchableOpacity style={styles.editFavBtn} onPress={() => { setFavInput(addr.address || ""); setEditFavModal({ type: addr.type as "home" | "work" }); }}>
+                        <Text style={styles.editFavIcon}>✏️</Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
                 ))}
                 <View style={styles.searchDivider} />
