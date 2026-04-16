@@ -147,6 +147,8 @@ import {
   checkDriverBalanceSufficient,
 } from "./db";
 import { storagePut } from "./storage";
+import { transcribeAudio } from "./_core/voiceTranscription";
+import { TRPCError } from "@trpc/server";
 
 export const appRouter = router({
   system: systemRouter,
@@ -3572,6 +3574,24 @@ export const appRouter = router({
           toPickup: toPickup ?? { coords: [], distanceKm: 0, durationMin: 0 },
           toDropoff: toDropoff ?? { coords: [], distanceKm: 0, durationMin: 0 },
         };
+      }),
+  }),
+  voice: router({
+    transcribe: publicProcedure
+      .input(z.object({
+        audioUrl: z.string().url(),
+        language: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const result = await transcribeAudio({
+          audioUrl: input.audioUrl,
+          language: input.language ?? "ar",
+          prompt: "اسم منطقة أو شارع أو مكان في مدينة عراقية",
+        });
+        if ("error" in result) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: result.error });
+        }
+        return { text: result.text.trim(), language: result.language };
       }),
   }),
 });

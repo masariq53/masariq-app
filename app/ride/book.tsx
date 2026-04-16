@@ -13,6 +13,7 @@ import {
   FlatList,
   Keyboard,
   KeyboardAvoidingView,
+  Modal,
 } from "react-native";
 import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -24,6 +25,8 @@ import { usePassenger } from "@/lib/passenger-context";
 import { useLocation } from "@/hooks/use-location";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { fetchOsrmRoute } from "@/lib/osrm";
+import { useAudioRecorder, useAudioRecorderState, RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync } from "expo-audio";
+import * as FileSystem from "expo-file-system/legacy";
 
 const { width } = Dimensions.get("window");
 
@@ -115,6 +118,21 @@ function shortenAddress(displayName: string): string {
   return displayName.split(",").slice(0, 3).join("،").trim();
 }
 
+// حساب المسافة بالكيلومترات بين نقطتين (Haversine)
+function calcDistanceKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLng / 2) *
+      Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return Math.round(R * c * 10) / 10;
+}
+
 export default function BookRideScreen() {
   const insets = useSafeAreaInsets();
   const { passenger } = usePassenger();
@@ -133,20 +151,103 @@ export default function BookRideScreen() {
   const [osrmDistance, setOsrmDistance] = useState<number | null>(null);
   const [osrmDuration, setOsrmDuration] = useState<number | null>(null);
   const [isLoadingRoute, setIsLoadingRoute] = useState(false);
+  // البحث الصوتي
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  // العناوين المفضلة - تحرير
+  const [editFavModal, setEditFavModal] = useState<{ type: "home" | "work" } | null>(null);
+  const [favInput, setFavInput] = useState("");
+  const [allSavedAddresses, setAllSavedAddresses] = useState<SavedAddress[]>([
+    { id: "home", type: "home", label: "البيت", address: "", icon: "🏠" },
+    { id: "work", type: "work", label: "العمل", address: "", icon: "🏢" },
+  ]);
   const mapRef = useRef<MapView>(null);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const recorderState = useAudioRecorderState(audioRecorder);
+  const uploadAudio = trpc.driver.uploadDocument.useMutation();
+  const transcribeMutation = trpc.voice.transcribe.useMutation();
 
-  // تحميل العناوين المحفوظة
+  // تحميل جميع العناوين المحفوظة (مع البيت والعمل حتى لو فارغة)
   useEffect(() => {
     AsyncStorage.getItem("@masar_saved_addresses").then((raw) => {
       if (raw) {
         try {
           const parsed = JSON.parse(raw) as SavedAddress[];
+          const home = parsed.find((a) => a.id === "home") ?? { id: "home", type: "home" as const, label: "البيت", address: "", icon: "🏠" };
+          const work = parsed.find((a) => a.id === "work") ?? { id: "work", type: "work" as const, label: "العمل", address: "", icon: "🏢" };
+          setAllSavedAddresses([home, work]);
           setSavedAddresses(parsed.filter((a) => a.lat && a.lng));
         } catch {}
       }
     });
   }, []);
+
+  // حفظ عنوان مفضل (بيت/عمل) مع Geocoding
+  const saveFavoriteAddress = async (type: "home" | "work", address: string) => {
+    if (!address.trim()) return;
+    try {
+      const results = await searchNominatim(address, coords.latitude, coords.longitude);
+      if (!results.length) { Alert.alert("تنبيه", "لم يتم العثور على العنوان، جرب كتابة اسم أوضح"); return; }
+      const first = results[0];
+      const raw = await AsyncStorage.getItem("@masar_saved_addresses");
+      let all: SavedAddress[] = raw ? JSON.parse(raw) : [];
+      const icon = type === "home" ? "🏠" : "🏢";
+      const label = type === "home" ? "البيت" : "العمل";
+      const updated: SavedAddress = { id: type, type, label, address: shortenAddress(first.display_name), icon, lat: parseFloat(first.lat), lng: parseFloat(first.lon) };
+      all = all.filter((a) => a.id !== type);
+      all.unshift(updated);
+      await AsyncStorage.setItem("@masar_saved_addresses", JSON.stringify(all));
+      setAllSavedAddresses((prev) => prev.map((a) => a.id === type ? updated : a));
+      setSavedAddresses((prev) => { const filtered = prev.filter((a) => a.id !== type); return [updated, ...filtered]; });
+      setEditFavModal(null);
+      setFavInput("");
+    } catch { Alert.alert("خطأ", "فشل حفظ العنوان"); }
+  };
+
+  // البحث الصوتي
+  const handleVoiceSearch = async () => {
+    if (recorderState.isRecording) {
+      // إيقاف التسجيل وإرسال
+      await audioRecorder.stop();
+      const uri = audioRecorder.uri;
+      if (!uri) return;
+      setIsTranscribing(true);
+      try {
+        const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+        // رفع الصوت للحصول على URL
+        const uploadResult = await uploadAudio.mutateAsync({
+          phone: passenger?.phone ?? "voice",
+          documentType: "photo",
+          base64,
+          mimeType: "audio/m4a",
+        });
+        // تحويل الصوت لنص عبر Whisper
+        const transcribeResult = await transcribeMutation.mutateAsync({
+          audioUrl: uploadResult.url,
+          language: "ar",
+        });
+        const transcribedText = transcribeResult.text;
+        if (transcribedText) {
+          setToInput(transcribedText);
+          setShowSearch(true);
+          handleToInputChange(transcribedText);
+        } else {
+          Alert.alert("تنبيه", "لم يتم التعرف على الصوت، جرب مرة أخرى");
+        }
+      } catch {
+        Alert.alert("خطأ", "فشل البحث الصوتي");
+      } finally {
+        setIsTranscribing(false);
+      }
+    } else {
+      // طلب إذن وبدء التسجيل
+      const status = await requestRecordingPermissionsAsync();
+      if (!status.granted) { Alert.alert("تنبيه", "يرجى السماح للتطبيق بالوصول إلى الميكروفون"); return; }
+      await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: true });
+      await audioRecorder.prepareToRecordAsync();
+      audioRecorder.record();
+    }
+  };
 
   // تحديث موقع الانطلاق بـ GPS + Reverse Geocoding
   useEffect(() => {
@@ -450,10 +551,10 @@ export default function BookRideScreen() {
               <Text style={styles.locationValue} numberOfLines={1}>{from}</Text>
             </TouchableOpacity>
             <View style={styles.inputDivider} />
-            <View style={styles.locationInput}>
+            <View style={[styles.locationInput, { flexDirection: "row", alignItems: "center" }]}>
               <Text style={styles.locationLabel}>إلى</Text>
               <TextInput
-                style={styles.toInput}
+                style={[styles.toInput, { flex: 1 }]}
                 value={toInput}
                 onChangeText={handleToInputChange}
                 onFocus={() => setShowSearch(true)}
@@ -462,6 +563,16 @@ export default function BookRideScreen() {
                 returnKeyType="search"
                 textAlign="right"
               />
+              <TouchableOpacity
+                style={[styles.micBtn, recorderState.isRecording && styles.micBtnActive]}
+                onPress={handleVoiceSearch}
+              >
+                {isTranscribing ? (
+                  <ActivityIndicator size="small" color="#FFD700" />
+                ) : (
+                  <Text style={styles.micIcon}>{recorderState.isRecording ? "⏹" : "🎤"}</Text>
+                )}
+              </TouchableOpacity>
             </View>
           </View>
           {(to || toInput) ? (
@@ -474,17 +585,25 @@ export default function BookRideScreen() {
         {/* قائمة البحث */}
         {showSearch && (
           <View style={styles.searchDropdown}>
-            {toInput.trim().length < 2 && savedAddresses.length > 0 && (
+            {toInput.trim().length < 2 && (
               <>
-                <Text style={styles.searchSectionTitle}>عناوين محفوظة</Text>
-                {savedAddresses.map((addr) => (
-                  <TouchableOpacity key={addr.id} style={styles.searchResultItem} onPress={() => handleSelectSavedAddress(addr)}>
+                <Text style={styles.searchSectionTitle}>عناوين مفضلة</Text>
+                {allSavedAddresses.map((addr) => (
+                  <View key={addr.id} style={styles.searchResultItem}>
                     <Text style={styles.searchResultIcon}>{addr.icon}</Text>
-                    <View style={styles.searchResultInfo}>
+                    <TouchableOpacity
+                      style={styles.searchResultInfo}
+                      onPress={() => addr.lat && addr.lng ? handleSelectSavedAddress(addr) : setEditFavModal({ type: addr.type as "home" | "work" })}
+                    >
                       <Text style={styles.searchResultName}>{addr.label}</Text>
-                      <Text style={styles.searchResultAddr} numberOfLines={1}>{addr.address}</Text>
-                    </View>
-                  </TouchableOpacity>
+                      <Text style={styles.searchResultAddr} numberOfLines={1}>
+                        {addr.address || "اضغط لتعيين العنوان"}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.editFavBtn} onPress={() => { setFavInput(addr.address || ""); setEditFavModal({ type: addr.type as "home" | "work" }); }}>
+                      <Text style={styles.editFavIcon}>✏️</Text>
+                    </TouchableOpacity>
+                  </View>
                 ))}
                 <View style={styles.searchDivider} />
               </>
@@ -506,15 +625,27 @@ export default function BookRideScreen() {
                 data={searchResults}
                 keyExtractor={(item) => item.place_id}
                 scrollEnabled={false}
-                renderItem={({ item }) => (
-                  <TouchableOpacity style={styles.searchResultItem} onPress={() => handleSelectSearchResult(item)}>
-                    <Text style={styles.searchResultIcon}>📍</Text>
-                    <View style={styles.searchResultInfo}>
-                      <Text style={styles.searchResultName} numberOfLines={1}>{shortenAddress(item.display_name)}</Text>
-                      <Text style={styles.searchResultAddr} numberOfLines={1}>{item.address?.city || item.address?.town || item.address?.state || item.address?.country || ""}</Text>
-                    </View>
-                  </TouchableOpacity>
-                )}
+                renderItem={({ item }) => {
+                  const itemLat = parseFloat(item.lat);
+                  const itemLng = parseFloat(item.lon);
+                  const distKm = isRealLocation
+                    ? calcDistanceKm(coords.latitude, coords.longitude, itemLat, itemLng)
+                    : null;
+                  return (
+                    <TouchableOpacity style={styles.searchResultItem} onPress={() => handleSelectSearchResult(item)}>
+                      <Text style={styles.searchResultIcon}>📍</Text>
+                      <View style={styles.searchResultInfo}>
+                        <Text style={styles.searchResultName} numberOfLines={1}>{shortenAddress(item.display_name)}</Text>
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                          <Text style={styles.searchResultAddr} numberOfLines={1}>{item.address?.city || item.address?.town || item.address?.state || item.address?.country || ""}</Text>
+                          {distKm !== null && (
+                            <Text style={styles.searchResultDist}>{distKm} كم</Text>
+                          )}
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                }}
               />
             )}
 
@@ -578,6 +709,45 @@ export default function BookRideScreen() {
         <View style={{ height: insets.bottom + 8 }} />
       </View>
       </KeyboardAvoidingView>
+
+      {/* Modal تعيين عنوان مفضل */}
+      <Modal
+        visible={!!editFavModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => { setEditFavModal(null); setFavInput(""); }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalBox}>
+            <Text style={styles.modalTitle}>
+              {editFavModal?.type === "home" ? "🏠 تعيين عنوان البيت" : "🏢 تعيين عنوان العمل"}
+            </Text>
+            <TextInput
+              style={styles.modalInput}
+              value={favInput}
+              onChangeText={setFavInput}
+              placeholder="اكتب اسم المنطقة أو الشارع..."
+              placeholderTextColor="#6B5A8E"
+              textAlign="right"
+              autoFocus
+            />
+            <View style={styles.modalBtns}>
+              <TouchableOpacity
+                style={styles.modalCancelBtn}
+                onPress={() => { setEditFavModal(null); setFavInput(""); }}
+              >
+                <Text style={styles.modalCancelText}>إلغاء</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalSaveBtn}
+                onPress={() => editFavModal && saveFavoriteAddress(editFavModal.type, favInput)}
+              >
+                <Text style={styles.modalSaveText}>حفظ</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -651,6 +821,21 @@ const styles = StyleSheet.create({
   searchResultInfo: { flex: 1 },
   searchResultName: { color: "#FFFFFF", fontSize: 13, fontWeight: "600", textAlign: "right" },
   searchResultAddr: { color: "#9B8EC4", fontSize: 11, marginTop: 2, textAlign: "right" },
+  searchResultDist: { color: "#FFD700", fontSize: 11, fontWeight: "700", marginLeft: 8 },
+  editFavBtn: { width: 28, height: 28, alignItems: "center", justifyContent: "center" },
+  editFavIcon: { fontSize: 14 },
+  micBtn: { width: 30, height: 30, borderRadius: 15, backgroundColor: "#3D2070", alignItems: "center", justifyContent: "center", marginLeft: 6 },
+  micBtnActive: { backgroundColor: "rgba(239,68,68,0.3)", borderWidth: 1, borderColor: "#EF4444" },
+  micIcon: { fontSize: 14 },
+  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "flex-end" },
+  modalBox: { backgroundColor: "#1A0533", borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, borderTopWidth: 1, borderColor: "#3D2070" },
+  modalTitle: { color: "#FFD700", fontSize: 16, fontWeight: "700", textAlign: "right", marginBottom: 16 },
+  modalInput: { backgroundColor: "#2D1B4E", borderRadius: 12, padding: 14, color: "#FFFFFF", fontSize: 14, marginBottom: 16, borderWidth: 1, borderColor: "#3D2070" },
+  modalBtns: { flexDirection: "row", gap: 12 },
+  modalCancelBtn: { flex: 1, backgroundColor: "#2D1B4E", borderRadius: 12, paddingVertical: 14, alignItems: "center" },
+  modalCancelText: { color: "#9B8EC4", fontSize: 14, fontWeight: "600" },
+  modalSaveBtn: { flex: 1, backgroundColor: "#FFD700", borderRadius: 12, paddingVertical: 14, alignItems: "center" },
+  modalSaveText: { color: "#1A0533", fontSize: 14, fontWeight: "800" },
   searchDivider: { height: 1, backgroundColor: "#3D2070", marginVertical: 4 },
   noResultsBox: { paddingHorizontal: 14, paddingVertical: 16, alignItems: "center" },
   noResultsText: { color: "#9B8EC4", fontSize: 12, textAlign: "center" },
