@@ -121,13 +121,33 @@ export default function WalletScreen() {
               const icon = getTxIcon(item.description, item.type);
               const label = getTxLabel(item.description, item.type);
               const dateStr = formatDate(item.createdAt);
+              const txStatus = (item as any).status ?? "completed";
+              const isPending = txStatus === "pending";
+              const isRejected = txStatus === "rejected";
+              // لون المبلغ: رمادي إذا pending، أحمر إذا rejected، أخضر/أحمر حسب النوع
+              const amountColor = isPending ? "#9BA1A6" : isRejected ? "#EF4444" : isCredit ? "#22C55E" : "#EF4444";
               return (
-                <View style={[styles.txCard, { backgroundColor: colors.txCard }]}>
+                <View style={[styles.txCard, { backgroundColor: colors.txCard, opacity: isRejected ? 0.75 : 1 }]}>
                   <View style={styles.txLeft}>
-                    <Text style={[styles.txAmount, { color: isCredit ? "#22C55E" : "#EF4444" }]}>
-                      {isCredit ? "+" : "-"}{amount.toLocaleString("ar-IQ")} د.ع
+                    <Text style={[styles.txAmount, { color: amountColor }]}>
+                      {isPending ? "" : isRejected ? "" : isCredit ? "+" : "-"}{amount.toLocaleString("ar-IQ")} د.ع
                     </Text>
-                    <Text style={styles.txDate}>{dateStr}</Text>
+                    {isPending && (
+                      <View style={styles.statusBadgePending}>
+                        <Text style={styles.statusBadgePendingText}>⏳ قيد المراجعة</Text>
+                      </View>
+                    )}
+                    {isRejected && (
+                      <View style={styles.statusBadgeRejected}>
+                        <Text style={styles.statusBadgeRejectedText}>❌ مرفوض</Text>
+                      </View>
+                    )}
+                    {!isPending && !isRejected && (
+                      <Text style={styles.txDate}>{dateStr}</Text>
+                    )}
+                    {(isPending || isRejected) && (
+                      <Text style={styles.txDate}>{dateStr}</Text>
+                    )}
                   </View>
                   <View style={styles.txInfo}>
                     <Text style={[styles.txLabel, { color: colors.txLabel }]} numberOfLines={2}>{label}</Text>
@@ -186,4 +206,9 @@ const styles = StyleSheet.create({
   emptyIcon: { fontSize: 56 },
   emptyText: { fontSize: 16, fontWeight: "700" },
   emptySubText: { fontSize: 13, textAlign: "center" },
+  statusBadgePending: { backgroundColor: "rgba(251,191,36,0.2)", borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2, marginTop: 2 },
+  statusBadgeRejected: { backgroundColor: "rgba(239,68,68,0.15)", borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2, marginTop: 2 },
+  statusBadgeText: { fontSize: 10, fontWeight: "700", color: "inherit" },
+  statusBadgePendingText: { fontSize: 10, fontWeight: "700", color: "#F59E0B" },
+  statusBadgeRejectedText: { fontSize: 10, fontWeight: "700", color: "#EF4444" },
 });

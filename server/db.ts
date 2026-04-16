@@ -3364,7 +3364,20 @@ export async function createWalletTopupRequest(data: {
     note: data.note,
     status: "pending",
   });
-  return { id: (result as any).insertId };
+  const requestId = (result as any).insertId;
+  // إدراج سجل في walletTransactions بحالة pending ليظهر فوراً في سجل المعاملات
+  const methodLabel = data.paymentMethod === "mastercard" ? "ماستر كارد" : data.paymentMethod === "zaincash" ? "زين كاش" : "FIB";
+  await db.insert(walletTransactions).values({
+    userId: data.userId,
+    userType: data.userType,
+    type: "credit",
+    amount: data.amount.toString(),
+    description: `طلب شحن رصيد عبر ${methodLabel} - طلب #${requestId}`,
+    referenceId: requestId,
+    referenceType: "topup_request",
+    status: "pending",
+  });
+  return { id: requestId };
 }
 
 export async function getWalletTopupRequests(filters?: {
@@ -3428,25 +3441,65 @@ export async function approveWalletTopupRequest(requestId: number, reviewedBy?: 
   if (req.userType === "driver") {
     const [before] = await db.select({ walletBalance: drivers.walletBalance }).from(drivers).where(eq(drivers.id, req.userId)).limit(1);
     const balanceBefore = parseFloat(before?.walletBalance?.toString() ?? "0");
+    const balanceAfter = balanceBefore + amount;
     await db.update(drivers).set({ walletBalance: sql`walletBalance + ${amount}` }).where(eq(drivers.id, req.userId));
-    await db.insert(walletTransactions).values({
-      userId: req.userId, userType: "driver", type: "credit",
-      amount: amount.toString(), balanceBefore: balanceBefore.toString(),
-      balanceAfter: (balanceBefore + amount).toString(),
-      description: `شحن رصيد عبر ${methodLabel} - طلب #${requestId}`,
-      referenceId: requestId, referenceType: "topup_request",
-    });
+    // تحديث السجل الـ pending إلى completed مع إضافة balanceBefore وbalanceAfter
+    const updated = await db.update(walletTransactions)
+      .set({
+        status: "completed",
+        balanceBefore: balanceBefore.toString(),
+        balanceAfter: balanceAfter.toString(),
+        description: `شحن رصيد عبر ${methodLabel} - طلب #${requestId}`,
+      })
+      .where(
+        and(
+          eq(walletTransactions.referenceId, requestId),
+          eq(walletTransactions.referenceType, "topup_request"),
+          eq(walletTransactions.status, "pending")
+        )
+      );
+    // إذا لم يوجد سجل pending (طلبات قديمة قبل هذا التحديث)، أنشئ سجلاً جديداً
+    if ((updated[0] as any).affectedRows === 0) {
+      await db.insert(walletTransactions).values({
+        userId: req.userId, userType: "driver", type: "credit",
+        amount: amount.toString(), balanceBefore: balanceBefore.toString(),
+        balanceAfter: balanceAfter.toString(),
+        description: `شحن رصيد عبر ${methodLabel} - طلب #${requestId}`,
+        referenceId: requestId, referenceType: "topup_request",
+        status: "completed",
+      });
+    }
   } else {
     const [before] = await db.select({ walletBalance: passengers.walletBalance }).from(passengers).where(eq(passengers.id, req.userId)).limit(1);
     const balanceBefore = parseFloat(before?.walletBalance?.toString() ?? "0");
+    const balanceAfter = balanceBefore + amount;
     await db.update(passengers).set({ walletBalance: sql`walletBalance + ${amount}` }).where(eq(passengers.id, req.userId));
-    await db.insert(walletTransactions).values({
-      userId: req.userId, userType: "passenger", type: "credit",
-      amount: amount.toString(), balanceBefore: balanceBefore.toString(),
-      balanceAfter: (balanceBefore + amount).toString(),
-      description: `شحن رصيد عبر ${methodLabel} - طلب #${requestId}`,
-      referenceId: requestId, referenceType: "topup_request",
-    });
+    // تحديث السجل الـ pending إلى completed مع إضافة balanceBefore وbalanceAfter
+    const updated = await db.update(walletTransactions)
+      .set({
+        status: "completed",
+        balanceBefore: balanceBefore.toString(),
+        balanceAfter: balanceAfter.toString(),
+        description: `شحن رصيد عبر ${methodLabel} - طلب #${requestId}`,
+      })
+      .where(
+        and(
+          eq(walletTransactions.referenceId, requestId),
+          eq(walletTransactions.referenceType, "topup_request"),
+          eq(walletTransactions.status, "pending")
+        )
+      );
+    // إذا لم يوجد سجل pending (طلبات قديمة قبل هذا التحديث)، أنشئ سجلاً جديداً
+    if ((updated[0] as any).affectedRows === 0) {
+      await db.insert(walletTransactions).values({
+        userId: req.userId, userType: "passenger", type: "credit",
+        amount: amount.toString(), balanceBefore: balanceBefore.toString(),
+        balanceAfter: balanceAfter.toString(),
+        description: `شحن رصيد عبر ${methodLabel} - طلب #${requestId}`,
+        referenceId: requestId, referenceType: "topup_request",
+        status: "completed",
+      });
+    }
   }
   await db.update(walletTopupRequests)
     .set({ status: "approved", reviewedBy, reviewedAt: new Date() })
@@ -3460,6 +3513,16 @@ export async function rejectWalletTopupRequest(requestId: number, adminNote?: st
   await db.update(walletTopupRequests)
     .set({ status: "rejected", adminNote, reviewedBy, reviewedAt: new Date() })
     .where(and(eq(walletTopupRequests.id, requestId), eq(walletTopupRequests.status, "pending")));
+  // تحديث حالة سجل walletTransactions المرتبط بهذا الطلب إلى rejected
+  await db.update(walletTransactions)
+    .set({ status: "rejected" })
+    .where(
+      and(
+        eq(walletTransactions.referenceId, requestId),
+        eq(walletTransactions.referenceType, "topup_request"),
+        eq(walletTransactions.status, "pending")
+      )
+    );
   return { success: true };
 }
 

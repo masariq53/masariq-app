@@ -46,23 +46,37 @@ export default function DriverWalletScreen() {
 
   const renderItem = ({ item }: { item: any }) => {
     const isCredit = item.type === "credit";
+    const txStatus = item.status ?? "completed";
+    const isPending = txStatus === "pending";
+    const isRejected = txStatus === "rejected";
+    const amountColor = isPending ? "#9BA1A6" : isRejected ? "#EF4444" : isCredit ? "#22C55E" : "#EF4444";
     return (
-      <View style={styles.txCard}>
+      <View style={[styles.txCard, { opacity: isRejected ? 0.75 : 1 }]}>
         <View style={styles.txLeft}>
-          <Text style={styles.txIcon}>{isCredit ? "⬆️" : "⬇️"}</Text>
+          <Text style={styles.txIcon}>{isPending ? "⏳" : isRejected ? "❌" : isCredit ? "⬆️" : "⬇️"}</Text>
         </View>
         <View style={styles.txMiddle}>
           <Text style={styles.txDesc} numberOfLines={2}>{item.description ?? (isCredit ? "شحن رصيد" : "استقطاع")}</Text>
           <Text style={styles.txDate}>{formatDate(item.createdAt)}</Text>
-          {item.balanceBefore != null && item.balanceAfter != null && (
+          {isPending && (
+            <View style={{ backgroundColor: "rgba(251,191,36,0.2)", borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2, marginTop: 2, alignSelf: "flex-start" }}>
+              <Text style={{ fontSize: 10, fontWeight: "700", color: "#F59E0B" }}>⏳ قيد المراجعة</Text>
+            </View>
+          )}
+          {isRejected && (
+            <View style={{ backgroundColor: "rgba(239,68,68,0.15)", borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2, marginTop: 2, alignSelf: "flex-start" }}>
+              <Text style={{ fontSize: 10, fontWeight: "700", color: "#EF4444" }}>❌ مرفوض</Text>
+            </View>
+          )}
+          {!isPending && !isRejected && item.balanceBefore != null && item.balanceAfter != null && (
             <Text style={styles.txBalance}>
               الرصيد: {formatAmount(item.balanceBefore)} ← {formatAmount(item.balanceAfter)} د.ع
             </Text>
           )}
         </View>
         <View style={styles.txRight}>
-          <Text style={[styles.txAmount, isCredit ? styles.txCredit : styles.txDebit]}>
-            {isCredit ? "+" : "-"}{formatAmount(item.amount)}
+          <Text style={[styles.txAmount, { color: amountColor }]}>
+            {isPending || isRejected ? "" : isCredit ? "+" : "-"}{formatAmount(item.amount)}
           </Text>
           <Text style={styles.txCurrency}>د.ع</Text>
         </View>

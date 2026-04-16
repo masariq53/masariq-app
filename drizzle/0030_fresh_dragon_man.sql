@@ -1,0 +1,1 @@
+ALTER TABLE `walletTransactions` ADD `status` enum('completed','pending','rejected') DEFAULT 'completed' NOT NULL;

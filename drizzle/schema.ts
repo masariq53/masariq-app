@@ -181,6 +181,8 @@ export const walletTransactions = mysqlTable("walletTransactions", {
   balanceAfter: decimal("balanceAfter", { precision: 10, scale: 2 }),
   referenceId: int("referenceId"),
   referenceType: varchar("referenceType", { length: 50 }),
+  // حالة المعاملة: completed = مكتملة، pending = قيد المراجعة، rejected = مرفوضة
+  status: mysqlEnum("status", ["completed", "pending", "rejected"]).default("completed").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
