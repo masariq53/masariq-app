@@ -145,6 +145,7 @@ import {
   updatePaymentMethodSetting,
   getCommissionReport,
   checkDriverBalanceSufficient,
+  getPassengerWalletTransactions,
 } from "./db";
 import { storagePut } from "./storage";
 import { transcribeAudio } from "./_core/voiceTranscription";
@@ -720,6 +721,15 @@ export const appRouter = router({
     /**
      * Get passenger ride history with real data
      */
+    /**
+     * Get passenger wallet transactions
+     */
+    getPassengerTransactions: publicProcedure
+      .input(z.object({ passengerId: z.number(), limit: z.number().optional() }))
+      .query(async ({ input }) => {
+        return getPassengerWalletTransactions(input.passengerId, input.limit ?? 50);
+      }),
+
     passengerHistory: publicProcedure
       .input(z.object({
         passengerId: z.number(),

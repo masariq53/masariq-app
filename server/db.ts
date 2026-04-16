@@ -3519,3 +3519,21 @@ export async function checkDriverBalanceSufficient(driverId: number): Promise<{ 
   const balance = parseFloat(driver?.walletBalance?.toString() ?? "0");
   return { sufficient: balance >= MIN_BALANCE_REQUIRED, balance, minRequired: MIN_BALANCE_REQUIRED };
 }
+
+// ─── Passenger Wallet Transactions ───────────────────────────────────────────
+export async function getPassengerWalletTransactions(passengerId: number, limit = 50) {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db
+    .select()
+    .from(walletTransactions)
+    .where(
+      and(
+        eq(walletTransactions.userId, passengerId),
+        eq(walletTransactions.userType, "passenger")
+      )
+    )
+    .orderBy(desc(walletTransactions.createdAt))
+    .limit(limit);
+  return rows;
+}
