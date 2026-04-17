@@ -1014,7 +1014,8 @@ export function detectCityFromCoords(lat: number, lng: number): string {
     const d = Math.sqrt((lat - city.lat) ** 2 + (lng - city.lng) ** 2);
     if (d < minDist) { minDist = d; closestCity = city; }
   }
-  return closestCity.ar;
+  // نُرجع الاسم الإنجليزي لأن getPricingZone يبحث بـ cityName الإنجليزي في قاعدة البيانات
+  return closestCity.en;
 }
 
 /**
@@ -1033,7 +1034,7 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): nu
 export async function calculateFareDynamic(
   distanceKm: number,
   durationMinutes: number,
-  cityName: string = "الموصل",
+  cityName: string = "",
   vehicleType: "sedan" | "suv" | "minivan" = "sedan",
   pickupLat?: number,
   pickupLng?: number

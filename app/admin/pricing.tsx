@@ -1101,6 +1101,16 @@ export default function PricingManagement() {
     setRefreshing(false);
   }, [refetch]);
 
+  // دالة مساعدة لتحويل قيمة نصية إلى رقم بأمان — تُرجع القيمة الافتراضية فقط إذا كانت القيمة null/undefined/NaN
+  const safeNum = (val: string, fallback: number) => {
+    const n = parseFloat(val);
+    return isNaN(n) ? fallback : n;
+  };
+  const safeInt = (val: string, fallback: number) => {
+    const n = parseInt(val);
+    return isNaN(n) ? fallback : n;
+  };
+
   const handleSaveNew = (form: ZoneForm, _note: string) => {
     createZone.mutate({
       cityName: form.cityName,
@@ -1109,18 +1119,18 @@ export default function PricingManagement() {
       isDefault: form.isDefault,
       pricingMethod: form.pricingMethod,
       vehicleType: form.vehicleType,
-      baseFare: parseFloat(form.baseFare) || 2000,
-      pricePerKm: parseFloat(form.pricePerKm) || 1000,
-      pricePerMinute: parseFloat(form.pricePerMinute) || 100,
-      minimumFare: parseFloat(form.minimumFare) || 3000,
-      maximumFare: parseFloat(form.maximumFare) || 0,
-      surgeMultiplier: parseFloat(form.surgeMultiplier) || 1,
-      nightSurchargeAmount: parseFloat(form.nightSurchargeAmount) || 0,
-      bookingFee: parseFloat(form.bookingFee) || 0,
-      freeWaitMinutes: parseInt(form.freeWaitMinutes) || 3,
-      waitPricePerMinute: parseFloat(form.waitPricePerMinute) || 0,
-      cancellationFee: parseFloat(form.cancellationFee) || 0,
-      captainRadiusKm: parseFloat(form.captainRadiusKm) || 2,
+      baseFare: safeNum(form.baseFare, 0),
+      pricePerKm: safeNum(form.pricePerKm, 0),
+      pricePerMinute: safeNum(form.pricePerMinute, 0),
+      minimumFare: safeNum(form.minimumFare, 0),
+      maximumFare: safeNum(form.maximumFare, 0),
+      surgeMultiplier: safeNum(form.surgeMultiplier, 1),
+      nightSurchargeAmount: safeNum(form.nightSurchargeAmount, 0),
+      bookingFee: safeNum(form.bookingFee, 0),
+      freeWaitMinutes: safeInt(form.freeWaitMinutes, 3),
+      waitPricePerMinute: safeNum(form.waitPricePerMinute, 0),
+      cancellationFee: safeNum(form.cancellationFee, 0),
+      captainRadiusKm: safeNum(form.captainRadiusKm, 2),
       zonesConfig: form.zonesConfig.length > 0 ? JSON.stringify(form.zonesConfig) : undefined,
       nightSurchargeStart: form.nightSurchargeStart || undefined,
       nightSurchargeEnd: form.nightSurchargeEnd || undefined,
@@ -1138,18 +1148,18 @@ export default function PricingManagement() {
       isDefault: form.isDefault,
       pricingMethod: form.pricingMethod,
       vehicleType: form.vehicleType,
-      baseFare: parseFloat(form.baseFare) || 2000,
-      pricePerKm: parseFloat(form.pricePerKm) || 1000,
-      pricePerMinute: parseFloat(form.pricePerMinute) || 100,
-      minimumFare: parseFloat(form.minimumFare) || 3000,
-      maximumFare: parseFloat(form.maximumFare) || 0,
-      surgeMultiplier: parseFloat(form.surgeMultiplier) || 1,
-      nightSurchargeAmount: parseFloat(form.nightSurchargeAmount) || 0,
-      bookingFee: parseFloat(form.bookingFee) || 0,
-      freeWaitMinutes: parseInt(form.freeWaitMinutes) || 3,
-      waitPricePerMinute: parseFloat(form.waitPricePerMinute) || 0,
-      cancellationFee: parseFloat(form.cancellationFee) || 0,
-      captainRadiusKm: parseFloat(form.captainRadiusKm) || 2,
+      baseFare: safeNum(form.baseFare, 0),
+      pricePerKm: safeNum(form.pricePerKm, 0),
+      pricePerMinute: safeNum(form.pricePerMinute, 0),
+      minimumFare: safeNum(form.minimumFare, 0),
+      maximumFare: safeNum(form.maximumFare, 0),
+      surgeMultiplier: safeNum(form.surgeMultiplier, 1),
+      nightSurchargeAmount: safeNum(form.nightSurchargeAmount, 0),
+      bookingFee: safeNum(form.bookingFee, 0),
+      freeWaitMinutes: safeInt(form.freeWaitMinutes, 3),
+      waitPricePerMinute: safeNum(form.waitPricePerMinute, 0),
+      cancellationFee: safeNum(form.cancellationFee, 0),
+      captainRadiusKm: safeNum(form.captainRadiusKm, 2),
       zonesConfig: form.zonesConfig.length > 0 ? JSON.stringify(form.zonesConfig) : undefined,
       nightSurchargeStart: form.nightSurchargeStart || undefined,
       nightSurchargeEnd: form.nightSurchargeEnd || undefined,
