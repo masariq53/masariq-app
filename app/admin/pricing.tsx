@@ -17,6 +17,7 @@ import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { trpc } from "@/lib/trpc";
 import { WebView } from "react-native-webview";
+import { Platform } from "react-native";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 type PricingMethod = "per_km" | "per_minute" | "hybrid" | "zones";
@@ -588,12 +589,20 @@ function ZoneFormModal({
                     return (
                       <View style={{ height: 220, borderRadius: 12, overflow: "hidden", marginBottom: 12, borderWidth: 1, borderColor: "#E5E7EB" }}>
                         <Text style={{ backgroundColor: "#6C63FF", color: "#fff", textAlign: "center", paddingVertical: 6, fontSize: 12, fontWeight: "700" }}>🗺️ معاينة الزونات على الخريطة</Text>
-                        <WebView
-                          source={{ html: mapHtml }}
-                          style={{ flex: 1 }}
-                          scrollEnabled={false}
-                          javaScriptEnabled
-                        />
+                        {Platform.OS === "web" ? (
+                          <iframe
+                            srcDoc={mapHtml}
+                            style={{ flex: 1, border: "none", width: "100%", height: 180 }}
+                            sandbox="allow-scripts"
+                          />
+                        ) : (
+                          <WebView
+                            source={{ html: mapHtml }}
+                            style={{ flex: 1 }}
+                            scrollEnabled={false}
+                            javaScriptEnabled
+                          />
+                        )}
                       </View>
                     );
                   })()}
