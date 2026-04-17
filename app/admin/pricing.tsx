@@ -314,15 +314,14 @@ function ZoneFormModal({
   const [showCityPicker, setShowCityPicker] = useState(false);
   const [citySearch, setCitySearch] = useState("");
 
-  // إعادة تهيئة النموذج عند فتح المودال لمدينة مختلفة — هذا يمنع تأثير تعديل مدينة على أخرى
+  // إعادة تهيئة النموذج عند فتح المودال أو تغيير السجل المُحرَّر
+  // نستخدم JSON.stringify(initialData) كـ dependency لضمان إعادة التهيئة عند كل تغيير حقيقي
   useEffect(() => {
-    if (visible) {
-      setForm(initialData);
-      setChangeNote("");
-      setSection("basic");
-    }
+    setForm(initialData);
+    setChangeNote("");
+    setSection("basic");
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible, initialData.cityName]);
+  }, [visible, initialData.cityName, (initialData as any).id]);
 
   const update = (key: keyof ZoneForm, val: string | boolean) => {
     setForm((prev) => ({ ...prev, [key]: val }));
@@ -1068,7 +1067,8 @@ export default function PricingManagement() {
   const utils = trpc.useUtils();
 
   const createZone = trpc.pricing.createZone.useMutation({
-    onSuccess: () => {
+    onSuccess: async () => {
+      await refetch();
       utils.pricing.getZones.invalidate();
       setShowForm(false);
       Alert.alert("✅ تم", "تم إنشاء منطقة التسعير بنجاح");
@@ -1077,7 +1077,8 @@ export default function PricingManagement() {
   });
 
   const updateZone = trpc.pricing.updateZone.useMutation({
-    onSuccess: () => {
+    onSuccess: async () => {
+      await refetch();
       utils.pricing.getZones.invalidate();
       setEditingZone(null);
       Alert.alert("✅ تم", "تم تحديث منطقة التسعير بنجاح");
@@ -1086,7 +1087,8 @@ export default function PricingManagement() {
   });
 
   const deleteZone = trpc.pricing.deleteZone.useMutation({
-    onSuccess: () => {
+    onSuccess: async () => {
+      await refetch();
       utils.pricing.getZones.invalidate();
       Alert.alert("✅ تم", "تم حذف منطقة التسعير");
     },
