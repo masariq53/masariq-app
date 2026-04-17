@@ -146,6 +146,7 @@ import {
   getCommissionReport,
   checkDriverBalanceSufficient,
   getPassengerWalletTransactions,
+  detectCityFromCoords,
 } from "./db";
 import { storagePut } from "./storage";
 import { transcribeAudio } from "./_core/voiceTranscription";
@@ -420,7 +421,8 @@ export const appRouter = router({
           duration = Math.ceil((distance / 30) * 60);
           // استخدام التسعير الديناميكي من قاعدة البيانات
           await seedDefaultPricingZone();
-          const fareResult = await calculateFareDynamic(distance, duration, "الموصل", "sedan");
+          const rideCity = detectCityFromCoords(input.pickupLat, input.pickupLng);
+          const fareResult = await calculateFareDynamic(distance, duration, rideCity, "sedan", input.pickupLat, input.pickupLng);
           fare = fareResult.fare;
         }
 
@@ -565,7 +567,18 @@ export const appRouter = router({
         })
       )
       .query(async ({ input }) => {
-        const drivers = await getNearbyDrivers(input.lat, input.lng, input.radiusKm);
+        // استخدام captainRadiusKm من قاعدة البيانات إذا لم يُرسل من الواجهة
+        let effectiveRadius = input.radiusKm;
+        if (input.radiusKm === 5) { // القيمة الافتراضية تعني لم تُحدد من الواجهة
+          try {
+            const cityName = detectCityFromCoords(input.lat, input.lng);
+            const zone = await getPricingZone(cityName, "sedan");
+            if (zone?.captainRadiusKm) {
+              effectiveRadius = parseFloat(zone.captainRadiusKm.toString());
+            }
+          } catch { /* استخدم القيمة الافتراضية */ }
+        }
+        const drivers = await getNearbyDrivers(input.lat, input.lng, effectiveRadius);
         return {
           drivers: drivers.map((d) => ({
             id: d.id,
@@ -1227,9 +1240,9 @@ export const appRouter = router({
         // Seed default zone if none exists
         await seedDefaultPricingZone();
 
-        // Use dynamic pricing
-        const cityName = "الموصل"; // TODO: detect from coordinates
-        const result = await calculateFareDynamic(distance, duration, cityName, "sedan");
+        // تحديد المدينة من إحداثيات موقع الالتقاط لتطبيق التسعير الصحيح
+        const cityName = detectCityFromCoords(input.pickupLat, input.pickupLng);
+        const result = await calculateFareDynamic(distance, duration, cityName, "sedan", input.pickupLat, input.pickupLng);
 
         return {
           distance: parseFloat(distance.toFixed(1)),

@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   View,
   Text,
@@ -16,6 +16,7 @@ import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { trpc } from "@/lib/trpc";
+import { WebView } from "react-native-webview";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 type PricingMethod = "per_km" | "per_minute" | "hybrid" | "zones";
@@ -310,6 +311,17 @@ function ZoneFormModal({
   const [changeNote, setChangeNote] = useState("");
   const [section, setSection] = useState<"basic" | "pricing" | "extras">("basic");
   const [showCityPicker, setShowCityPicker] = useState(false);
+  const [citySearch, setCitySearch] = useState("");
+
+  // إعادة تهيئة النموذج عند فتح المودال لمدينة مختلفة — هذا يمنع تأثير تعديل مدينة على أخرى
+  useEffect(() => {
+    if (visible) {
+      setForm(initialData);
+      setChangeNote("");
+      setSection("basic");
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, initialData.cityName]);
 
   const update = (key: keyof ZoneForm, val: string | boolean) => {
     setForm((prev) => ({ ...prev, [key]: val }));
@@ -408,17 +420,31 @@ function ZoneFormModal({
               </FormField>
 
               {/* City Picker Modal */}
-              <Modal visible={showCityPicker} animationType="slide" presentationStyle="formSheet" onRequestClose={() => setShowCityPicker(false)}>
+              <Modal visible={showCityPicker} animationType="slide" presentationStyle="formSheet" onRequestClose={() => { setShowCityPicker(false); setCitySearch(""); }}>
                 <View style={{ flex: 1, backgroundColor: "#F8FAFC" }}>
                   <View style={[styles.modalHeader, { paddingTop: 16 }]}>
-                    <TouchableOpacity onPress={() => setShowCityPicker(false)} style={styles.modalCloseBtn}>
+                    <TouchableOpacity onPress={() => { setShowCityPicker(false); setCitySearch(""); }} style={styles.modalCloseBtn}>
                       <Text style={styles.modalCloseText}>إغلاق</Text>
                     </TouchableOpacity>
                     <Text style={styles.modalTitle}>اختر مدينة عراقية</Text>
                     <View style={{ width: 60 }} />
                   </View>
+                  {/* حقل بحث في المدن */}
+                  <View style={{ paddingHorizontal: 16, paddingVertical: 10, backgroundColor: "#fff", borderBottomWidth: 1, borderBottomColor: "#E5E7EB" }}>
+                    <TextInput
+                      style={{ backgroundColor: "#F1F5F9", borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, fontSize: 15, textAlign: "right" }}
+                      placeholder="ابحث عن مدينة..."
+                      value={citySearch}
+                      onChangeText={setCitySearch}
+                      autoFocus
+                    />
+                  </View>
                   <ScrollView style={{ flex: 1 }}>
-                    {IRAQI_CITIES_DATA.map((city) => (
+                    {IRAQI_CITIES_DATA.filter((c) =>
+                      citySearch === "" ||
+                      c.ar.includes(citySearch) ||
+                      c.en.toLowerCase().includes(citySearch.toLowerCase())
+                    ).map((city) => (
                       <TouchableOpacity
                         key={city.en}
                         style={{ paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: "#E5E7EB", flexDirection: "row", justifyContent: "space-between", alignItems: "center", backgroundColor: form.cityName === city.en ? "#EEF2FF" : "#fff" }}
@@ -437,6 +463,7 @@ function ZoneFormModal({
                               : prev.zonesConfig,
                           }));
                           setShowCityPicker(false);
+                          setCitySearch("");
                         }}
                       >
                         <Text style={{ fontSize: 17, color: "#1E293B", fontWeight: form.cityName === city.en ? "700" : "400" }}>{city.ar}</Text>
@@ -549,6 +576,28 @@ function ZoneFormModal({
                   {form.zonesConfig.length === 0 && (
                     <Text style={{ color: "#94A3B8", textAlign: "center", paddingVertical: 16 }}>لا توجد زونات. اضغط "إضافة زون" للبدء.</Text>
                   )}
+                  {/* معاينة الزونات على خريطة Leaflet */}
+                  {form.zonesConfig.length > 0 && (() => {
+                    const centerLat = form.zonesConfig[0]?.lat ?? 36.3359;
+                    const centerLng = form.zonesConfig[0]?.lng ?? 43.1189;
+                    const circlesJson = JSON.stringify(form.zonesConfig.map((z, i) => ({
+                      lat: z.lat, lng: z.lng, radiusKm: z.radiusKm, name: z.name, flatFare: z.flatFare,
+                      color: ["#6C63FF", "#F59E0B", "#10B981", "#EF4444", "#3B82F6"][i % 5],
+                    })));
+                    const mapHtml = `<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/><script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script><style>body,html,#map{margin:0;padding:0;height:100%;width:100%;}</style></head><body><div id="map"></div><script>var map=L.map('map',{zoomControl:true}).setView([${centerLat},${centerLng}],12);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'OSM'}).addTo(map);var circles=${circlesJson};circles.forEach(function(c){L.circle([c.lat,c.lng],{radius:c.radiusKm*1000,color:c.color,fillColor:c.color,fillOpacity:0.15,weight:2}).addTo(map).bindPopup('<b>'+c.name+'</b><br>'+c.flatFare.toLocaleString()+' د.ع<br>نصف القطر: '+c.radiusKm+' كم');L.marker([c.lat,c.lng],{icon:L.divIcon({html:'<div style="background:'+c.color+';color:#fff;padding:2px 6px;border-radius:8px;font-size:11px;white-space:nowrap">'+c.name+'</div>',iconAnchor:[30,10]})}).addTo(map);});if(circles.length>0){var bounds=circles.map(function(c){return[[c.lat-c.radiusKm/111,c.lng-c.radiusKm/111],[c.lat+c.radiusKm/111,c.lng+c.radiusKm/111]]});map.fitBounds(bounds.flat());}</script></body></html>`;
+                    return (
+                      <View style={{ height: 220, borderRadius: 12, overflow: "hidden", marginBottom: 12, borderWidth: 1, borderColor: "#E5E7EB" }}>
+                        <Text style={{ backgroundColor: "#6C63FF", color: "#fff", textAlign: "center", paddingVertical: 6, fontSize: 12, fontWeight: "700" }}>🗺️ معاينة الزونات على الخريطة</Text>
+                        <WebView
+                          source={{ html: mapHtml }}
+                          style={{ flex: 1 }}
+                          scrollEnabled={false}
+                          javaScriptEnabled
+                        />
+                      </View>
+                    );
+                  })()}
+
                   {form.zonesConfig.map((z, idx) => (
                     <View key={idx} style={{ backgroundColor: "#fff", borderRadius: 12, padding: 12, marginBottom: 10, borderWidth: 1, borderColor: "#E5E7EB" }}>
                       <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>

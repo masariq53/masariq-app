@@ -981,6 +981,42 @@ export async function getPricingZone(
   return null;
 }
 
+/** قائمة المدن العراقية مع إحداثياتها لتحديد المدينة من GPS */
+const IRAQI_CITIES_COORDS = [
+  { en: "Mosul", ar: "الموصل", lat: 36.3359, lng: 43.1189 },
+  { en: "Baghdad", ar: "بغداد", lat: 33.3152, lng: 44.3661 },
+  { en: "Basra", ar: "البصرة", lat: 30.5085, lng: 47.7804 },
+  { en: "Erbil", ar: "أربيل", lat: 36.1912, lng: 44.0092 },
+  { en: "Sulaymaniyah", ar: "السليمانية", lat: 35.5572, lng: 45.4351 },
+  { en: "Kirkuk", ar: "كركوك", lat: 35.4681, lng: 44.3922 },
+  { en: "Najaf", ar: "النجف", lat: 31.9904, lng: 44.3162 },
+  { en: "Karbala", ar: "كربلاء", lat: 32.6158, lng: 44.0243 },
+  { en: "Duhok", ar: "دهوك", lat: 36.8669, lng: 42.9503 },
+  { en: "Ramadi", ar: "الرمادي", lat: 33.4258, lng: 43.2997 },
+  { en: "Fallujah", ar: "الفلوجة", lat: 33.3500, lng: 43.7700 },
+  { en: "Tikrit", ar: "تكريت", lat: 34.5988, lng: 43.6922 },
+  { en: "Samarra", ar: "سامراء", lat: 34.1984, lng: 43.8742 },
+  { en: "Baquba", ar: "بعقوبة", lat: 33.7459, lng: 44.6426 },
+  { en: "Amarah", ar: "العمارة", lat: 31.8401, lng: 47.1468 },
+  { en: "Nasiriyah", ar: "الناصرية", lat: 31.0466, lng: 46.2594 },
+  { en: "Hillah", ar: "الحلة", lat: 32.4720, lng: 44.4220 },
+  { en: "Diwaniyah", ar: "الديوانية", lat: 31.9890, lng: 44.9243 },
+];
+
+/**
+ * تحديد أقرب مدينة عراقية من الإحداثيات المعطاة
+ * يُستخدم لتطبيق التسعير الصحيح حسب موقع الراكب
+ */
+export function detectCityFromCoords(lat: number, lng: number): string {
+  let closestCity = IRAQI_CITIES_COORDS[0];
+  let minDist = Infinity;
+  for (const city of IRAQI_CITIES_COORDS) {
+    const d = Math.sqrt((lat - city.lat) ** 2 + (lng - city.lng) ** 2);
+    if (d < minDist) { minDist = d; closestCity = city; }
+  }
+  return closestCity.ar;
+}
+
 /**
  * Calculate fare using dynamic pricing zone
  * Rounds to nearest 250 IQD (smallest IQD denomination)
