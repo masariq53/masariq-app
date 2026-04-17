@@ -200,7 +200,7 @@ export const pricingZones = mysqlTable("pricingZones", {
   isActive: boolean("isActive").default(true).notNull(),
   isDefault: boolean("isDefault").default(false).notNull(), // fallback zone
   // Pricing method
-  pricingMethod: mysqlEnum("pricingMethod", ["per_km", "per_minute", "hybrid"]).default("per_km").notNull(),
+  pricingMethod: mysqlEnum("pricingMethod", ["per_km", "per_minute", "hybrid", "zones"]).default("per_km").notNull(),
   // Vehicle type
   vehicleType: mysqlEnum("vehicleType", ["sedan", "suv", "minivan", "all"]).default("all").notNull(),
   // Base fare (minimum charge)
@@ -228,6 +228,11 @@ export const pricingZones = mysqlTable("pricingZones", {
   waitPricePerMinute: decimal("waitPricePerMinute", { precision: 10, scale: 2 }).notNull().default("0"),
   // Cancellation fee
   cancellationFee: decimal("cancellationFee", { precision: 10, scale: 2 }).notNull().default("0"),
+  // Zones config (JSON array of circles: [{name, lat, lng, radiusKm, flatFare}])
+  // Used only when pricingMethod = "zones"
+  zonesConfig: text("zonesConfig"),
+  // Captain dispatch radius in km (max distance to send ride requests to captain)
+  captainRadiusKm: decimal("captainRadiusKm", { precision: 5, scale: 2 }).default("2.00"),
   // Notes / description
   notes: text("notes"),
   // Audit

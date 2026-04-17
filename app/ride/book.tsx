@@ -83,15 +83,21 @@ async function searchNominatim(
     const encoded = encodeURIComponent(query);
     // إذا توفر موقع المستخدم، أضف viewbox حول موقعه (نطاق ~50كم) لإعطاء أولوية للنتائج القريبة
     let proximityParams = "";
+    // حدود العراق الجغرافية
+    const iraqBounds = "38.7945,29.0617,48.5756,37.3743"; // minLng,minLat,maxLng,maxLat
     if (userLat && userLng) {
-      const delta = 0.5; // ~55كم
+      // نطاق أضيق حول المستخدم لإعطاء الأولوية للمدينة الحالية
+      const delta = 0.3; // ~33كم
       const minLng = (userLng - delta).toFixed(4);
       const minLat = (userLat - delta).toFixed(4);
       const maxLng = (userLng + delta).toFixed(4);
       const maxLat = (userLat + delta).toFixed(4);
       proximityParams = `&viewbox=${minLng},${minLat},${maxLng},${maxLat}&bounded=0`;
     }
-    const url = `https://nominatim.openstreetmap.org/search?q=${encoded}&format=json&limit=8&addressdetails=1&accept-language=ar${proximityParams}`;
+    // countrycodes=iq يضمن أن النتائج داخل العراق فقط
+    // إذا توفر موقع المستخدم نستخدم viewbox أضيق حوله لإعطاء أولوية للمدينة الحالية
+    const viewboxParam = proximityParams || `&viewbox=${iraqBounds}&bounded=1`;
+    const url = `https://nominatim.openstreetmap.org/search?q=${encoded}&format=json&limit=8&addressdetails=1&accept-language=ar&countrycodes=iq${viewboxParam}`;
     const res = await fetch(url, { headers: { "User-Agent": "MasarApp/1.0" } });
     if (!res.ok) return [];
     return await res.json();

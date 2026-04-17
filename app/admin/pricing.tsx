@@ -18,8 +18,17 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { trpc } from "@/lib/trpc";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
-type PricingMethod = "per_km" | "per_minute" | "hybrid";
+type PricingMethod = "per_km" | "per_minute" | "hybrid" | "zones";
 type VehicleType = "sedan" | "suv" | "minivan" | "all";
+
+// دائرة زون واحدة
+interface ZoneCircle {
+  name: string;      // اسم الزون مثل "المركز"
+  lat: number;       // خط العرض للمركز
+  lng: number;       // خط الطول للمركز
+  radiusKm: number;  // نصف القطر بالكيلومتر
+  flatFare: number;  // الأجرة الثابتة بالدينار
+}
 
 interface ZoneForm {
   cityName: string;
@@ -41,6 +50,8 @@ interface ZoneForm {
   freeWaitMinutes: string;
   waitPricePerMinute: string;
   cancellationFee: string;
+  captainRadiusKm: string;
+  zonesConfig: ZoneCircle[];
   notes: string;
 }
 
@@ -64,6 +75,8 @@ const DEFAULT_FORM: ZoneForm = {
   freeWaitMinutes: "3",
   waitPricePerMinute: "0",
   cancellationFee: "0",
+  captainRadiusKm: "2.00",
+  zonesConfig: [],
   notes: "",
 };
 
@@ -71,6 +84,7 @@ const PRICING_METHOD_LABELS: Record<PricingMethod, string> = {
   per_km: "📏 بالكيلومتر",
   per_minute: "⏱️ بالدقيقة",
   hybrid: "🔀 هجين (كم + دقيقة)",
+  zones: "🎯 زونات (سعر ثابت)",
 };
 
 const VEHICLE_TYPE_LABELS: Record<VehicleType, string> = {
@@ -79,6 +93,30 @@ const VEHICLE_TYPE_LABELS: Record<VehicleType, string> = {
   suv: "🚙 SUV",
   minivan: "🚐 ميني فان",
 };
+
+// قائمة المدن العراقية مع الإحداثيات الافتراضية
+const IRAQI_CITIES_DATA: { ar: string; en: string; lat: number; lng: number }[] = [
+  { ar: "الموصل",      en: "Mosul",       lat: 36.3359, lng: 43.1189 },
+  { ar: "بغداد",       en: "Baghdad",     lat: 33.3152, lng: 44.3661 },
+  { ar: "أربيل",       en: "Erbil",       lat: 36.1901, lng: 44.0091 },
+  { ar: "السليمانية",  en: "Sulaymaniyah",lat: 35.5575, lng: 45.4329 },
+  { ar: "كركوك",       en: "Kirkuk",      lat: 35.4681, lng: 44.3922 },
+  { ar: "البصرة",      en: "Basra",       lat: 30.5085, lng: 47.7804 },
+  { ar: "النجف",       en: "Najaf",       lat: 31.9936, lng: 44.3218 },
+  { ar: "كربلاء",      en: "Karbala",     lat: 32.6166, lng: 44.0247 },
+  { ar: "الحلة",       en: "Hilla",       lat: 32.4769, lng: 44.4422 },
+  { ar: "الديوانية",   en: "Diwaniyah",   lat: 31.9887, lng: 44.9268 },
+  { ar: "العمارة",     en: "Amarah",      lat: 31.8408, lng: 47.1508 },
+  { ar: "الناصرية",    en: "Nasiriyah",   lat: 31.0433, lng: 46.2592 },
+  { ar: "الرمادي",     en: "Ramadi",      lat: 33.4258, lng: 43.2997 },
+  { ar: "تكريت",       en: "Tikrit",      lat: 34.5989, lng: 43.6786 },
+  { ar: "دهوك",        en: "Duhok",       lat: 36.8669, lng: 42.9503 },
+  { ar: "زاخو",        en: "Zakho",       lat: 37.1445, lng: 42.6838 },
+  { ar: "سامراء",      en: "Samarra",     lat: 34.1987, lng: 43.8741 },
+  { ar: "بعقوبة",      en: "Baqubah",     lat: 33.7456, lng: 44.6498 },
+  { ar: "الكوت",       en: "Kut",         lat: 32.5000, lng: 45.8333 },
+  { ar: "الفلوجة",     en: "Fallujah",    lat: 33.3500, lng: 43.7833 },
+];
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 function fmt(val: string | number | null | undefined): string {
@@ -93,7 +131,7 @@ function fmtIQD(val: string | number | null | undefined): string {
   return `${n.toLocaleString("ar-IQ")} د.ع`;
 }
 
-// ─── Zone Card ─────────────────────────────────────────────────────────────────
+// ─── Zone Card ─────────────────────────────────────────────────────────────────────
 type ZoneData = {
   id: number;
   cityName: string;
@@ -115,6 +153,8 @@ type ZoneData = {
   freeWaitMinutes: number;
   waitPricePerMinute: string;
   cancellationFee: string;
+  captainRadiusKm: string | null;
+  zonesConfig: string | null; // JSON string
   notes: string | null;
   updatedBy: string | null;
   createdAt: Date;
@@ -269,9 +309,33 @@ function ZoneFormModal({
   const [form, setForm] = useState<ZoneForm>(initialData);
   const [changeNote, setChangeNote] = useState("");
   const [section, setSection] = useState<"basic" | "pricing" | "extras">("basic");
+  const [showCityPicker, setShowCityPicker] = useState(false);
 
   const update = (key: keyof ZoneForm, val: string | boolean) => {
     setForm((prev) => ({ ...prev, [key]: val }));
+  };
+
+  const addZoneCircle = () => {
+    setForm((prev) => ({
+      ...prev,
+      zonesConfig: [
+        ...prev.zonesConfig,
+        { name: `زون ${prev.zonesConfig.length + 1}`, lat: 36.3359, lng: 43.1189, radiusKm: 3, flatFare: 5000 },
+      ],
+    }));
+  };
+
+  const removeZoneCircle = (idx: number) => {
+    setForm((prev) => ({ ...prev, zonesConfig: prev.zonesConfig.filter((_, i) => i !== idx) }));
+  };
+
+  const updateZoneCircle = (idx: number, field: keyof ZoneCircle, val: string) => {
+    setForm((prev) => {
+      const updated = [...prev.zonesConfig];
+      if (field === "name") updated[idx] = { ...updated[idx], name: val };
+      else updated[idx] = { ...updated[idx], [field]: parseFloat(val) || 0 };
+      return { ...prev, zonesConfig: updated };
+    });
   };
 
   const handleSave = () => {
@@ -330,27 +394,62 @@ function ZoneFormModal({
           {/* ── Basic Section ── */}
           {section === "basic" && (
             <View style={styles.formSection}>
-              <FormField label="اسم المدينة (عربي) *" placeholder="مثال: الموصل">
-                <TextInput
-                  style={styles.input}
-                  value={form.cityNameAr}
-                  onChangeText={(v) => update("cityNameAr", v)}
-                  placeholder="الموصل"
-                  textAlign="right"
-                />
+              {/* City Picker */}
+              <FormField label="المدينة *" hint="اختر من قائمة المدن العراقية">
+                <TouchableOpacity
+                  style={[styles.input, { flexDirection: "row", justifyContent: "space-between", alignItems: "center" }]}
+                  onPress={() => setShowCityPicker(true)}
+                >
+                  <Text style={{ color: form.cityNameAr ? "#1E293B" : "#94A3B8", fontSize: 15 }}>
+                    {form.cityNameAr ? `${form.cityNameAr}  (${form.cityName})` : "اختر مدينة..."}
+                  </Text>
+                  <Text style={{ color: "#6C63FF", fontSize: 16 }}>▼</Text>
+                </TouchableOpacity>
               </FormField>
-              <FormField label="اسم المدينة (إنجليزي) *" placeholder="مثال: Mosul">
-                <TextInput
-                  style={styles.input}
-                  value={form.cityName}
-                  onChangeText={(v) => update("cityName", v)}
-                  placeholder="Mosul"
-                />
-              </FormField>
+
+              {/* City Picker Modal */}
+              <Modal visible={showCityPicker} animationType="slide" presentationStyle="formSheet" onRequestClose={() => setShowCityPicker(false)}>
+                <View style={{ flex: 1, backgroundColor: "#F8FAFC" }}>
+                  <View style={[styles.modalHeader, { paddingTop: 16 }]}>
+                    <TouchableOpacity onPress={() => setShowCityPicker(false)} style={styles.modalCloseBtn}>
+                      <Text style={styles.modalCloseText}>إغلاق</Text>
+                    </TouchableOpacity>
+                    <Text style={styles.modalTitle}>اختر مدينة عراقية</Text>
+                    <View style={{ width: 60 }} />
+                  </View>
+                  <ScrollView style={{ flex: 1 }}>
+                    {IRAQI_CITIES_DATA.map((city) => (
+                      <TouchableOpacity
+                        key={city.en}
+                        style={{ paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: "#E5E7EB", flexDirection: "row", justifyContent: "space-between", alignItems: "center", backgroundColor: form.cityName === city.en ? "#EEF2FF" : "#fff" }}
+                        onPress={() => {
+                          // إذا الزونات فارغة أو كانت المدينة مختلفة وطريقة التسعير zones
+                          const shouldSeedZones = form.zonesConfig.length === 0 || (form.pricingMethod === "zones" && form.cityName !== city.en);
+                          setForm((prev) => ({
+                            ...prev,
+                            cityName: city.en,
+                            cityNameAr: city.ar,
+                            zonesConfig: shouldSeedZones
+                              ? [
+                                  { name: "المركز", lat: city.lat, lng: city.lng, radiusKm: 3, flatFare: 5000 },
+                                  { name: "الضواحي", lat: city.lat, lng: city.lng, radiusKm: 8, flatFare: 8000 },
+                                ]
+                              : prev.zonesConfig,
+                          }));
+                          setShowCityPicker(false);
+                        }}
+                      >
+                        <Text style={{ fontSize: 17, color: "#1E293B", fontWeight: form.cityName === city.en ? "700" : "400" }}>{city.ar}</Text>
+                        <Text style={{ fontSize: 13, color: "#94A3B8" }}>{city.en}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              </Modal>
 
               <FormField label="طريقة التسعير">
                 <View style={styles.optionGroup}>
-                  {(["per_km", "per_minute", "hybrid"] as PricingMethod[]).map((m) => (
+                  {(["per_km", "per_minute", "hybrid", "zones"] as PricingMethod[]).map((m) => (
                     <TouchableOpacity
                       key={m}
                       style={[styles.optionBtn, form.pricingMethod === m && styles.optionBtnActive]}
@@ -429,6 +528,90 @@ function ZoneFormModal({
                   placeholder="2000"
                 />
               </FormField>
+
+              {/* Zones Config Editor */}
+              {form.pricingMethod === "zones" && (
+                <View style={{ marginBottom: 16 }}>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                    <Text style={styles.subSectionTitle}>🎯 إدارة الزونات</Text>
+                    <TouchableOpacity
+                      style={{ backgroundColor: "#6C63FF", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 }}
+                      onPress={addZoneCircle}
+                    >
+                      <Text style={{ color: "#fff", fontWeight: "700", fontSize: 13 }}>+ إضافة زون</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <View style={{ backgroundColor: "#EEF2FF", borderRadius: 10, padding: 10, marginBottom: 12 }}>
+                    <Text style={{ color: "#4338CA", fontSize: 12 }}>
+                      💡 كل زون هي دائرة حول مركز المدينة. إذا كان الراكب داخل نصف القطر يدفع السعر الثابت لها. الزونات مرتبة من الأصغر للأكبر.
+                    </Text>
+                  </View>
+                  {form.zonesConfig.length === 0 && (
+                    <Text style={{ color: "#94A3B8", textAlign: "center", paddingVertical: 16 }}>لا توجد زونات. اضغط "إضافة زون" للبدء.</Text>
+                  )}
+                  {form.zonesConfig.map((z, idx) => (
+                    <View key={idx} style={{ backgroundColor: "#fff", borderRadius: 12, padding: 12, marginBottom: 10, borderWidth: 1, borderColor: "#E5E7EB" }}>
+                      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                        <Text style={{ fontWeight: "700", color: "#1E293B", fontSize: 14 }}>زون {idx + 1}</Text>
+                        <TouchableOpacity onPress={() => removeZoneCircle(idx)} style={{ backgroundColor: "#FEF2F2", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 }}>
+                          <Text style={{ color: "#EF4444", fontSize: 12, fontWeight: "600" }}>حذف</Text>
+                        </TouchableOpacity>
+                      </View>
+                      <TextInput
+                        style={[styles.input, { marginBottom: 8 }]}
+                        value={z.name}
+                        onChangeText={(v) => updateZoneCircle(idx, "name", v)}
+                        placeholder="اسم الزون (مثال: المركز)"
+                        textAlign="right"
+                      />
+                      <View style={{ flexDirection: "row", gap: 8, marginBottom: 8 }}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ fontSize: 11, color: "#64748B", marginBottom: 4 }}>خط العرض</Text>
+                          <TextInput
+                            style={styles.input}
+                            value={String(z.lat)}
+                            onChangeText={(v) => updateZoneCircle(idx, "lat", v)}
+                            keyboardType="numeric"
+                            placeholder="36.3359"
+                          />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ fontSize: 11, color: "#64748B", marginBottom: 4 }}>خط الطول</Text>
+                          <TextInput
+                            style={styles.input}
+                            value={String(z.lng)}
+                            onChangeText={(v) => updateZoneCircle(idx, "lng", v)}
+                            keyboardType="numeric"
+                            placeholder="43.1189"
+                          />
+                        </View>
+                      </View>
+                      <View style={{ flexDirection: "row", gap: 8 }}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ fontSize: 11, color: "#64748B", marginBottom: 4 }}>نصف القطر (كم)</Text>
+                          <TextInput
+                            style={styles.input}
+                            value={String(z.radiusKm)}
+                            onChangeText={(v) => updateZoneCircle(idx, "radiusKm", v)}
+                            keyboardType="numeric"
+                            placeholder="3"
+                          />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ fontSize: 11, color: "#64748B", marginBottom: 4 }}>الأجرة الثابتة (د.ع)</Text>
+                          <TextInput
+                            style={styles.input}
+                            value={String(z.flatFare)}
+                            onChangeText={(v) => updateZoneCircle(idx, "flatFare", v)}
+                            keyboardType="numeric"
+                            placeholder="5000"
+                          />
+                        </View>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              )}
 
               {(form.pricingMethod === "per_km" || form.pricingMethod === "hybrid") && (
                 <FormField label="سعر الكيلومتر (د.ع/كم)" hint="يُضرب في المسافة الفعلية">
@@ -556,6 +739,18 @@ function ZoneFormModal({
                   onChangeText={(v) => update("cancellationFee", v)}
                   keyboardType="numeric"
                   placeholder="0"
+                />
+              </FormField>
+
+              <View style={styles.divider} />
+              <Text style={styles.subSectionTitle}>📡 نطاق استقبال الكابتن</Text>
+              <FormField label="نطاق إرسال الطلب للكابتن (كم)" hint="أقصى مسافة بين الكابتن والراكب لإرسال الطلب (افتراضي: 2 كم)">
+                <TextInput
+                  style={styles.input}
+                  value={form.captainRadiusKm}
+                  onChangeText={(v) => update("captainRadiusKm", v)}
+                  keyboardType="numeric"
+                  placeholder="2.00"
                 />
               </FormField>
 
@@ -848,7 +1043,12 @@ export default function PricingManagement() {
 
   const handleSaveNew = (form: ZoneForm, _note: string) => {
     createZone.mutate({
-      ...form,
+      cityName: form.cityName,
+      cityNameAr: form.cityNameAr,
+      isActive: form.isActive,
+      isDefault: form.isDefault,
+      pricingMethod: form.pricingMethod,
+      vehicleType: form.vehicleType,
       baseFare: parseFloat(form.baseFare) || 2000,
       pricePerKm: parseFloat(form.pricePerKm) || 1000,
       pricePerMinute: parseFloat(form.pricePerMinute) || 100,
@@ -860,6 +1060,8 @@ export default function PricingManagement() {
       freeWaitMinutes: parseInt(form.freeWaitMinutes) || 3,
       waitPricePerMinute: parseFloat(form.waitPricePerMinute) || 0,
       cancellationFee: parseFloat(form.cancellationFee) || 0,
+      captainRadiusKm: parseFloat(form.captainRadiusKm) || 2,
+      zonesConfig: form.zonesConfig.length > 0 ? JSON.stringify(form.zonesConfig) : undefined,
       nightSurchargeStart: form.nightSurchargeStart || undefined,
       nightSurchargeEnd: form.nightSurchargeEnd || undefined,
       notes: form.notes || undefined,
@@ -870,7 +1072,12 @@ export default function PricingManagement() {
     if (!editingZone) return;
     updateZone.mutate({
       zoneId: editingZone.id as number,
-      ...form,
+      cityName: form.cityName,
+      cityNameAr: form.cityNameAr,
+      isActive: form.isActive,
+      isDefault: form.isDefault,
+      pricingMethod: form.pricingMethod,
+      vehicleType: form.vehicleType,
       baseFare: parseFloat(form.baseFare) || 2000,
       pricePerKm: parseFloat(form.pricePerKm) || 1000,
       pricePerMinute: parseFloat(form.pricePerMinute) || 100,
@@ -882,6 +1089,8 @@ export default function PricingManagement() {
       freeWaitMinutes: parseInt(form.freeWaitMinutes) || 3,
       waitPricePerMinute: parseFloat(form.waitPricePerMinute) || 0,
       cancellationFee: parseFloat(form.cancellationFee) || 0,
+      captainRadiusKm: parseFloat(form.captainRadiusKm) || 2,
+      zonesConfig: form.zonesConfig.length > 0 ? JSON.stringify(form.zonesConfig) : undefined,
       nightSurchargeStart: form.nightSurchargeStart || undefined,
       nightSurchargeEnd: form.nightSurchargeEnd || undefined,
       notes: form.notes || undefined,
@@ -910,7 +1119,7 @@ export default function PricingManagement() {
     cityNameAr: zone.cityNameAr ?? "",
     isActive: zone.isActive ?? true,
     isDefault: zone.isDefault ?? false,
-    pricingMethod: zone.pricingMethod ?? "per_km",
+    pricingMethod: (zone.pricingMethod ?? "per_km") as PricingMethod,
     vehicleType: zone.vehicleType ?? "all",
     baseFare: zone.baseFare ?? "2000",
     pricePerKm: zone.pricePerKm ?? "1000",
@@ -925,6 +1134,8 @@ export default function PricingManagement() {
     freeWaitMinutes: String(zone.freeWaitMinutes ?? 3),
     waitPricePerMinute: zone.waitPricePerMinute ?? "0",
     cancellationFee: zone.cancellationFee ?? "0",
+    captainRadiusKm: zone.captainRadiusKm ?? "2.00",
+    zonesConfig: zone.zonesConfig ? (JSON.parse(zone.zonesConfig) as ZoneCircle[]) : [],
     notes: zone.notes ?? "",
   });
 

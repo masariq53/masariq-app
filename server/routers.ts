@@ -1280,7 +1280,7 @@ export const appRouter = router({
           cityNameAr: z.string().min(1),
           isActive: z.boolean().default(true),
           isDefault: z.boolean().default(false),
-          pricingMethod: z.enum(["per_km", "per_minute", "hybrid"]).default("per_km"),
+          pricingMethod: z.enum(["per_km", "per_minute", "hybrid", "zones"]).default("per_km"),
           vehicleType: z.enum(["sedan", "suv", "minivan", "all"]).default("all"),
           baseFare: z.number().min(0),
           pricePerKm: z.number().min(0),
@@ -1296,6 +1296,8 @@ export const appRouter = router({
           freeWaitMinutes: z.number().min(0).default(3),
           waitPricePerMinute: z.number().min(0).default(0),
           cancellationFee: z.number().min(0).default(0),
+          zonesConfig: z.string().optional(), // JSON string
+          captainRadiusKm: z.number().min(0.5).max(50).default(2),
           notes: z.string().optional(),
           updatedBy: z.string().optional(),
         })
@@ -1313,6 +1315,7 @@ export const appRouter = router({
           bookingFee: input.bookingFee.toString(),
           waitPricePerMinute: input.waitPricePerMinute.toString(),
           cancellationFee: input.cancellationFee.toString(),
+          captainRadiusKm: input.captainRadiusKm.toString(),
         });
         return { success: true, message: "تم إنشاء منطقة التسعير بنجاح" };
       }),
@@ -1328,7 +1331,7 @@ export const appRouter = router({
           cityNameAr: z.string().min(1).optional(),
           isActive: z.boolean().optional(),
           isDefault: z.boolean().optional(),
-          pricingMethod: z.enum(["per_km", "per_minute", "hybrid"]).optional(),
+          pricingMethod: z.enum(["per_km", "per_minute", "hybrid", "zones"]).optional(),
           vehicleType: z.enum(["sedan", "suv", "minivan", "all"]).optional(),
           baseFare: z.number().min(0).optional(),
           pricePerKm: z.number().min(0).optional(),
@@ -1344,6 +1347,8 @@ export const appRouter = router({
           freeWaitMinutes: z.number().min(0).optional(),
           waitPricePerMinute: z.number().min(0).optional(),
           cancellationFee: z.number().min(0).optional(),
+          zonesConfig: z.string().optional(),
+          captainRadiusKm: z.number().min(0.5).max(50).optional(),
           notes: z.string().optional(),
           updatedBy: z.string().optional(),
           changeNote: z.string().optional(),
@@ -1372,6 +1377,8 @@ export const appRouter = router({
         if (rest.freeWaitMinutes !== undefined) updateData.freeWaitMinutes = rest.freeWaitMinutes;
         if (rest.waitPricePerMinute !== undefined) updateData.waitPricePerMinute = rest.waitPricePerMinute.toString();
         if (rest.cancellationFee !== undefined) updateData.cancellationFee = rest.cancellationFee.toString();
+        if (rest.zonesConfig !== undefined) updateData.zonesConfig = rest.zonesConfig;
+        if (rest.captainRadiusKm !== undefined) updateData.captainRadiusKm = rest.captainRadiusKm.toString();
         if (rest.notes !== undefined) updateData.notes = rest.notes;
         if (updatedBy !== undefined) updateData.updatedBy = updatedBy;
 

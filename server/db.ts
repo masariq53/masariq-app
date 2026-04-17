@@ -985,11 +985,22 @@ export async function getPricingZone(
  * Calculate fare using dynamic pricing zone
  * Rounds to nearest 250 IQD (smallest IQD denomination)
  */
+/** حساب المسافة بالكيلومتر بين نقطتين (Haversine) */
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 export async function calculateFareDynamic(
   distanceKm: number,
   durationMinutes: number,
   cityName: string = "الموصل",
-  vehicleType: "sedan" | "suv" | "minivan" = "sedan"
+  vehicleType: "sedan" | "suv" | "minivan" = "sedan",
+  pickupLat?: number,
+  pickupLng?: number
 ): Promise<{
   fare: number;
   breakdown: {
@@ -1068,8 +1079,42 @@ export async function calculateFareDynamic(
   // Calculate based on pricing method
   let distanceFare = 0;
   let timeFare = 0;
+  let flatFare = 0;
+  let matchedZoneName = "";
 
-  if (zone.pricingMethod === "per_km") {
+  if (zone.pricingMethod === "zones" && zone.zonesConfig) {
+    // نظام الزونات: أجرة ثابتة حسب موقع الراكب
+    try {
+      interface ZoneCircle { name: string; lat: number; lng: number; radiusKm: number; flatFare: number; }
+      const circles: ZoneCircle[] = JSON.parse(zone.zonesConfig);
+      // رتب من الأصغر للأكبر
+      const sorted = [...circles].sort((a, b) => a.radiusKm - b.radiusKm);
+      if (pickupLat && pickupLng) {
+        for (const circle of sorted) {
+          const dist = haversineKm(pickupLat, pickupLng, circle.lat, circle.lng);
+          if (dist <= circle.radiusKm) {
+            flatFare = circle.flatFare;
+            matchedZoneName = circle.name;
+            break;
+          }
+        }
+        // إذا خارج كل الزونات استخدم آخر زون (= أكبر سعر)
+        if (!matchedZoneName && sorted.length > 0) {
+          flatFare = sorted[sorted.length - 1].flatFare;
+          matchedZoneName = sorted[sorted.length - 1].name + " (خارج النطاق)";
+        }
+      } else {
+        // بدون موقع استخدم أكبر زون
+        if (sorted.length > 0) {
+          flatFare = sorted[sorted.length - 1].flatFare;
+          matchedZoneName = sorted[sorted.length - 1].name;
+        }
+      }
+    } catch (_) {
+      // فشل التحليل: استخدم per_km كبديل
+      distanceFare = distanceKm * pricePerKm;
+    }
+  } else if (zone.pricingMethod === "per_km") {
     distanceFare = distanceKm * pricePerKm;
   } else if (zone.pricingMethod === "per_minute") {
     timeFare = durationMinutes * pricePerMinute;
@@ -1079,7 +1124,13 @@ export async function calculateFareDynamic(
     timeFare = durationMinutes * pricePerMinute;
   }
 
-  let fare = (baseFare + distanceFare + timeFare) * effectiveSurge + bookingFee + nightSurcharge;
+  // للزونات: الأجرة الثابتة تتجاوز baseFare ولا تتأثر بالمسافة
+  let fare: number;
+  if (zone.pricingMethod === "zones" && flatFare > 0) {
+    fare = flatFare * effectiveSurge + bookingFee + nightSurcharge;
+  } else {
+    fare = (baseFare + distanceFare + timeFare) * effectiveSurge + bookingFee + nightSurcharge;
+  }
   fare = Math.max(fare, minimumFare);
   if (maximumFare > 0) fare = Math.min(fare, maximumFare);
 
@@ -1089,7 +1140,7 @@ export async function calculateFareDynamic(
   return {
     fare: rounded,
     breakdown: {
-      baseFare,
+      baseFare: zone.pricingMethod === "zones" ? 0 : baseFare,
       distanceFare: Math.round(distanceFare),
       timeFare: Math.round(timeFare),
       bookingFee,
@@ -1097,7 +1148,7 @@ export async function calculateFareDynamic(
       nightSurcharge,
       total: rounded,
       pricingMethod: zone.pricingMethod,
-      zoneName: zone.cityNameAr,
+      zoneName: matchedZoneName || zone.cityNameAr,
     },
   };
 }
