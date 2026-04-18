@@ -31,22 +31,19 @@ export const API_BASE_URL = env.apiBaseUrl;
  */
 // رابط السيرفر الحالي - يُستخدم على الأجهزة الحقيقية (iOS/Android)
 // هذا الرابط يمر عبر Metro proxy الذي يوجه /api/* إلى منفذ 3000
-const DEV_API_URL = "https://8081-i2kp8nof4xv790r5ppxsc-1023b92c.us2.manus.computer";
+const DEV_API_URL = "https://8081-i6699qlj6q2ppdna25bg3-c2de76de.us2.manus.computer";
 // الـ domain الثابت للمشروع - يُستخدم عند النشر الرسمي
 const PRODUCTION_API_URL = "https://mosulride-jlhuqvse.manus.space";
 
 export function getApiBaseUrl(): string {
   // On web, use relative path so requests go through Metro proxy (/api -> port 3000)
-  // This ensures the admin panel works from any device (iPhone, Android, browser)
-  // Metro proxy in metro.config.js forwards /api/* to port 3000
   if (ReactNative.Platform.OS === "web" && typeof window !== "undefined" && window.location) {
     return "";
   }
 
   // على الأجهزة الحقيقية (iOS/Android):
-  // استخدام رابط 8081 مع الـ proxy لضمان الاتصال بالسيرفر المحلي الحالي
-  // هذا يضمن ظهور OTP وكل التغييرات الجديدة
-  return DEV_API_URL;
+  // استخدام الـ domain الثابت دائماً - لا يتغير مع تغيير الـ sandbox
+  return PRODUCTION_API_URL;
 }
 
 export const SESSION_TOKEN_KEY = "app_session_token";
