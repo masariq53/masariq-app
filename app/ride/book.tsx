@@ -356,6 +356,14 @@ export default function BookRideScreen() {
     { enabled: !!dropPin }
   );
 
+  // جلب الخصم النشط للراكب
+  const currentMultiplier = rideTypes.find((r) => r.id === selectedRide)?.multiplier ?? 1;
+  const currentFare = fareQuery.data ? Math.round(fareQuery.data.fare * currentMultiplier) : 0;
+  const discountQuery = trpc.discounts.getMyDiscount.useQuery(
+    { passengerId: passenger?.id ?? 0, serviceType: "city_ride", fare: currentFare },
+    { enabled: !!passenger?.id && currentFare > 0 }
+  );
+
   const requestRide = trpc.rides.request.useMutation({
     onSuccess: (data) => {
       router.push({
@@ -790,6 +798,15 @@ export default function BookRideScreen() {
               })}
             </ScrollView>
 
+            {/* عرض بانر الخصم */}
+            {discountQuery.data && dropPin && (
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", backgroundColor: "#E8F5E9", borderRadius: 10, paddingVertical: 8, paddingHorizontal: 14, marginBottom: 8, marginHorizontal: 4 }}>
+                <Text style={{ fontSize: 14, color: "#2E7D32", fontWeight: "700", textAlign: "center" }}>
+                  {discountQuery.data.label}
+                  {discountQuery.data.discountAmount ? `  (وفرت ${discountQuery.data.discountAmount.toLocaleString("ar-IQ")} د.ع)` : ""}
+                </Text>
+              </View>
+            )}
             <TouchableOpacity
               style={[styles.confirmBtn, (!dropPin || requestRide.isPending || (!!dropPin && (fareQuery.isLoading || !fareQuery.data))) && styles.confirmBtnDisabled]}
               onPress={handleConfirm}
@@ -804,7 +821,13 @@ export default function BookRideScreen() {
                 </View>
               ) : (
                 <Text style={styles.confirmText}>
-                  {dropPin && fareQuery.data ? `تأكيد الرحلة — ${getFareDisplay()}` : !dropPin ? "حدد وجهتك أو ابحث عنها" : "جاري تحميل السعر..."}
+                  {dropPin && fareQuery.data
+                    ? discountQuery.data?.isFree
+                      ? "تأكيد الرحلة — مجاني 🎉"
+                      : discountQuery.data?.finalFare
+                        ? `تأكيد الرحلة — ${discountQuery.data.finalFare.toLocaleString("ar-IQ")} د.ع`
+                        : `تأكيد الرحلة — ${getFareDisplay()}`
+                    : !dropPin ? "حدد وجهتك أو ابحث عنها" : "جاري تحميل السعر..."}
                 </Text>
               )}
             </TouchableOpacity>

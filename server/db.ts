@@ -1,4 +1,4 @@
-import { and, eq, gt, desc, inArray, sql, ne } from "drizzle-orm";
+import { and, eq, gt, desc, inArray, sql, ne, isNull, or, asc } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   InsertUser,
@@ -1462,6 +1462,7 @@ export async function bookIntercityTrip(data: {
   seatsBooked: number;
   passengerPhone: string;
   passengerName: string;
+  discountedPrice?: number; // سعر مخفض بعد تطبيق الخصم
 }) {
   const db = await getDb();
   if (!db) return null;
@@ -1491,7 +1492,8 @@ export async function bookIntercityTrip(data: {
     .limit(1);
   if (existingBooking.length > 0) throw new Error("لقد حجزت هذه الرحلة مسبقاً");
 
-  const totalPrice = parseFloat(trip.pricePerSeat) * data.seatsBooked;
+  // استخدام السعر المخفض إذا تم تمريره، وإلا احسب السعر العادي
+  const totalPrice = data.discountedPrice !== undefined ? data.discountedPrice : parseFloat(trip.pricePerSeat) * data.seatsBooked;
 
   // Insert booking
   await db.insert(intercityBookings).values({
@@ -3942,4 +3944,104 @@ export async function countUnreadRideMessages(rideId: number, readerType: "passe
     and(eq(rideMessages.rideId, rideId), eq(rideMessages.senderType, senderType), eq(rideMessages.isRead, false))
   );
   return Number(row?.count ?? 0);
+}
+
+// ─── Discount Application Logic ──────────────────────────────────────────────
+
+/**
+ * جلب أفضل خصم نشط للراكب
+ * الأولوية: free_rides > percentage > fixed_amount
+ */
+export async function getActiveDiscountForPassenger(
+  passengerId: number,
+  serviceType: "city_ride" | "intercity" | "parcel" = "city_ride"
+) {
+  const db = await getDb();
+  if (!db) return null;
+  const now = new Date();
+
+  const rows = await db
+    .select()
+    .from(userDiscounts)
+    .where(
+      and(
+        eq(userDiscounts.passengerId, passengerId),
+        eq(userDiscounts.isActive, true),
+        or(
+          isNull(userDiscounts.validUntil),
+          gt(userDiscounts.validUntil, now)
+        )
+      )
+    )
+    .orderBy(
+      sql`FIELD(${userDiscounts.discountType}, 'free_rides', 'percentage', 'fixed_amount')`,
+      asc(userDiscounts.id)
+    )
+    .limit(10);
+
+  // فلتر حسب نوع الخدمة
+  const eligible = rows.filter((r) => {
+    const svc = r.applicableServices ?? "all";
+    if (svc === "all") return true;
+    return svc.split(",").map((s: string) => s.trim()).includes(serviceType);
+  });
+
+  for (const discount of eligible) {
+    if (discount.discountType === "free_rides") {
+      const remaining = (discount.totalFreeRides ?? 0) - (discount.usedFreeRides ?? 0);
+      if (remaining > 0) return discount;
+    } else {
+      // percentage or fixed_amount - صالح ما دام نشطاً
+      return discount;
+    }
+  }
+  return null;
+}
+
+/**
+ * تطبيق الخصم على سعر الرحلة وإعادة السعر الجديد مع تفاصيل الخصم
+ */
+export function calculateDiscountedFare(
+  originalFare: number,
+  discount: {
+    discountType: "free_rides" | "percentage" | "fixed_amount";
+    discountValue?: string | number | null;
+  }
+): { finalFare: number; discountAmount: number; isFree: boolean } {
+  if (discount.discountType === "free_rides") {
+    return { finalFare: 0, discountAmount: originalFare, isFree: true };
+  }
+  if (discount.discountType === "percentage") {
+    const pct = parseFloat(discount.discountValue?.toString() ?? "0");
+    const discountAmount = Math.min(originalFare, Math.round((originalFare * pct) / 100));
+    const finalFare = Math.max(0, originalFare - discountAmount);
+    return { finalFare, discountAmount, isFree: finalFare === 0 };
+  }
+  if (discount.discountType === "fixed_amount") {
+    const fixed = parseFloat(discount.discountValue?.toString() ?? "0");
+    const finalFare = Math.max(0, originalFare - fixed);
+    return { finalFare, discountAmount: Math.min(originalFare, fixed), isFree: finalFare === 0 };
+  }
+  return { finalFare: originalFare, discountAmount: 0, isFree: false };
+}
+
+/**
+ * استهلاك رحلة مجانية واحدة بعد إنشاء الرحلة
+ */
+export async function consumeFreeRide(discountId: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db
+    .update(userDiscounts)
+    .set({ usedFreeRides: sql`${userDiscounts.usedFreeRides} + 1` })
+    .where(eq(userDiscounts.id, discountId));
+  // تعطيل الخصم إذا استُنفد
+  const [row] = await db
+    .select({ total: userDiscounts.totalFreeRides, used: userDiscounts.usedFreeRides })
+    .from(userDiscounts)
+    .where(eq(userDiscounts.id, discountId))
+    .limit(1);
+  if (row && (row.used ?? 0) >= (row.total ?? 0)) {
+    await db.update(userDiscounts).set({ isActive: false }).where(eq(userDiscounts.id, discountId));
+  }
 }

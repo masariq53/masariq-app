@@ -156,6 +156,9 @@ import {
   getRideMessages,
   markRideMessagesRead,
   countUnreadRideMessages,
+  getActiveDiscountForPassenger,
+  calculateDiscountedFare,
+  consumeFreeRide,
 } from "./db";
 import { storagePut } from "./storage";
 import { transcribeAudio } from "./_core/voiceTranscription";
@@ -439,8 +442,28 @@ export const appRouter = router({
           fare = fareResult.fare;
         }
 
+        // ─── تطبيق الخصم التلقائي إذا كان للراكب خصم نشط ───
+        let appliedDiscountId: number | null = null;
+        let discountAmount = 0;
+        let discountLabel = "";
+        const activeDiscount = await getActiveDiscountForPassenger(input.passengerId, "city_ride");
+        if (activeDiscount) {
+          const discountResult = calculateDiscountedFare(fare, {
+            discountType: activeDiscount.discountType,
+            discountValue: activeDiscount.discountValue,
+          });
+          fare = discountResult.finalFare;
+          discountAmount = discountResult.discountAmount;
+          appliedDiscountId = activeDiscount.id;
+          if (activeDiscount.discountType === "free_rides") {
+            discountLabel = "رحلة مجانية 🎉";
+          } else if (activeDiscount.discountType === "percentage") {
+            discountLabel = `خصم ${activeDiscount.discountValue}%`;
+          } else {
+            discountLabel = `خصم ${discountAmount.toLocaleString()} د.ع`;
+          }
+        }
         // ─── فحص كفاية الرصيد مسبقاً إذا اختار الدفع بالمحفظة ───
-        // الخصم الفعلي يتم فقط عند ضغطة بدأ الرحلة (in_progress)
         if (input.paymentMethod === "wallet") {
           const { getDb: getDbInner } = await import("./db");
           const { passengers: passengersSchema } = await import("../drizzle/schema");
@@ -473,9 +496,14 @@ export const appRouter = router({
           paymentMethod: input.paymentMethod,
           status: "searching",
         });
-        // ملاحظة: الخصم الفعلي يتم عند بدء الرحلة (in_progress) في updateStatus
-
-        // ─── إرسال إشعارات push للسائقين النشطين ───
+        // استهلاك الخصم فور إنشاء الرحلة (الخصم مطبق على السعر المخزن)
+        if (appliedDiscountId !== null) {
+          if (activeDiscount?.discountType === "free_rides") {
+            await consumeFreeRide(appliedDiscountId);
+          }
+          // للنسبة والمبلغ الثابت: الخصم مطبق على fare المخزن، لا حاجة لاستهلاك
+        }
+        // ─── إرسال إشعارات push للسائقين النشطين ────
         // فلتر السائقين النشطين خلال آخر 10 دقائق من قاعدة البيانات - منع إرسال طلبات لسائقين أغلقوا التطبيق منذ فترة طويلة
         const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
         const dbForPush = await (await import("./db")).getDb();
@@ -556,7 +584,7 @@ export const appRouter = router({
           }
         }, 3 * 60 * 1000); // 3 دقائق
 
-        return {
+         return {
           success: true,
           ride: {
             id: ride.id,
@@ -565,9 +593,13 @@ export const appRouter = router({
             estimatedDuration: duration,
             fare: Math.round(fare),
           },
+          discount: appliedDiscountId !== null ? {
+            label: discountLabel,
+            amount: discountAmount,
+            type: activeDiscount?.discountType,
+          } : null,
         };
       }),
-
     /**
      * Get nearby available drivers
      */
@@ -2558,7 +2590,43 @@ export const appRouter = router({
         if (passengerCheckIC && (passengerCheckIC as any).isBlocked) {
           throw new Error("🚫 تم تعطيل حسابك. لا يمكنك حجز رحلة.");
         }
-        const booking = await bookIntercityTrip(input);
+        // تطبيق الخصم التلقائي للرحلات بين المدن
+        let icAppliedDiscountId: number | null = null;
+        let icDiscountAmount = 0;
+        let icDiscountLabel = "";
+        let icDiscountedPrice: number | undefined = undefined;
+        const icActiveDiscount = await getActiveDiscountForPassenger(input.passengerId, "intercity");
+        if (icActiveDiscount) {
+          // جلب سعر الرحلة لحساب الخصم
+          const dbForDiscount = await getDb();
+          if (dbForDiscount) {
+            const { intercityTrips: tripsTableD } = await import("../drizzle/schema");
+            const { eq: eqD } = await import("drizzle-orm");
+            const [tripD] = await dbForDiscount.select({ pricePerSeat: tripsTableD.pricePerSeat }).from(tripsTableD).where(eqD(tripsTableD.id, input.tripId)).limit(1);
+            if (tripD) {
+              const originalTotal = parseFloat(tripD.pricePerSeat) * input.seatsBooked;
+              const discountResult = calculateDiscountedFare(originalTotal, {
+                discountType: icActiveDiscount.discountType,
+                discountValue: icActiveDiscount.discountValue,
+              });
+              icDiscountedPrice = discountResult.finalFare;
+              icDiscountAmount = discountResult.discountAmount;
+              icAppliedDiscountId = icActiveDiscount.id;
+              if (icActiveDiscount.discountType === "free_rides") {
+                icDiscountLabel = "رحلة مجانية 🎉";
+              } else if (icActiveDiscount.discountType === "percentage") {
+                icDiscountLabel = `خصم ${icActiveDiscount.discountValue}%`;
+              } else {
+                icDiscountLabel = `خصم ${icDiscountAmount.toLocaleString()} د.ع`;
+              }
+            }
+          }
+        }
+        const booking = await bookIntercityTrip({ ...input, discountedPrice: icDiscountedPrice });
+        // استهلاك الخصم
+        if (icAppliedDiscountId !== null && icActiveDiscount?.discountType === "free_rides") {
+          await consumeFreeRide(icAppliedDiscountId);
+        }
         // إرسال Push notification للكابتن
         console.log(`[Push] bookTrip: Attempting to send push notification for trip ${input.tripId}`);
         try {
@@ -2595,9 +2663,8 @@ export const appRouter = router({
         } catch (e) {
           console.warn("[Push] Error sending intercity booking notification:", e);
         }
-        return { success: true, booking };
+         return { success: true, booking, discount: icAppliedDiscountId !== null ? { label: icDiscountLabel, amount: icDiscountAmount, type: icActiveDiscount?.discountType } : null };
       }),
-
     // المستخدم: حجوزاتي
     myBookings: publicProcedure
       .input(z.object({ passengerId: z.number() }))
@@ -3460,15 +3527,46 @@ export const appRouter = router({
         paymentMethod: z.enum(["cash", "wallet"]).default("cash").optional(),
         quotedFare: z.number().optional(), // السعر المحسوب مسبقاً وعرضه للمستخدم
       }))
-      .mutation(async ({ input }) => {
+       .mutation(async ({ input }) => {
         const passengerCheckP = await getPassengerById(input.senderId);
         if (passengerCheckP && (passengerCheckP as any).isBlocked) {
           throw new Error("🚫 تم تعطيل حسابك. لا يمكنك إرسال طرد.");
         }
         const { quotedFare, ...parcelData } = input;
-        return createParcel({ ...parcelData, price: quotedFare });
+        // تطبيق الخصم التلقائي على الطرود
+        let parcelFinalPrice = quotedFare;
+        let parcelAppliedDiscountId: number | null = null;
+        let parcelDiscountAmount = 0;
+        let parcelDiscountLabel = "";
+        if (quotedFare && quotedFare > 0) {
+          const parcelActiveDiscount = await getActiveDiscountForPassenger(input.senderId, "parcel");
+          if (parcelActiveDiscount) {
+            const discountResult = calculateDiscountedFare(quotedFare, {
+              discountType: parcelActiveDiscount.discountType,
+              discountValue: parcelActiveDiscount.discountValue,
+            });
+            parcelFinalPrice = discountResult.finalFare;
+            parcelDiscountAmount = discountResult.discountAmount;
+            parcelAppliedDiscountId = parcelActiveDiscount.id;
+            if (parcelActiveDiscount.discountType === "free_rides") {
+              parcelDiscountLabel = "توصيل مجاني 🎉";
+            } else if (parcelActiveDiscount.discountType === "percentage") {
+              parcelDiscountLabel = `خصم ${parcelActiveDiscount.discountValue}%`;
+            } else {
+              parcelDiscountLabel = `خصم ${parcelDiscountAmount.toLocaleString()} د.ع`;
+            }
+          }
+        }
+        const parcel = await createParcel({ ...parcelData, price: parcelFinalPrice });
+        // استهلاك الخصم
+        if (parcelAppliedDiscountId !== null) {
+          const parcelActiveDiscountForConsume = await getActiveDiscountForPassenger(input.senderId, "parcel");
+          if (parcelActiveDiscountForConsume?.discountType === "free_rides") {
+            await consumeFreeRide(parcelAppliedDiscountId);
+          }
+        }
+        return { ...parcel, discount: parcelAppliedDiscountId !== null ? { label: parcelDiscountLabel, amount: parcelDiscountAmount } : null };
       }),
-
     getById: publicProcedure
       .input(z.object({ parcelId: z.number() }))
       .query(async ({ input }) => getParcelById(input.parcelId)),
@@ -3676,6 +3774,40 @@ export const appRouter = router({
     deactivate: publicProcedure
       .input(z.object({ discountId: z.number() }))
       .mutation(async ({ input }) => deactivateUserDiscount(input.discountId)),
+    // جلب الخصم النشط للراكب (لعرضه في شاشة التأكيد)
+    getMyDiscount: publicProcedure
+      .input(z.object({
+        passengerId: z.number(),
+        serviceType: z.enum(["city_ride", "intercity", "parcel"]).default("city_ride"),
+        fare: z.number().optional(), // السعر الأصلي لحساب الخصم
+      }))
+      .query(async ({ input }) => {
+        const discount = await getActiveDiscountForPassenger(input.passengerId, input.serviceType);
+        if (!discount) return null;
+        const fare = input.fare ?? 0;
+        const result = fare > 0 ? calculateDiscountedFare(fare, { discountType: discount.discountType, discountValue: discount.discountValue }) : null;
+        let label = "";
+        if (discount.discountType === "free_rides") {
+          const remaining = (discount.totalFreeRides ?? 0) - (discount.usedFreeRides ?? 0);
+          label = `لديك ${remaining} رحلة مجانية 🎉`;
+        } else if (discount.discountType === "percentage") {
+          label = `خصم ${discount.discountValue}% مفعّل`;
+        } else {
+          label = `خصم ${parseFloat(discount.discountValue?.toString() ?? "0").toLocaleString()} د.ع مفعّل`;
+        }
+        return {
+          id: discount.id,
+          type: discount.discountType,
+          label,
+          discountValue: discount.discountValue,
+          totalFreeRides: discount.totalFreeRides,
+          usedFreeRides: discount.usedFreeRides,
+          remainingFreeRides: discount.discountType === "free_rides" ? (discount.totalFreeRides ?? 0) - (discount.usedFreeRides ?? 0) : null,
+          finalFare: result?.finalFare ?? null,
+          discountAmount: result?.discountAmount ?? null,
+          isFree: result?.isFree ?? false,
+        };
+      }),
   }),
 
   // ─── Wallet Topup Requests ───────────────────────────────────────────────────────────────
