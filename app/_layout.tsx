@@ -271,6 +271,23 @@ function NotificationHandler() {
           { text: "عرض الرحلات", onPress: () => router.push("/captain/intercity-trips" as any) },
           { text: "حسناً" },
         ]);
+      } else if (notifType === "ride_accepted") {
+        // إشعار قبول الرحلة - يظهر حتى لو كان المستخدم خارج شاشة البحث
+        const rideId = data?.rideId;
+        try { rideSound.seekTo(0); rideSound.play(); } catch (e) { console.warn("[Sound] ride_accepted:", e); }
+        Alert.alert("🚗 تم قبول رحلتك!", body, [
+          { text: "عرض الرحلة", onPress: () => rideId && router.push({ pathname: "/ride/tracking", params: { rideId: String(rideId) } } as any) },
+          { text: "حسناً" },
+        ]);
+      } else if (notifType === "ride_cancelled") {
+        Alert.alert("❌ تم إلغاء الرحلة", body, [{ text: "حسناً" }]);
+      } else if (notifType === "ride_chat") {
+        const rideId = data?.rideId;
+        try { rideSound.seekTo(0); rideSound.play(); } catch (e) { console.warn("[Sound] ride_chat:", e); }
+        Alert.alert(title || "💬 رسالة جديدة", body, [
+          { text: "عرض المحادثة", onPress: () => rideId && router.push({ pathname: "/ride/chat", params: { rideId: String(rideId) } } as any) },
+          { text: "حسناً" },
+        ]);
       }
     });
 
@@ -288,7 +305,20 @@ function NotificationHandler() {
         router.push("/intercity/my-bookings" as any);
       } else if (notifType === "ride_chat") {
         // إشعار شات داخل المدينة - للراكب
-        router.push("/(tabs)" as any);
+        const rideId = data?.rideId;
+        if (rideId) {
+          router.push({ pathname: "/ride/chat", params: { rideId: String(rideId) } } as any);
+        } else {
+          router.push("/(tabs)" as any);
+        }
+      } else if (notifType === "ride_accepted") {
+        // عند الضغط على إشعار قبول الرحلة - انتقل لشاشة التتبع
+        const rideId = data?.rideId;
+        if (rideId) {
+          router.push({ pathname: "/ride/tracking", params: { rideId: String(rideId) } } as any);
+        } else {
+          router.push("/(tabs)" as any);
+        }
       } else if (notifType === "booking_cancelled_by_driver" || notifType === "booking_cancelled") {
         router.push("/intercity/my-bookings" as any);
       } else if (notifType === "trip_completed") {

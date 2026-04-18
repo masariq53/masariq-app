@@ -97,6 +97,8 @@ export default function TrackingScreen() {
   // رقم الرحلة الحالي (يتغير عند إعادة المحاولة)
   const [activeRideId, setActiveRideId] = useState(rideId);
   const [isRetrying, setIsRetrying] = useState(false);
+  // mutation إلغاء الرحلة - معرف هنا لأنه يُستخدم في useEffect الخاص بمهلة البحث
+  const cancelMutation = trpc.rides.cancel.useMutation();
   // مسارات OSRM الحقيقية
   const [routeDriverToPickup, setRouteDriverToPickup] = useState<OsrmRouteResult | null>(null);
   const [routePickupToDropoff, setRoutePickupToDropoff] = useState<OsrmRouteResult | null>(null);
@@ -153,19 +155,28 @@ export default function TrackingScreen() {
     };
   }, [currentStep, cancelled, completed]);
 
-  // مؤقت "\u0644ا يوجد سائقون" — 3 دقائق بدون قبول
+  // مؤقت "لا يوجد سائقون" — 3 دقائق بدون قبول
   useEffect(() => {
     if (noDriversTimerRef.current) clearTimeout(noDriversTimerRef.current);
     if (currentStep === 0 && !cancelled && !completed) {
       noDriversTimerRef.current = setTimeout(() => {
         setNoDrivers(true);
         notifyNoDriversAvailable();
+        // إلغاء الرحلة في السيرفر تلقائياً بعد انتهاء مهلة البحث
+        const rideToCancel = activeRideId || rideId;
+        if (rideToCancel && passengerId) {
+          cancelMutation.mutate({
+            rideId: rideToCancel,
+            passengerId,
+            reason: "انتهت مهلة البحث - لم يتم إيجاد سائق",
+          });
+        }
       }, 3 * 60 * 1000); // 3 دقائق
     }
     return () => {
       if (noDriversTimerRef.current) clearTimeout(noDriversTimerRef.current);
     };
-  }, [currentStep, cancelled, completed]);
+  }, [currentStep, cancelled, completed, activeRideId, rideId]);
 
   // Polling حقيقي لحالة الرحلة كل 5 ثوانّ - يستخدم activeRideId لدعم إعادة المحاولة
   const rideQuery = trpc.rides.passengerActiveRide.useQuery(
@@ -311,7 +322,6 @@ export default function TrackingScreen() {
   }, []);
 
   // إلغاء الرحلة الحقيقي
-  const cancelMutation = trpc.rides.cancel.useMutation();
   const handleCancel = () => {
     Alert.alert("إلغاء الرحلة", "هل أنت متأكد من إلغاء الرحلة؟", [
       { text: "لا", style: "cancel" },

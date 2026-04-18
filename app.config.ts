@@ -142,6 +142,12 @@ const config: ExpoConfig = {
       },
     ],
   ],
+  extra: {
+    eas: {
+      // Manus project ID - required for Expo Push Notifications
+      projectId: "jLhUqvseDGUrnnw2XKr64L",
+    },
+  },
   experiments: {
     typedRoutes: true,
     reactCompiler: true,

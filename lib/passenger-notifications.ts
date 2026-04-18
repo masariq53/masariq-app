@@ -3,8 +3,16 @@ import * as Device from "expo-device";
 import Constants from "expo-constants";
 import { Platform } from "react-native";
 
-// Handler مشترك مع driver-notifications (يُضبط مرة واحدة)
-// لا نعيد ضبطه هنا لتجنب التعارض
+// ضبط handler الإشعارات - يضمن ظهور الإشعارات حتى عندما يكون التطبيق مفتوحاً (foreground)
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
+  }),
+});
 
 /**
  * طلب صلاحيات الإشعارات للراكب وإعداد قناة Android.
