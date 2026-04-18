@@ -659,13 +659,31 @@ export default function TrackingScreen() {
               </View>
             )}
           </View>
-          {currentStep > 0 && driverPhone && (
-            <TouchableOpacity
-              style={styles.callBtn}
-              onPress={() => Linking.openURL(`tel:${driverPhone}`)}
-            >
-              <Text style={styles.callIcon}>📞</Text>
-            </TouchableOpacity>
+          {currentStep > 0 && (
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              {driverPhone && (
+                <TouchableOpacity
+                  style={styles.callBtn}
+                  onPress={() => Linking.openURL(`tel:${driverPhone}`)}
+                >
+                  <Text style={styles.callIcon}>📞</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                style={[styles.callBtn, { backgroundColor: "#0a7ea4" }]}
+                onPress={() => router.push({
+                  pathname: "/ride/chat" as any,
+                  params: {
+                    rideId: (activeRideId || rideId).toString(),
+                    passengerId: passengerId.toString(),
+                    driverName,
+                    rideStatus: ride?.status ?? "accepted",
+                  },
+                })}
+              >
+                <Text style={styles.callIcon}>💬</Text>
+              </TouchableOpacity>
+            </View>
           )}
         </View>
 

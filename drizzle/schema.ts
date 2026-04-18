@@ -688,3 +688,19 @@ export const appSettings = mysqlTable("appSettings", {
 });
 export type AppSetting = typeof appSettings.$inferSelect;
 export type InsertAppSetting = typeof appSettings.$inferInsert;
+
+// ─── Ride Messages (داخل المدينة) ─────────────────────────────────────────────
+/**
+ * رسائل الشات بين الراكب والسائق في رحلات داخل المدينة
+ */
+export const rideMessages = mysqlTable("rideMessages", {
+  id: int("id").autoincrement().primaryKey(),
+  rideId: int("rideId").notNull(),           // الرحلة المرتبطة
+  senderType: mysqlEnum("senderType", ["passenger", "driver"]).notNull(),
+  senderId: int("senderId").notNull(),        // passenger.id أو driver.id
+  message: text("message").notNull(),
+  isRead: boolean("isRead").default(false).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type RideMessage = typeof rideMessages.$inferSelect;
+export type InsertRideMessage = typeof rideMessages.$inferInsert;

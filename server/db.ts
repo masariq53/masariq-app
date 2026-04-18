@@ -37,6 +37,8 @@ import {
   walletTopupRequests,
   paymentMethodSettings,
   appSettings,
+  rideMessages,
+  RideMessage,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
@@ -3893,4 +3895,51 @@ export async function applyDriverWelcomeBonus(driverId: number): Promise<number>
     referenceType: "welcome_bonus", status: "completed",
   });
   return bonus;
+}
+
+// ─── Ride Messages (داخل المدينة) ─────────────────────────────────────────────
+
+export async function sendRideMessage(data: {
+  rideId: number;
+  senderType: "passenger" | "driver";
+  senderId: number;
+  message: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("قاعدة البيانات غير متاحة");
+  const [result] = await db.insert(rideMessages).values({
+    rideId: data.rideId,
+    senderType: data.senderType,
+    senderId: data.senderId,
+    message: data.message,
+  });
+  const insertId = (result as any).insertId;
+  const [msg] = await db.select().from(rideMessages).where(eq(rideMessages.id, insertId)).limit(1);
+  return msg!;
+}
+
+export async function getRideMessages(rideId: number): Promise<RideMessage[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(rideMessages).where(eq(rideMessages.rideId, rideId)).orderBy(rideMessages.createdAt);
+}
+
+export async function markRideMessagesRead(rideId: number, readerType: "passenger" | "driver") {
+  const db = await getDb();
+  if (!db) return;
+  // المرسل الآخر هو من يجب تحديد رسائله كمقروءة
+  const senderType = readerType === "passenger" ? "driver" : "passenger";
+  await db.update(rideMessages).set({ isRead: true }).where(
+    and(eq(rideMessages.rideId, rideId), eq(rideMessages.senderType, senderType), eq(rideMessages.isRead, false))
+  );
+}
+
+export async function countUnreadRideMessages(rideId: number, readerType: "passenger" | "driver"): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+  const senderType = readerType === "passenger" ? "driver" : "passenger";
+  const [row] = await db.select({ count: sql<number>`count(*)` }).from(rideMessages).where(
+    and(eq(rideMessages.rideId, rideId), eq(rideMessages.senderType, senderType), eq(rideMessages.isRead, false))
+  );
+  return Number(row?.count ?? 0);
 }

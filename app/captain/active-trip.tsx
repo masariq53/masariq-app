@@ -525,6 +525,21 @@ export default function CaptainActiveTripScreen() {
                 <Text style={styles.actionIcon}>📞</Text>
               </TouchableOpacity>
             )}
+            {/* زر الشات مع الراكب */}
+            <TouchableOpacity
+              style={[styles.actionBtn, { borderColor: "#0a7ea4" }]}
+              onPress={() => router.push({
+                pathname: "/captain/ride-chat" as any,
+                params: {
+                  rideId: (ride?.id ?? rideId).toString(),
+                  driverId: driverId.toString(),
+                  passengerName: ride?.passengerName ?? "الراكب",
+                  rideStatus: ride?.status ?? "accepted",
+                },
+              })}
+            >
+              <Text style={styles.actionIcon}>💬</Text>
+            </TouchableOpacity>
             {/* زر الملاحة GPS */}
             <TouchableOpacity
               style={[styles.actionBtn, { borderColor: "#FFD700" }]}

@@ -239,6 +239,13 @@
       "when": 1776510207697,
       "tag": "0033_fixed_beast",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "5",
+      "when": 1776511676567,
+      "tag": "0034_noisy_bulldozer",
+      "breakpoints": true
     }
   ]
 }

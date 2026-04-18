@@ -286,6 +286,9 @@ function NotificationHandler() {
         router.push("/intercity/my-bookings" as any);
       } else if (notifType === "chat_message") {
         router.push("/intercity/my-bookings" as any);
+      } else if (notifType === "ride_chat") {
+        // إشعار شات داخل المدينة - للراكب
+        router.push("/(tabs)" as any);
       } else if (notifType === "booking_cancelled_by_driver" || notifType === "booking_cancelled") {
         router.push("/intercity/my-bookings" as any);
       } else if (notifType === "trip_completed") {
@@ -411,6 +414,8 @@ export default function RootLayout() {
             <Stack.Screen name="driver/status" />
             <Stack.Screen name="ride/rating" />
             <Stack.Screen name="notifications" />
+            <Stack.Screen name="ride/chat" />
+            <Stack.Screen name="captain/ride-chat" options={{ gestureEnabled: false }} />
           </Stack>
           <StatusBar style="auto" />
         </QueryClientProvider>

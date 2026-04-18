@@ -152,6 +152,10 @@ import {
   setAppSetting,
   applyPassengerWelcomeBonus,
   applyDriverWelcomeBonus,
+  sendRideMessage,
+  getRideMessages,
+  markRideMessagesRead,
+  countUnreadRideMessages,
 } from "./db";
 import { storagePut } from "./storage";
 import { transcribeAudio } from "./_core/voiceTranscription";
@@ -1269,6 +1273,82 @@ export const appRouter = router({
             zoneName: result.breakdown.zoneName,
           },
         };
+      }),
+
+    // ─── Ride Chat (داخل المدينة) ─────────────────────────────────────────────
+    // إرسال رسالة شات في رحلة داخل المدينة
+    sendMessage: publicProcedure
+      .input(z.object({
+        rideId: z.number(),
+        senderType: z.enum(["passenger", "driver"]),
+        senderId: z.number(),
+        message: z.string().min(1).max(1000),
+      }))
+      .mutation(async ({ input }) => {
+        const msg = await sendRideMessage(input);
+        // إرسال Push للطرف الآخر
+        try {
+          const { rides: ridesTable } = await import("../drizzle/schema");
+          const { eq: eqOp } = await import("drizzle-orm");
+          const db = await getDb();
+          if (db) {
+            const [ride] = await db.select().from(ridesTable).where(eqOp(ridesTable.id, input.rideId)).limit(1);
+            if (ride) {
+              if (input.senderType === "driver" && ride.passengerId) {
+                // الكابتن أرسل → أشعر الراكب
+                const token = await getPassengerPushToken(ride.passengerId);
+                if (token?.startsWith("ExponentPushToken[")) {
+                  fetch("https://exp.host/--/api/v2/push/send", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      to: token, sound: "default",
+                      title: "💬 رسالة جديدة من السائق",
+                      body: input.message.length > 60 ? input.message.slice(0, 60) + "..." : input.message,
+                      data: { type: "ride_chat", rideId: input.rideId },
+                      priority: "high",
+                    }),
+                  }).catch(() => {});
+                }
+              } else if (input.senderType === "passenger" && ride.driverId) {
+                // الراكب أرسل → أشعر الكابتن
+                const token = await getDriverPushToken(ride.driverId);
+                if (token?.startsWith("ExponentPushToken[")) {
+                  fetch("https://exp.host/--/api/v2/push/send", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      to: token, sound: "default",
+                      title: "💬 رسالة جديدة من الراكب",
+                      body: input.message.length > 60 ? input.message.slice(0, 60) + "..." : input.message,
+                      data: { type: "ride_chat", rideId: input.rideId },
+                      priority: "high",
+                    }),
+                  }).catch(() => {});
+                }
+              }
+            }
+          }
+        } catch (e) { console.warn("[RideChat Push] Error:", e); }
+        return msg;
+      }),
+    // جلب رسائل رحلة معينة
+    getMessages: publicProcedure
+      .input(z.object({ rideId: z.number() }))
+      .query(async ({ input }) => getRideMessages(input.rideId)),
+    // تحديد الرسائل كمقروءة
+    markRead: publicProcedure
+      .input(z.object({ rideId: z.number(), readerType: z.enum(["passenger", "driver"]) }))
+      .mutation(async ({ input }) => {
+        await markRideMessagesRead(input.rideId, input.readerType);
+        return { success: true };
+      }),
+    // عدد الرسائل غير المقروءة
+    unreadCount: publicProcedure
+      .input(z.object({ rideId: z.number(), readerType: z.enum(["passenger", "driver"]) }))
+      .query(async ({ input }) => {
+        const count = await countUnreadRideMessages(input.rideId, input.readerType);
+        return { count };
       }),
   }),
 
