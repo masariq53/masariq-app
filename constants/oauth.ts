@@ -38,14 +38,13 @@ export function getApiBaseUrl(): string {
     return API_BASE_URL.replace(/\/$/, "");
   }
 
-  // On web, derive from current hostname by replacing port 8081 with 3000
+  // On web, use relative path so requests go through Metro proxy (/api -> port 3000)
+  // This ensures the admin panel works from any device (iPhone, Android, browser)
+  // Metro proxy in metro.config.js forwards /api/* to port 3000
   if (ReactNative.Platform.OS === "web" && typeof window !== "undefined" && window.location) {
-    const { protocol, hostname } = window.location;
-    // Pattern: 8081-sandboxid.region.domain -> 3000-sandboxid.region.domain
-    const apiHostname = hostname.replace(/^8081-/, "3000-");
-    if (apiHostname !== hostname) {
-      return `${protocol}//${apiHostname}`;
-    }
+    // Use relative URL (empty string) so /api/trpc becomes a relative path
+    // This works regardless of which port/domain the user is accessing from
+    return "";
   }
 
   // على الأجهزة الحقيقية (iOS/Android) نستخدم الـ domain الثابت
