@@ -189,7 +189,7 @@ export const appRouter = router({
 
         // TODO: In production, send SMS via provider
         // For now, return code in dev mode for testing
-        const isDev = process.env.NODE_ENV !== "production";
+        const isDev = process.env.NODE_ENV !== "production" || process.env.SHOW_DEV_OTP === "true";
 
         return {
           success: true,
@@ -276,7 +276,7 @@ export const appRouter = router({
         }
 
         const code = await createOtp(phone);
-        const isDev = process.env.NODE_ENV !== "production";
+        const isDev = process.env.NODE_ENV !== "production" || process.env.SHOW_DEV_OTP === "true";
         return { success: true, phone, devCode: isDev ? code : undefined, message: isDev ? `رمز التحقق: ${code}` : "تم إرسال رمز التحقق" };
       }),
 
@@ -316,7 +316,7 @@ export const appRouter = router({
         if (exists) throw new Error("رقم الهاتف مسجل بالفعل، يرجى تسجيل الدخول");
 
         const code = await createOtp(phone);
-        const isDev = process.env.NODE_ENV !== "production";
+        const isDev = process.env.NODE_ENV !== "production" || process.env.SHOW_DEV_OTP === "true";
         return { success: true, phone, name: input.name, devCode: isDev ? code : undefined, message: isDev ? `رمز التحقق: ${code}` : "تم إرسال رمز التحقق" };
       }),
 
@@ -1560,7 +1560,7 @@ export const appRouter = router({
         if (!driver) throw new Error("رقم الهاتف غير مسجل، يرجى التسجيل أولاً");
 
         const code = await createOtp(phone);
-        const isDev = process.env.NODE_ENV !== "production";
+        const isDev = process.env.NODE_ENV !== "production" || process.env.SHOW_DEV_OTP === "true";
         return {
           success: true,
           phone,
@@ -1788,7 +1788,7 @@ export const appRouter = router({
 
         // Send OTP to OLD phone for identity verification
         const code = await (await import("./db")).createOtp(passenger.phone);
-        const isDev = process.env.NODE_ENV !== "production";
+        const isDev = process.env.NODE_ENV !== "production" || process.env.SHOW_DEV_OTP === "true";
         return {
           success: true,
           oldPhone: passenger.phone,
@@ -1814,7 +1814,7 @@ export const appRouter = router({
 
         // Now send OTP to NEW phone
         const code = await (await import("./db")).createOtp(passenger.pendingPhone);
-        const isDev = process.env.NODE_ENV !== "production";
+        const isDev = process.env.NODE_ENV !== "production" || process.env.SHOW_DEV_OTP === "true";
         return {
           success: true,
           newPhone: passenger.pendingPhone,

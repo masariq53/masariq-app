@@ -42,8 +42,12 @@ export function getApiBaseUrl(): string {
     return "";
   }
 
-  // على الأجهزة الحقيقية (iOS/Android) نستخدم دائماً الـ domain الثابت للمشروع
-  // هذا يضمن عمل التطبيق من أي جهاز بدون الاعتماد على متغيرات البيئة المتغيرة
+  // على الأجهزة الحقيقية (iOS/Android):
+  // إذا كانت EXPO_PUBLIC_API_BASE_URL مضبوطة (وضع التطوير) استخدمها
+  // وإلا استخدم الـ domain الثابت (وضع الإنتاج)
+  if (env.apiBaseUrl) {
+    return env.apiBaseUrl.replace(/\/$/, "");
+  }
   return PRODUCTION_API_URL;
 }
 
