@@ -726,7 +726,9 @@ export default function CaptainHomeScreen() {
               </View>
               <View style={styles.priceTag}>
                 <Text style={styles.priceValue}>
-                  {currentParcelRequest?.parcelSize === "small" ? "3,000" : currentParcelRequest?.parcelSize === "medium" ? "5,000" : "8,000"}
+                  {currentParcelRequest?.price
+                    ? Number(currentParcelRequest.price).toLocaleString("ar-IQ")
+                    : currentParcelRequest?.parcelSize === "small" ? "3,000" : currentParcelRequest?.parcelSize === "medium" ? "5,000" : "8,000"}
                 </Text>
                 <Text style={styles.priceCurrency}>د.ع</Text>
               </View>
@@ -760,9 +762,10 @@ export default function CaptainHomeScreen() {
                   if (!currentParcelRequest || !driver?.id) return;
                   const stillPending = pendingParcelsQuery.data?.some((p: any) => p.id === currentParcelRequest.id);
                   if (!stillPending) { setCurrentParcelRequest(null); setTimer(30); return; }
-                  const fare = currentParcelRequest.parcelSize === "small" ? 3000 : currentParcelRequest.parcelSize === "medium" ? 5000 : 8000;
-                  trpc.parcel.accept.useMutation;
-                  // نستخدم mutation مباشرة
+                  // استخدام السعر المحسوب مسبقاً إذا كان موجوداً، وإلا السعر الثابت
+                  const fare = currentParcelRequest.price
+                    ? Number(currentParcelRequest.price)
+                    : currentParcelRequest.parcelSize === "small" ? 3000 : currentParcelRequest.parcelSize === "medium" ? 5000 : 8000;
                   acceptParcelMutation.mutate({ parcelId: currentParcelRequest.id, driverId: driver.id, price: fare });
                 }}
                 disabled={acceptParcelMutation.isPending}

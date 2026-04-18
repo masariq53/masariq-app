@@ -2856,11 +2856,11 @@ export async function createParcel(data: {
   scheduledDate?: string;
   scheduledTimeSlot?: string;
   paymentMethod?: "cash" | "wallet";
+  price?: number; // السعر المحسوب مسبقاً
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   const paymentMethod = data.paymentMethod ?? "cash";
-  // خصم الرصيد إذا اختار الدفع بالمحفظة (سيتم خصم السعر عند تحديده لاحقاً من الكابتن)
   const trackingNumber = generateTrackingNumber();
   const deliveryOtp = generateDeliveryOtp();
   const [result] = await db.insert(parcels).values({
@@ -2869,6 +2869,7 @@ export async function createParcel(data: {
     deliveryOtp,
     status: "pending",
     paymentMethod,
+    price: data.price?.toString() as any,
     pickupLat: data.pickupLat?.toString() as any,
     pickupLng: data.pickupLng?.toString() as any,
     dropoffLat: data.dropoffLat?.toString() as any,

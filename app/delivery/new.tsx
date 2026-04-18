@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  FlatList,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -32,8 +33,32 @@ const IRAQI_CITIES = [
 ];
 
 type DeliveryType = "instant" | "intercity";
-
 type GpsCoords = { latitude: number; longitude: number } | null;
+type SearchResult = { display_name: string; lat: string; lon: string };
+
+// حدود العراق للبحث
+const iraqBounds = "38.7,29.0,48.6,37.4";
+
+async function searchNominatim(query: string, proximity?: GpsCoords): Promise<SearchResult[]> {
+  try {
+    const encoded = encodeURIComponent(query);
+    let viewboxParam = `&viewbox=${iraqBounds}&bounded=1`;
+    if (proximity) {
+      const delta = 0.5;
+      const minLat = proximity.latitude - delta;
+      const maxLat = proximity.latitude + delta;
+      const minLng = proximity.longitude - delta;
+      const maxLng = proximity.longitude + delta;
+      viewboxParam = `&viewbox=${minLng},${minLat},${maxLng},${maxLat}&bounded=0`;
+    }
+    const url = `https://nominatim.openstreetmap.org/search?q=${encoded}&format=json&limit=6&addressdetails=1&accept-language=ar&countrycodes=iq${viewboxParam}`;
+    const res = await fetch(url, { headers: { "User-Agent": "MasarApp/1.0" } });
+    if (!res.ok) return [];
+    return await res.json();
+  } catch {
+    return [];
+  }
+}
 
 async function reverseGeocodeNominatim(lat: number, lon: number): Promise<string> {
   try {
@@ -50,6 +75,10 @@ async function reverseGeocodeNominatim(lat: number, lon: number): Promise<string
   }
 }
 
+function shortenAddress(displayName: string): string {
+  return displayName.split(",").slice(0, 3).join("،").trim();
+}
+
 export default function NewDeliveryScreen() {
   const insets = useSafeAreaInsets();
   const { passenger } = usePassenger();
@@ -62,7 +91,14 @@ export default function NewDeliveryScreen() {
   const [pickupCoords, setPickupCoords] = useState<GpsCoords>(null);
   const [dropoffCoords, setDropoffCoords] = useState<GpsCoords>(null);
   const [loadingPickupGps, setLoadingPickupGps] = useState(false);
-  const [loadingDropoffGps, setLoadingDropoffGps] = useState(false);
+
+  // بحث الوجهة
+  const [dropoffQuery, setDropoffQuery] = useState("");
+  const [dropoffResults, setDropoffResults] = useState<SearchResult[]>([]);
+  const [searchingDropoff, setSearchingDropoff] = useState(false);
+  const [dropoffSelected, setDropoffSelected] = useState(false);
+  const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const [recipientName, setRecipientName] = useState("");
   const [recipientPhone, setRecipientPhone] = useState("");
   const [notes, setNotes] = useState("");
@@ -70,6 +106,17 @@ export default function NewDeliveryScreen() {
   const [originCity, setOriginCity] = useState("الموصل");
   const [showCityPicker, setShowCityPicker] = useState<"origin" | "destination" | null>(null);
   const [deliveryPaymentMethod, setDeliveryPaymentMethod] = useState<"cash" | "wallet">("cash");
+
+  // حساب السعر
+  const fareQuery = trpc.rides.estimateFare.useQuery(
+    {
+      pickupLat: pickupCoords?.latitude ?? 0,
+      pickupLng: pickupCoords?.longitude ?? 0,
+      dropoffLat: dropoffCoords?.latitude ?? 0,
+      dropoffLng: dropoffCoords?.longitude ?? 0,
+    },
+    { enabled: !!pickupCoords && !!dropoffCoords && deliveryType === "instant" }
+  );
 
   const createParcel = trpc.parcel.create.useMutation({
     onSuccess: (data: any) => {
@@ -85,6 +132,24 @@ export default function NewDeliveryScreen() {
     fetchGpsForPickup();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // بحث الوجهة مع debounce
+  useEffect(() => {
+    if (dropoffSelected) return;
+    if (!dropoffQuery.trim() || dropoffQuery.length < 2) {
+      setDropoffResults([]);
+      return;
+    }
+    if (searchTimeout.current) clearTimeout(searchTimeout.current);
+    searchTimeout.current = setTimeout(async () => {
+      setSearchingDropoff(true);
+      const results = await searchNominatim(dropoffQuery, pickupCoords ?? undefined);
+      setDropoffResults(results);
+      setSearchingDropoff(false);
+    }, 500);
+    return () => { if (searchTimeout.current) clearTimeout(searchTimeout.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dropoffQuery, dropoffSelected]);
 
   const requestLocationPermission = async (): Promise<boolean> => {
     if (Platform.OS === "web") {
@@ -138,45 +203,30 @@ export default function NewDeliveryScreen() {
     setLoadingPickupGps(false);
   };
 
-  const fetchGpsForDropoff = async () => {
-    setLoadingDropoffGps(true);
-    try {
-      const granted = await requestLocationPermission();
-      if (!granted) {
-        Alert.alert("تنبيه", "يرجى السماح للتطبيق بالوصول إلى موقعك");
-        setLoadingDropoffGps(false);
-        return;
-      }
-      let lat: number, lon: number;
-      if (Platform.OS === "web") {
-        const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
-          navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 10000 })
-        );
-        lat = pos.coords.latitude;
-        lon = pos.coords.longitude;
-      } else {
-        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-        lat = loc.coords.latitude;
-        lon = loc.coords.longitude;
-      }
-      setDropoffCoords({ latitude: lat, longitude: lon });
-      const address = await reverseGeocodeNominatim(lat, lon);
-      if (address) {
-        setDropoffAddress(address);
-      } else {
-        const results = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lon });
-        if (results?.[0]) {
-          const r = results[0];
-          const parts = [r.street, r.district, r.city].filter(Boolean);
-          setDropoffAddress(parts.length > 0 ? parts.join("، ") : "موقعي الحالي");
-        } else {
-          setDropoffAddress(`${lat.toFixed(5)}, ${lon.toFixed(5)}`);
-        }
-      }
-    } catch {
-      Alert.alert("خطأ", "تعذّر تحديد موقعك. تأكد من تفعيل GPS.");
-    }
-    setLoadingDropoffGps(false);
+  const selectDropoffResult = (item: SearchResult) => {
+    const lat = parseFloat(item.lat);
+    const lon = parseFloat(item.lon);
+    setDropoffCoords({ latitude: lat, longitude: lon });
+    const short = shortenAddress(item.display_name);
+    setDropoffAddress(short);
+    setDropoffQuery(short);
+    setDropoffResults([]);
+    setDropoffSelected(true);
+  };
+
+  const clearDropoff = () => {
+    setDropoffCoords(null);
+    setDropoffAddress("");
+    setDropoffQuery("");
+    setDropoffResults([]);
+    setDropoffSelected(false);
+  };
+
+  const getFareDisplay = () => {
+    if (!dropoffCoords) return null;
+    if (fareQuery.isLoading) return "جاري الحساب...";
+    if (!fareQuery.data) return null;
+    return `${Math.round(fareQuery.data.fare).toLocaleString("ar-IQ")} دينار`;
   };
 
   const TITLE_MAP: Record<DeliveryType, string> = {
@@ -187,11 +237,15 @@ export default function NewDeliveryScreen() {
   const handleSubmit = () => {
     if (!pickupAddress.trim()) { Alert.alert("تنبيه", "أدخل عنوان الاستلام أو استخدم GPS"); return; }
     if (!pickupCoords) { Alert.alert("تنبيه", "يجب تحديد موقع الاستلام عبر GPS"); return; }
-    if (!dropoffAddress.trim()) { Alert.alert("تنبيه", "أدخل عنوان التسليم أو استخدم GPS"); return; }
-    if (!dropoffCoords) { Alert.alert("تنبيه", "يجب تحديد موقع التسليم عبر GPS"); return; }
+    if (!dropoffAddress.trim()) { Alert.alert("تنبيه", "أدخل عنوان التسليم"); return; }
+    if (deliveryType === "instant" && !dropoffCoords) { Alert.alert("تنبيه", "يجب اختيار عنوان التسليم من قائمة البحث"); return; }
     if (!recipientName.trim()) { Alert.alert("تنبيه", "أدخل اسم المستلم"); return; }
     if (!recipientPhone.trim()) { Alert.alert("تنبيه", "أدخل رقم هاتف المستلم"); return; }
     if (deliveryType === "intercity" && !destinationCity) { Alert.alert("تنبيه", "اختر مدينة الوجهة"); return; }
+
+    const quotedFare = deliveryType === "instant" && fareQuery.data
+      ? Math.round(fareQuery.data.fare)
+      : undefined;
 
     createParcel.mutate({
       senderId: passenger!.id,
@@ -203,16 +257,27 @@ export default function NewDeliveryScreen() {
       dropoffAddress,
       pickupLat: pickupCoords.latitude,
       pickupLng: pickupCoords.longitude,
-      dropoffLat: dropoffCoords.latitude,
-      dropoffLng: dropoffCoords.longitude,
+      dropoffLat: dropoffCoords?.latitude,
+      dropoffLng: dropoffCoords?.longitude,
       recipientName,
       recipientPhone,
       parcelDescription: notes || undefined,
       fromCity: deliveryType === "intercity" ? originCity : undefined,
       toCity: deliveryType === "intercity" ? destinationCity : undefined,
       paymentMethod: deliveryPaymentMethod,
+      quotedFare,
     } as any);
   };
+
+  const fareDisplay = getFareDisplay();
+  const canSubmit = !createParcel.isPending &&
+    pickupAddress.trim() &&
+    pickupCoords &&
+    dropoffAddress.trim() &&
+    (deliveryType !== "instant" || dropoffCoords) &&
+    recipientName.trim() &&
+    recipientPhone.trim() &&
+    (deliveryType !== "instant" || !fareQuery.isLoading);
 
   return (
     <KeyboardAvoidingView
@@ -357,56 +422,77 @@ export default function NewDeliveryScreen() {
             )}
           </View>
 
-          {/* Dropoff Address */}
-          <View style={[styles.addressCard, styles.addressCardMarginTop, !dropoffCoords && dropoffAddress.length > 0 && styles.addressCardWarning]}>
+          {/* Dropoff Address - بحث نصي مع Nominatim */}
+          <View style={[styles.addressCard, styles.addressCardMarginTop]}>
             <View style={styles.addressLabelRow}>
               <View style={[styles.dot, { backgroundColor: "#EF4444" }]} />
               <Text style={styles.addressLabel}>عنوان التسليم</Text>
-              <View style={{ flex: 1 }} />
-              <TouchableOpacity
-                style={[styles.gpsBtn, loadingDropoffGps && styles.gpsBtnLoading]}
-                onPress={fetchGpsForDropoff}
-                disabled={loadingDropoffGps}
-              >
-                {loadingDropoffGps ? (
-                  <ActivityIndicator size="small" color="#FFD700" />
-                ) : (
-                  <>
-                    <Text style={styles.gpsBtnIcon}>📍</Text>
-                    <Text style={styles.gpsBtnText}>موقعي</Text>
-                  </>
-                )}
-              </TouchableOpacity>
+              {dropoffSelected && (
+                <TouchableOpacity onPress={clearDropoff} style={{ marginRight: 4 }}>
+                  <Text style={{ color: "#EF4444", fontSize: 12, fontWeight: "700" }}>✕ تغيير</Text>
+                </TouchableOpacity>
+              )}
             </View>
-            <TextInput
-              style={[styles.addressInput, !dropoffAddress && styles.addressInputEmpty]}
-              placeholder="اكتب عنوان التسليم أو اضغط موقعي ↑"
-              placeholderTextColor="#6B5B8A"
-              value={dropoffAddress}
-              onChangeText={(text) => {
-                setDropoffAddress(text);
-                if (!text) setDropoffCoords(null);
-              }}
-              textAlign="right"
-              multiline
-            />
-            {dropoffCoords && (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <TextInput
+                style={[styles.addressInput, { flex: 1 }, !dropoffQuery && styles.addressInputEmpty]}
+                placeholder="ابحث عن عنوان التسليم..."
+                placeholderTextColor="#6B5B8A"
+                value={dropoffQuery}
+                onChangeText={(text) => {
+                  setDropoffQuery(text);
+                  if (dropoffSelected) {
+                    setDropoffSelected(false);
+                    setDropoffCoords(null);
+                    setDropoffAddress("");
+                  }
+                }}
+                textAlign="right"
+                editable={!dropoffSelected}
+              />
+              {searchingDropoff && <ActivityIndicator size="small" color="#FFD700" />}
+            </View>
+            {dropoffSelected && dropoffCoords && (
               <View style={styles.coordsBadge}>
-                <Text style={styles.coordsText}>
-                  ✅ GPS: {dropoffCoords.latitude.toFixed(4)}, {dropoffCoords.longitude.toFixed(4)}
-                </Text>
+                <Text style={styles.coordsText}>✅ تم تحديد الوجهة</Text>
               </View>
             )}
-            {!dropoffCoords && dropoffAddress.length > 0 && (
-              <View style={styles.coordsWarning}>
-                <Text style={styles.coordsWarningText}>⚠️ يجب تأكيد الموقع عبر GPS</Text>
+            {/* نتائج البحث */}
+            {dropoffResults.length > 0 && !dropoffSelected && (
+              <View style={styles.searchResults}>
+                {dropoffResults.map((item, idx) => (
+                  <TouchableOpacity
+                    key={idx}
+                    style={[styles.searchResultItem, idx < dropoffResults.length - 1 && styles.searchResultBorder]}
+                    onPress={() => selectDropoffResult(item)}
+                  >
+                    <Text style={styles.searchResultText} numberOfLines={2}>
+                      📍 {shortenAddress(item.display_name)}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
               </View>
             )}
           </View>
 
-          <Text style={styles.gpsHint}>
-            💡 اضغط "موقعي" لتحديد موقعك الحالي تلقائياً عبر GPS — أو اكتب العنوان يدوياً ثم اضغط GPS للتأكيد
-          </Text>
+          {/* عرض السعر المقدر */}
+          {deliveryType === "instant" && pickupCoords && dropoffCoords && (
+            <View style={styles.fareCard}>
+              <Text style={styles.fareLabel}>سعر التوصيل المقدر</Text>
+              {fareQuery.isLoading ? (
+                <ActivityIndicator size="small" color="#FFD700" />
+              ) : fareDisplay ? (
+                <Text style={styles.fareValue}>{fareDisplay}</Text>
+              ) : (
+                <Text style={styles.fareError}>تعذّر حساب السعر</Text>
+              )}
+              {fareQuery.data && (
+                <Text style={styles.fareDetails}>
+                  {fareQuery.data.distance} كم • {fareQuery.data.duration} دقيقة
+                </Text>
+              )}
+            </View>
+          )}
         </View>
 
         {/* Recipient */}
@@ -491,15 +577,19 @@ export default function NewDeliveryScreen() {
 
         {/* Submit */}
         <TouchableOpacity
-          style={[styles.submitBtn, createParcel.isPending && styles.submitBtnDisabled]}
+          style={[styles.submitBtn, !canSubmit && styles.submitBtnDisabled]}
           onPress={handleSubmit}
-          disabled={createParcel.isPending}
+          disabled={!canSubmit}
         >
           {createParcel.isPending ? (
             <ActivityIndicator color="#1A0533" />
           ) : (
             <Text style={styles.submitBtnText}>
-              {deliveryType === "instant" ? "⚡ إرسال الطلب الآن" : "🚚 إرسال الطرد"}
+              {deliveryType === "instant"
+                ? fareDisplay && fareDisplay !== "جاري الحساب..."
+                  ? `⚡ إرسال الطلب — ${fareDisplay}`
+                  : "⚡ إرسال الطلب الآن"
+                : "🚚 إرسال الطرد"}
             </Text>
           )}
         </TouchableOpacity>
@@ -564,7 +654,6 @@ const styles = StyleSheet.create({
   cityPickerModalTitle: { color: "#FFFFFF", fontSize: 13, fontWeight: "700", textAlign: "right", marginBottom: 8 },
   cityOption: { paddingVertical: 10, paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: "#3D2580" },
   cityOptionText: { color: "#C4B5D4", fontSize: 14, textAlign: "right" },
-  // Address cards
   addressCard: {
     backgroundColor: "#2D1B69", borderRadius: 16, padding: 14,
     borderWidth: 1.5, borderColor: "#3D2580",
@@ -602,9 +691,22 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: "rgba(245,158,11,0.3)",
   },
   coordsWarningText: { color: "#F59E0B", fontSize: 11, textAlign: "right" },
-  gpsHint: {
-    color: "#6B5B8A", fontSize: 11, textAlign: "right", marginTop: 8, lineHeight: 16,
+  searchResults: {
+    marginTop: 8, backgroundColor: "#1A0533", borderRadius: 12,
+    borderWidth: 1, borderColor: "#3D2580", overflow: "hidden",
   },
+  searchResultItem: { paddingVertical: 12, paddingHorizontal: 14 },
+  searchResultBorder: { borderBottomWidth: 1, borderBottomColor: "#3D2580" },
+  searchResultText: { color: "#C4B5D4", fontSize: 13, textAlign: "right", lineHeight: 18 },
+  fareCard: {
+    marginTop: 12, backgroundColor: "rgba(255,215,0,0.08)", borderRadius: 14,
+    padding: 14, borderWidth: 1.5, borderColor: "rgba(255,215,0,0.3)",
+    alignItems: "center",
+  },
+  fareLabel: { color: "rgba(255,255,255,0.7)", fontSize: 12, marginBottom: 4 },
+  fareValue: { color: "#FFD700", fontSize: 22, fontWeight: "800" },
+  fareError: { color: "#EF4444", fontSize: 13 },
+  fareDetails: { color: "rgba(255,255,255,0.5)", fontSize: 11, marginTop: 4 },
   inputGroup: { gap: 10 },
   input: {
     backgroundColor: "#2D1B69", borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14,
@@ -617,7 +719,7 @@ const styles = StyleSheet.create({
     shadowColor: "#FFD700", shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.35, shadowRadius: 10, elevation: 6,
   },
-  submitBtnDisabled: { opacity: 0.7 },
+  submitBtnDisabled: { opacity: 0.5 },
   submitBtnText: { color: "#1A0533", fontSize: 17, fontWeight: "800" },
   payRow: {
     flexDirection: "row", alignItems: "center", gap: 12,

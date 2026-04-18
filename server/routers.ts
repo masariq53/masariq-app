@@ -3353,13 +3353,15 @@ export const appRouter = router({
         scheduledDate: z.string().optional(),
         scheduledTimeSlot: z.string().optional(),
         paymentMethod: z.enum(["cash", "wallet"]).default("cash").optional(),
+        quotedFare: z.number().optional(), // السعر المحسوب مسبقاً وعرضه للمستخدم
       }))
       .mutation(async ({ input }) => {
         const passengerCheckP = await getPassengerById(input.senderId);
         if (passengerCheckP && (passengerCheckP as any).isBlocked) {
           throw new Error("🚫 تم تعطيل حسابك. لا يمكنك إرسال طرد.");
         }
-        return createParcel(input);
+        const { quotedFare, ...parcelData } = input;
+        return createParcel({ ...parcelData, price: quotedFare });
       }),
 
     getById: publicProcedure
