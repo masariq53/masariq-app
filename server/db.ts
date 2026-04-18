@@ -36,6 +36,7 @@ import {
   userDiscounts,
   walletTopupRequests,
   paymentMethodSettings,
+  appSettings,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
@@ -3802,5 +3803,94 @@ export async function refundFareToPassenger(
     status: "completed",
   });
 
-  return { balanceBefore, balanceAfter };
+   return { balanceBefore, balanceAfter };
+}
+
+// ─── App Settings (Global Promotions & Config) ────────────────────────────────
+
+const DEFAULT_SETTINGS: Record<string, { value: string; description: string }> = {
+  passenger_welcome_bonus: { value: "0", description: "رصيد ترحيبي للمستخدم الجديد (IQD) - 0 = معطل" },
+  driver_welcome_bonus: { value: "0", description: "رصيد ترحيبي للكابتن الجديد (IQD) - 0 = معطل" },
+  passenger_free_rides: { value: "0", description: "عدد الرحلات المجانية لكل مستخدم جديد - 0 = معطل" },
+  global_free_rides_limit: { value: "0", description: "الحد الأقصى للرحلات المجانية العالمية - 0 = بلا حد" },
+  global_free_rides_used: { value: "0", description: "عدد الرحلات المجانية المستخدمة حتى الآن (تلقائي)" },
+  promotions_enabled: { value: "true", description: "تفعيل/تعطيل جميع العروض الترحيبية" },
+  admin_pin: { value: "1234", description: "رمز PIN للوصول للوحة التحكم من التطبيق" },
+};
+
+export async function getAppSetting(key: string): Promise<string | null> {
+  const db = await getDb();
+  if (!db) return DEFAULT_SETTINGS[key]?.value ?? null;
+  const [row] = await db.select().from(appSettings).where(eq(appSettings.settingKey, key)).limit(1);
+  if (row) return row.settingValue;
+  return DEFAULT_SETTINGS[key]?.value ?? null;
+}
+
+export async function setAppSetting(key: string, value: string): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  const description = DEFAULT_SETTINGS[key]?.description;
+  await db.insert(appSettings)
+    .values({ settingKey: key, settingValue: value, description })
+    .onDuplicateKeyUpdate({ set: { settingValue: value } });
+}
+
+export async function getAllAppSettings(): Promise<Array<{ key: string; value: string; description: string | null }>> {
+  const db = await getDb();
+  const dbSettings: Record<string, string> = {};
+  if (db) {
+    const rows = await db.select().from(appSettings);
+    for (const row of rows) {
+      dbSettings[row.settingKey] = row.settingValue;
+    }
+  }
+  const result: Array<{ key: string; value: string; description: string | null }> = [];
+  for (const [key, def] of Object.entries(DEFAULT_SETTINGS)) {
+    result.push({ key, value: dbSettings[key] ?? def.value, description: def.description });
+  }
+  return result;
+}
+
+export async function applyPassengerWelcomeBonus(passengerId: number): Promise<number> {
+  const enabled = await getAppSetting("promotions_enabled");
+  if (enabled !== "true") return 0;
+  const bonusStr = await getAppSetting("passenger_welcome_bonus");
+  const bonus = parseFloat(bonusStr ?? "0");
+  if (bonus <= 0) return 0;
+  const db = await getDb();
+  if (!db) return 0;
+  const [p] = await db.select({ walletBalance: passengers.walletBalance }).from(passengers).where(eq(passengers.id, passengerId)).limit(1);
+  if (!p) return 0;
+  const balanceBefore = parseFloat(p.walletBalance?.toString() ?? "0");
+  const balanceAfter = balanceBefore + bonus;
+  await db.update(passengers).set({ walletBalance: sql`walletBalance + ${bonus}` }).where(eq(passengers.id, passengerId));
+  await db.insert(walletTransactions).values({
+    userId: passengerId, userType: "passenger", type: "credit",
+    amount: bonus.toString(), description: "🎁 رصيد ترحيبي - مرحباً بك في مسار!",
+    balanceBefore: balanceBefore.toString(), balanceAfter: balanceAfter.toString(),
+    referenceType: "welcome_bonus", status: "completed",
+  });
+  return bonus;
+}
+
+export async function applyDriverWelcomeBonus(driverId: number): Promise<number> {
+  const enabled = await getAppSetting("promotions_enabled");
+  if (enabled !== "true") return 0;
+  const bonusStr = await getAppSetting("driver_welcome_bonus");
+  const bonus = parseFloat(bonusStr ?? "0");
+  if (bonus <= 0) return 0;
+  const db = await getDb();
+  if (!db) return 0;
+  const [d] = await db.select({ walletBalance: drivers.walletBalance }).from(drivers).where(eq(drivers.id, driverId)).limit(1);
+  if (!d) return 0;
+  const balanceBefore = parseFloat(d.walletBalance?.toString() ?? "0");
+  const balanceAfter = balanceBefore + bonus;
+  await db.update(drivers).set({ walletBalance: sql`walletBalance + ${bonus}` }).where(eq(drivers.id, driverId));
+  await db.insert(walletTransactions).values({
+    userId: driverId, userType: "driver", type: "credit",
+    amount: bonus.toString(), description: "🎁 رصيد ترحيبي للكابتن - مرحباً بك في مسار!",
+    balanceBefore: balanceBefore.toString(), balanceAfter: balanceAfter.toString(),
+    referenceType: "welcome_bonus", status: "completed",
+  });
+  return bonus;
 }

@@ -63,7 +63,14 @@ function StatCard({
 export default function AdminDashboard() {
   const insets = useSafeAreaInsets();
   const [refreshing, setRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState<"overview" | "rides" | "drivers" | "passengers" | "pricing" | "intercity" | "support" | "agents" | "parcels" | "commissions" | "topups">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "rides" | "drivers" | "passengers" | "pricing" | "intercity" | "support" | "agents" | "parcels" | "commissions" | "topups" | "promotions">("overview");
+  // ─── PIN Protection ─────────────────────────────────────────────────────────────────────────────────
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [pinInput, setPinInput] = useState("");
+  const [pinError, setPinError] = useState("");
+  // ─── Promotions State ─────────────────────────────────────────────────────────────────────────────────
+  const [editingSettings, setEditingSettings] = useState<Record<string, string>>({});
+  const [settingsSaving, setSettingsSaving] = useState(false);
   // Parcel filters
   const [parcelSearch, setParcelSearch] = useState("");
   const [parcelStatusFilter, setParcelStatusFilter] = useState<"all" | "pending" | "accepted" | "picked_up" | "in_transit" | "delivered" | "cancelled" | "returned">("all");
@@ -421,6 +428,19 @@ export default function AdminDashboard() {
     onError: (e) => Alert.alert('خطأ', e.message),
   });
 
+  // ─── App Settings Queries & Mutations ─────────────────────────────────────────────────────────────────────────────────
+  const { data: appSettings, refetch: refetchSettings } = trpc.settings.getAll.useQuery(
+    undefined,
+    { enabled: activeTab === 'promotions' }
+  );
+  const { data: adminPinData } = trpc.settings.get.useQuery(
+    { key: 'admin_pin' },
+    { enabled: !isAuthenticated }
+  );
+  const setSettingMutation = trpc.settings.setBulk.useMutation({
+    onSuccess: () => { refetchSettings(); setSettingsSaving(false); Alert.alert('✅ تم', 'تم حفظ الإعدادات بنجاح'); },
+    onError: (e) => { setSettingsSaving(false); Alert.alert('خطأ', e.message); },
+  });
   const onRefresh = async () => {
     setRefreshing(true);
     await Promise.all([refetchStats(), refetchRides(), refetchDrivers(), refetchPassengers(), refetchAllRides(), refetchPending(), refetchIntercity(), refetchSupport(), refetchRidesDetailed()]);
@@ -443,12 +463,55 @@ export default function AdminDashboard() {
     { id: "parcels", label: "الطرود", icon: "📦" },
     { id: "commissions", label: "العمولات", icon: "🏦" },
     { id: "topups", label: "محافظ التعبئة", icon: "💳" },
+    { id: "promotions", label: "العروض", icon: "🎁" },
   ] as const;
+
+  // ─── PIN Authentication Screen ─────────────────────────────────────────────────────────────────────────────────
+  if (!isAuthenticated) {
+    const correctPin = adminPinData?.value ?? '1234';
+    return (
+      <View style={[styles.container, { paddingTop: insets.top, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 32 }]}>
+        <StatusBar style="light" />
+        <View style={{ alignItems: 'center', marginBottom: 40 }}>
+          <View style={[styles.logo, { width: 72, height: 72, borderRadius: 20, marginBottom: 16 }]}>
+            <Text style={[styles.logoText, { fontSize: 32 }]}>م</Text>
+          </View>
+          <Text style={{ color: '#FFD700', fontSize: 24, fontWeight: '800', marginBottom: 8 }}>لوحة تحكم مسار</Text>
+          <Text style={{ color: '#9B8EC4', fontSize: 14 }}>أدخل رمز PIN للدخول</Text>
+        </View>
+        <View style={{ width: '100%', backgroundColor: '#1A0533', borderRadius: 20, padding: 24, borderWidth: 1, borderColor: '#2D1B4E' }}>
+          <TextInput
+            value={pinInput}
+            onChangeText={(t) => { setPinInput(t); setPinError(''); }}
+            placeholder="••••"
+            placeholderTextColor="#4B3A6E"
+            secureTextEntry
+            keyboardType="number-pad"
+            maxLength={8}
+            style={{ backgroundColor: '#0F0628', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14, color: '#FFFFFF', fontSize: 24, textAlign: 'center', borderWidth: 1, borderColor: pinError ? '#EF4444' : '#2D1B4E', letterSpacing: 8, marginBottom: 8 }}
+            onSubmitEditing={() => {
+              if (pinInput === correctPin) { setIsAuthenticated(true); setPinInput(''); setPinError(''); }
+              else { setPinError('رمز PIN غير صحيح'); setPinInput(''); }
+            }}
+          />
+          {pinError ? <Text style={{ color: '#EF4444', textAlign: 'center', fontSize: 13, marginBottom: 8 }}>{pinError}</Text> : null}
+          <TouchableOpacity
+            style={{ backgroundColor: '#FFD700', borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: 8 }}
+            onPress={() => {
+              if (pinInput === correctPin) { setIsAuthenticated(true); setPinInput(''); setPinError(''); }
+              else { setPinError('رمز PIN غير صحيح'); setPinInput(''); }
+            }}
+          >
+            <Text style={{ color: '#1A0533', fontSize: 16, fontWeight: '800' }}>دخول</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <StatusBar style="light" />
-
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
@@ -3098,9 +3161,113 @@ export default function AdminDashboard() {
           );
         })()}
 
+         {/* ─── Promotions Tab ─── */}
+        {activeTab === 'promotions' && (() => {
+          const settings = appSettings ?? [];
+          const getValue = (key: string) => editingSettings[key] ?? settings.find((s: any) => s.key === key)?.value ?? '';
+          const setValue = (key: string, val: string) => setEditingSettings(prev => ({ ...prev, [key]: val }));
+          const saveAll = () => {
+            setSettingsSaving(true);
+            const updates = [
+              'passenger_welcome_bonus', 'driver_welcome_bonus',
+              'passenger_free_rides', 'global_free_rides_limit', 'promotions_enabled', 'admin_pin'
+            ].map(key => ({ key, value: getValue(key) }));
+            setSettingMutation.mutate(updates);
+          };
+          const SettingRow = ({ label, settingKey, desc, numeric, isToggle }: { label: string; settingKey: string; desc: string; numeric?: boolean; isToggle?: boolean }) => (
+            <View style={{ marginBottom: 16, backgroundColor: '#1A0533', borderRadius: 14, padding: 14, borderWidth: 1, borderColor: '#2D1B4E' }}>
+              <Text style={{ color: '#FFD700', fontSize: 14, fontWeight: '700', marginBottom: 4, textAlign: 'right' }}>{label}</Text>
+              <Text style={{ color: '#6B7280', fontSize: 11, marginBottom: 8, textAlign: 'right' }}>{desc}</Text>
+              {isToggle ? (
+                <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8 }}>
+                  {['true', 'false'].map(v => (
+                    <TouchableOpacity key={v} onPress={() => setValue(settingKey, v)}
+                      style={{ paddingHorizontal: 20, paddingVertical: 8, borderRadius: 10, backgroundColor: getValue(settingKey) === v ? (v === 'true' ? '#22C55E' : '#EF4444') : '#0F0628', borderWidth: 1, borderColor: getValue(settingKey) === v ? (v === 'true' ? '#22C55E' : '#EF4444') : '#2D1B4E' }}>
+                      <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 13 }}>{v === 'true' ? 'مفعّل' : 'معطّل'}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              ) : (
+                <TextInput
+                  value={getValue(settingKey)}
+                  onChangeText={t => setValue(settingKey, t)}
+                  keyboardType={numeric ? 'number-pad' : 'default'}
+                  style={{ backgroundColor: '#0F0628', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: '#FFFFFF', fontSize: 15, borderWidth: 1, borderColor: '#3D2070', textAlign: 'right' }}
+                  placeholder="0"
+                  placeholderTextColor="#4B3A6E"
+                />
+              )}
+            </View>
+          );
+          return (
+            <View style={{ padding: 16 }}>
+              <Text style={{ color: '#FFD700', fontSize: 18, fontWeight: '800', marginBottom: 4, textAlign: 'right' }}>🎁 إعدادات العروض</Text>
+              <Text style={{ color: '#9B8EC4', fontSize: 12, marginBottom: 20, textAlign: 'right' }}>تحكم في العروض والرصيد الترحيبي وحماية لوحة التحكم</Text>
+
+              <SettingRow
+                label="تفعيل جميع العروض"
+                settingKey="promotions_enabled"
+                desc="تشغيل أو إيقاف جميع العروض دفعة واحدة"
+                isToggle
+              />
+
+              <Text style={{ color: '#9B8EC4', fontSize: 13, fontWeight: '700', marginBottom: 12, textAlign: 'right' }}>👤 عروض الركاب</Text>
+              <SettingRow
+                label="رصيد ترحيبي للراكب الجديد (د.ع)"
+                settingKey="passenger_welcome_bonus"
+                desc="مبلغ يُضاف لمحفظة كل راكب جديد عند التسجيل - 0 = معطّل"
+                numeric
+              />
+              <SettingRow
+                label="رحلات مجانية لكل راكب جديد"
+                settingKey="passenger_free_rides"
+                desc="عدد الرحلات المجانية لكل مستخدم جديد - 0 = معطّل"
+                numeric
+              />
+              <SettingRow
+                label="الحد الأقصى للرحلات المجانية العالمية"
+                settingKey="global_free_rides_limit"
+                desc="مثال: 100 = أول 100 طلب فقط مجاني - 0 = بلا حد"
+                numeric
+              />
+
+              <Text style={{ color: '#9B8EC4', fontSize: 13, fontWeight: '700', marginBottom: 12, textAlign: 'right', marginTop: 8 }}>🚗 عروض الكابتن</Text>
+              <SettingRow
+                label="رصيد ترحيبي للكابتن الجديد (د.ع)"
+                settingKey="driver_welcome_bonus"
+                desc="مبلغ يُضاف لمحفظة كل كابتن جديد عند قبول حسابه - 0 = معطّل"
+                numeric
+              />
+
+              <Text style={{ color: '#9B8EC4', fontSize: 13, fontWeight: '700', marginBottom: 12, textAlign: 'right', marginTop: 8 }}>🔒 حماية لوحة التحكم</Text>
+              <SettingRow
+                label="رمز PIN لوحة التحكم"
+                settingKey="admin_pin"
+                desc="رمز سري للدخول للوحة التحكم - الافتراضي: 1234"
+                numeric
+              />
+
+              <TouchableOpacity
+                onPress={saveAll}
+                disabled={settingsSaving}
+                style={{ backgroundColor: settingsSaving ? '#4B3A6E' : '#FFD700', borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 8 }}
+              >
+                <Text style={{ color: '#1A0533', fontSize: 16, fontWeight: '800' }}>{settingsSaving ? 'جاري الحفظ...' : '✅ حفظ جميع الإعدادات'}</Text>
+              </TouchableOpacity>
+
+              {/* Stats */}
+              {settings.find((s: any) => s.key === 'global_free_rides_used') && (
+                <View style={{ backgroundColor: '#1A0533', borderRadius: 14, padding: 14, borderWidth: 1, borderColor: '#2D1B4E', marginTop: 16 }}>
+                  <Text style={{ color: '#9B8EC4', fontSize: 12, textAlign: 'right', marginBottom: 4 }}>📊 إحصائيات</Text>
+                  <Text style={{ color: '#FFFFFF', fontSize: 14, textAlign: 'right' }}>الرحلات المجانية المستخدمة: <Text style={{ color: '#FFD700', fontWeight: '800' }}>{settings.find((s: any) => s.key === 'global_free_rides_used')?.value ?? '0'}</Text></Text>
+                </View>
+              )}
+            </View>
+          );
+        })()}
+
         <View style={{ height: 40 }} />
       </ScrollView>
-
       {/* ─── Edit Payment Method Modal ─── */}
       <Modal visible={!!editingPaymentMethod} transparent animationType="slide" onRequestClose={() => setEditingPaymentMethod(null)}>
         <View style={styles.modalOverlay}>

@@ -147,6 +147,11 @@ import {
   checkDriverBalanceSufficient,
   getPassengerWalletTransactions,
   detectCityFromCoords,
+  getAllAppSettings,
+  getAppSetting,
+  setAppSetting,
+  applyPassengerWelcomeBonus,
+  applyDriverWelcomeBonus,
 } from "./db";
 import { storagePut } from "./storage";
 import { transcribeAudio } from "./_core/voiceTranscription";
@@ -334,7 +339,11 @@ export const appRouter = router({
         if (!isValid) throw new Error("رمز التحقق غير صحيح أو منتهي الصلاحية");
 
         const passenger = await registerNewPassenger(phone, input.name);
-        return { success: true, passenger: { id: passenger.id, phone: passenger.phone, name: passenger.name, photoUrl: passenger.photoUrl ?? null, walletBalance: passenger.walletBalance, totalRides: passenger.totalRides, rating: passenger.rating } };
+        // تطبيق الرصيد الترحيبي للمستخدم الجديد
+        const welcomeBonus = await applyPassengerWelcomeBonus(passenger.id);
+        // جلب بيانات المستخدم محدثة بعد الرصيد الترحيبي
+        const updatedPassenger = await getPassengerById(passenger.id);
+        return { success: true, welcomeBonus, passenger: { id: passenger.id, phone: passenger.phone, name: passenger.name, photoUrl: passenger.photoUrl ?? null, walletBalance: updatedPassenger?.walletBalance ?? passenger.walletBalance, totalRides: passenger.totalRides, rating: passenger.rating } };
       }),
 
     /**
@@ -1991,8 +2000,24 @@ export const appRouter = router({
               const statusMsg = input.status === "approved"
                 ? `مبروك! تم قبول طلبك كسائق في مسار. يمكنك الآن البدء باستقبال الرحلات.`
                 : `نأسف لعدم قبول طلبك. ${input.rejectionReason ?? "يرجى مراجعة البيانات وإعادة التقديم."}` ;
-              // Log notification (in production, send via push notification service)
-              console.log(`[Driver Notification] ${d.name} (${d.phone}): ${statusMsg}`);
+              // Send real Push Notification to driver
+              const driverPushToken = await getDriverPushToken(input.driverId);
+              if (driverPushToken && driverPushToken.startsWith("ExponentPushToken[")) {
+                fetch("https://exp.host/--/api/v2/push/send", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", "Accept": "application/json" },
+                  body: JSON.stringify({
+                    to: driverPushToken,
+                    sound: "default",
+                    title: input.status === "approved" ? "✅ تم قبول طلبك كسائق!" : "❌ لم يتم قبول طلبك",
+                    body: statusMsg,
+                    data: { type: "driver_review", status: input.status, driverId: input.driverId },
+                    priority: "high",
+                  }),
+                }).catch((err) => console.warn("[Push] Failed to notify driver of review:", err));
+              } else {
+                console.log(`[Driver Notification - No Token] ${d.name} (${d.phone}): ${statusMsg}`);
+              }
             }
           }
         } catch (e) {
@@ -3714,6 +3739,31 @@ export const appRouter = router({
           toPickup: toPickup ?? { coords: [], distanceKm: 0, durationMin: 0 },
           toDropoff: toDropoff ?? { coords: [], distanceKm: 0, durationMin: 0 },
         };
+      }),
+  }),
+  // ─── App Settings (Global Promotions & Config) ─────────────────────────────
+  settings: router({
+    getAll: publicProcedure
+      .query(async () => getAllAppSettings()),
+    get: publicProcedure
+      .input(z.object({ key: z.string() }))
+      .query(async ({ input }) => {
+        const value = await getAppSetting(input.key);
+        return { key: input.key, value };
+      }),
+    set: publicProcedure
+      .input(z.object({ key: z.string(), value: z.string() }))
+      .mutation(async ({ input }) => {
+        await setAppSetting(input.key, input.value);
+        return { success: true };
+      }),
+    setBulk: publicProcedure
+      .input(z.array(z.object({ key: z.string(), value: z.string() })))
+      .mutation(async ({ input }) => {
+        for (const { key, value } of input) {
+          await setAppSetting(key, value);
+        }
+        return { success: true, updated: input.length };
       }),
   }),
   voice: router({

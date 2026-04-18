@@ -670,3 +670,21 @@ export const paymentMethodSettings = mysqlTable("paymentMethodSettings", {
 });
 export type PaymentMethodSetting = typeof paymentMethodSettings.$inferSelect;
 export type InsertPaymentMethodSetting = typeof paymentMethodSettings.$inferInsert;
+
+// ─── App Settings (Global Promotions & Config) ────────────────────────────────
+/**
+ * إعدادات التطبيق العالمية: العروض الترحيبية، الرصيد المجاني، إلخ
+ * تُدار من لوحة التحكم الإدارية
+ */
+export const appSettings = mysqlTable("appSettings", {
+  id: int("id").autoincrement().primaryKey(),
+  // مفتاح الإعداد (فريد)
+  settingKey: varchar("settingKey", { length: 100 }).notNull().unique(),
+  // قيمة الإعداد (نص - يمكن تحويله لرقم أو boolean حسب الحاجة)
+  settingValue: varchar("settingValue", { length: 500 }).notNull(),
+  // وصف الإعداد للأدمن
+  description: varchar("description", { length: 500 }),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type AppSetting = typeof appSettings.$inferSelect;
+export type InsertAppSetting = typeof appSettings.$inferInsert;

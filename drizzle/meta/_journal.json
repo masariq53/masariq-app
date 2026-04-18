@@ -232,6 +232,13 @@
       "when": 1776454888837,
       "tag": "0032_harsh_scream",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "5",
+      "when": 1776510207697,
+      "tag": "0033_fixed_beast",
+      "breakpoints": true
     }
   ]
 }
