@@ -33,11 +33,6 @@ export const API_BASE_URL = env.apiBaseUrl;
 const PRODUCTION_API_URL = "https://mosulride-jlhuqvse.manus.space";
 
 export function getApiBaseUrl(): string {
-  // If API_BASE_URL is set (sandbox dev environment), use it
-  if (API_BASE_URL) {
-    return API_BASE_URL.replace(/\/$/, "");
-  }
-
   // On web, use relative path so requests go through Metro proxy (/api -> port 3000)
   // This ensures the admin panel works from any device (iPhone, Android, browser)
   // Metro proxy in metro.config.js forwards /api/* to port 3000
@@ -47,7 +42,8 @@ export function getApiBaseUrl(): string {
     return "";
   }
 
-  // على الأجهزة الحقيقية (iOS/Android) نستخدم الـ domain الثابت
+  // على الأجهزة الحقيقية (iOS/Android) نستخدم دائماً الـ domain الثابت للمشروع
+  // هذا يضمن عمل التطبيق من أي جهاز بدون الاعتماد على متغيرات البيئة المتغيرة
   return PRODUCTION_API_URL;
 }
 
