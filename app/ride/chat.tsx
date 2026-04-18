@@ -10,6 +10,7 @@ import {
   StyleSheet,
   ActivityIndicator,
   Alert,
+  ScrollView,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -25,6 +26,16 @@ type Message = {
   isRead: boolean;
   createdAt: string | Date;
 };
+
+// رسائل سريعة للراكب
+const QUICK_REPLIES = [
+  "أنا في الطريق إليك 🚶",
+  "انتظرني دقيقة ⏳",
+  "أين أنت بالضبط؟ 📍",
+  "وصلت، أين السيارة؟ 🚗",
+  "شكراً لك 🙏",
+  "حسناً، في انتظارك",
+];
 
 export default function PassengerRideChatScreen() {
   const params = useLocalSearchParams<{
@@ -71,22 +82,22 @@ export default function PassengerRideChatScreen() {
     }
   }, [messages?.length]);
 
-  const handleSend = useCallback(async () => {
-    const text = inputText.trim();
-    if (!text || isSending || isChatDisabled) return;
+  const handleSend = useCallback(async (text?: string) => {
+    const msgText = (text ?? inputText).trim();
+    if (!msgText || isSending || isChatDisabled) return;
     setIsSending(true);
-    setInputText("");
+    if (!text) setInputText("");
     try {
       await sendMessage.mutateAsync({
         rideId,
         senderType: "passenger",
         senderId: passengerId,
-        message: text,
+        message: msgText,
       });
       refetch();
     } catch (e) {
       Alert.alert("خطأ", "فشل إرسال الرسالة");
-      setInputText(text);
+      if (!text) setInputText(msgText);
     } finally {
       setIsSending(false);
     }
@@ -177,7 +188,7 @@ export default function PassengerRideChatScreen() {
       ) : messages.length === 0 ? (
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyIcon}>💬</Text>
-          <Text style={[styles.emptyText, { color: colors.muted }]}>
+          <Text style={[styles.emptyText, { color: colors.foreground }]}>
             ابدأ المحادثة مع السائق
           </Text>
           <Text style={[styles.emptyHint, { color: colors.muted }]}>
@@ -198,39 +209,61 @@ export default function PassengerRideChatScreen() {
 
       {/* Disabled Banner */}
       {isChatDisabled && (
-        <View style={styles.disabledBanner}>
-          <Text style={styles.disabledBannerText}>
+        <View style={[styles.disabledBanner, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
+          <Text style={[styles.disabledBannerText, { color: colors.muted }]}>
             🔒 تم إغلاق المحادثة بعد انتهاء الرحلة
           </Text>
         </View>
       )}
 
-      {/* Input */}
+      {/* Input Area */}
       {!isChatDisabled && (
-        <View style={[styles.inputContainer, { paddingBottom: insets.bottom + 8, backgroundColor: colors.surface, borderTopColor: colors.border }]}>
-          <TextInput
-            style={[styles.input, { backgroundColor: colors.background, color: colors.foreground, borderColor: colors.border }]}
-            placeholder="اكتب رسالة..."
-            placeholderTextColor={colors.muted}
-            value={inputText}
-            onChangeText={setInputText}
-            multiline
-            maxLength={1000}
-            returnKeyType="send"
-            onSubmitEditing={handleSend}
-            textAlign="right"
-          />
-          <TouchableOpacity
-            style={[styles.sendBtn, { backgroundColor: inputText.trim() ? colors.primary : colors.border }]}
-            onPress={handleSend}
-            disabled={!inputText.trim() || isSending}
+        <View style={[styles.inputArea, { backgroundColor: colors.surface, borderTopColor: colors.border, paddingBottom: insets.bottom + 8 }]}>
+          {/* Quick Replies */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.quickRepliesContainer}
+            keyboardShouldPersistTaps="always"
           >
-            {isSending ? (
-              <ActivityIndicator color="#fff" size="small" />
-            ) : (
-              <Text style={styles.sendBtnText}>↑</Text>
-            )}
-          </TouchableOpacity>
+            {QUICK_REPLIES.map((qr) => (
+              <TouchableOpacity
+                key={qr}
+                style={[styles.quickReplyBtn, { backgroundColor: colors.background, borderColor: colors.border }]}
+                onPress={() => handleSend(qr)}
+                disabled={isSending}
+              >
+                <Text style={[styles.quickReplyText, { color: colors.foreground }]}>{qr}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+
+          {/* Text Input Row */}
+          <View style={styles.inputRow}>
+            <TextInput
+              style={[styles.input, { backgroundColor: colors.background, color: colors.foreground, borderColor: colors.border }]}
+              placeholder="اكتب رسالة..."
+              placeholderTextColor={colors.muted}
+              value={inputText}
+              onChangeText={setInputText}
+              multiline
+              maxLength={1000}
+              returnKeyType="send"
+              onSubmitEditing={() => handleSend()}
+              textAlign="right"
+            />
+            <TouchableOpacity
+              style={[styles.sendBtn, { backgroundColor: inputText.trim() ? colors.primary : colors.border }]}
+              onPress={() => handleSend()}
+              disabled={!inputText.trim() || isSending}
+            >
+              {isSending ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <Text style={styles.sendBtnText}>↑</Text>
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
       )}
     </KeyboardAvoidingView>
@@ -298,20 +331,34 @@ const styles = StyleSheet.create({
   msgTimeOther: { color: "#9BA1A6" },
   readTick: { fontSize: 11, color: "rgba(255,255,255,0.8)" },
   disabledBanner: {
-    backgroundColor: "#F3F4F6",
     paddingVertical: 10,
     alignItems: "center",
     borderTopWidth: 1,
-    borderTopColor: "#E5E7EB",
   },
-  disabledBannerText: { fontSize: 13, color: "#9BA1A6" },
-  inputContainer: {
+  disabledBannerText: { fontSize: 13 },
+  inputArea: {
+    borderTopWidth: 0.5,
+  },
+  quickRepliesContainer: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 8,
+    flexDirection: "row",
+  },
+  quickReplyBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 18,
+    borderWidth: 1,
+  },
+  quickReplyText: { fontSize: 13 },
+  inputRow: {
     flexDirection: "row",
     alignItems: "flex-end",
     paddingHorizontal: 12,
-    paddingTop: 10,
+    paddingTop: 4,
+    paddingBottom: 4,
     gap: 8,
-    borderTopWidth: 0.5,
   },
   input: {
     flex: 1,

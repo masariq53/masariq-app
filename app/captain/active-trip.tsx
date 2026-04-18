@@ -55,6 +55,13 @@ export default function CaptainActiveTripScreen() {
   const rideId = params.rideId ? parseInt(params.rideId) : 0;
   const driverId = driver?.id ?? 0;
 
+  // عدد الرسائل غير المقروءة للبادج على زر الشات
+  const { data: unreadData } = trpc.rides.unreadCount.useQuery(
+    { rideId, readerType: "driver" },
+    { enabled: rideId > 0 && phase !== "done", refetchInterval: 5000 }
+  );
+  const unreadCount = unreadData?.count ?? 0;
+
   // جلب بيانات الرحلة الحقيقية من السيرفر - polling كل 4 ثوانٍ للاستجابة السريعة
   const rideQuery = trpc.rides.driverActiveRide.useQuery(
     { driverId, rideId: rideId || undefined },
@@ -526,20 +533,29 @@ export default function CaptainActiveTripScreen() {
               </TouchableOpacity>
             )}
             {/* زر الشات مع الراكب */}
-            <TouchableOpacity
-              style={[styles.actionBtn, { borderColor: "#0a7ea4" }]}
-              onPress={() => router.push({
-                pathname: "/captain/ride-chat" as any,
-                params: {
-                  rideId: (ride?.id ?? rideId).toString(),
-                  driverId: driverId.toString(),
-                  passengerName: ride?.passengerName ?? "الراكب",
-                  rideStatus: ride?.status ?? "accepted",
-                },
-              })}
-            >
-              <Text style={styles.actionIcon}>💬</Text>
-            </TouchableOpacity>
+            <View style={{ position: "relative" }}>
+              <TouchableOpacity
+                style={[styles.actionBtn, { borderColor: "#0a7ea4" }]}
+                onPress={() => router.push({
+                  pathname: "/captain/ride-chat" as any,
+                  params: {
+                    rideId: (ride?.id ?? rideId).toString(),
+                    driverId: driverId.toString(),
+                    passengerName: ride?.passengerName ?? "الراكب",
+                    rideStatus: ride?.status ?? "accepted",
+                  },
+                })}
+              >
+                <Text style={styles.actionIcon}>💬</Text>
+              </TouchableOpacity>
+              {unreadCount > 0 && (
+                <View style={styles.chatBadge}>
+                  <Text style={styles.chatBadgeText}>
+                    {unreadCount > 9 ? "9+" : unreadCount}
+                  </Text>
+                </View>
+              )}
+            </View>
             {/* زر الملاحة GPS */}
             <TouchableOpacity
               style={[styles.actionBtn, { borderColor: "#FFD700" }]}
@@ -727,6 +743,21 @@ const styles = StyleSheet.create({
     borderColor: "#3D2070",
   },
   actionIcon: { fontSize: 16 },
+  chatBadge: {
+    position: "absolute",
+    top: -4,
+    right: -4,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: "#EF4444",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 4,
+    borderWidth: 1.5,
+    borderColor: "#1A0533",
+  },
+  chatBadgeText: { color: "#fff", fontSize: 10, fontWeight: "700" as const },
   routeBox: {
     backgroundColor: "#2D1B4E",
     borderRadius: 12,

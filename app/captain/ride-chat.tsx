@@ -10,6 +10,7 @@ import {
   StyleSheet,
   ActivityIndicator,
   Alert,
+  ScrollView,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -25,6 +26,16 @@ type Message = {
   isRead: boolean;
   createdAt: string | Date;
 };
+
+// رسائل سريعة للكابتن
+const QUICK_REPLIES = [
+  "أنا في الطريق إليك 🚗",
+  "وصلت، أنا خارج 📍",
+  "انتظرني دقيقة ⏳",
+  "أين أنت بالضبط؟ 🗺️",
+  "سأصل خلال 5 دقائق",
+  "حسناً، في الطريق",
+];
 
 export default function CaptainRideChatScreen() {
   const params = useLocalSearchParams<{
@@ -71,22 +82,22 @@ export default function CaptainRideChatScreen() {
     }
   }, [messages?.length]);
 
-  const handleSend = useCallback(async () => {
-    const text = inputText.trim();
-    if (!text || isSending || isChatDisabled) return;
+  const handleSend = useCallback(async (text?: string) => {
+    const msgText = (text ?? inputText).trim();
+    if (!msgText || isSending || isChatDisabled) return;
     setIsSending(true);
-    setInputText("");
+    if (!text) setInputText("");
     try {
       await sendMessage.mutateAsync({
         rideId,
         senderType: "driver",
         senderId: driverId,
-        message: text,
+        message: msgText,
       });
       refetch();
     } catch (e) {
       Alert.alert("خطأ", "فشل إرسال الرسالة");
-      setInputText(text);
+      if (!text) setInputText(msgText);
     } finally {
       setIsSending(false);
     }
@@ -203,32 +214,54 @@ export default function CaptainRideChatScreen() {
         </View>
       )}
 
-      {/* Input */}
+      {/* Input Area */}
       {!isChatDisabled && (
-        <View style={[styles.inputContainer, { paddingBottom: insets.bottom + 8 }]}>
-          <TextInput
-            style={styles.input}
-            placeholder="اكتب رسالة..."
-            placeholderTextColor="#9BA1A6"
-            value={inputText}
-            onChangeText={setInputText}
-            multiline
-            maxLength={1000}
-            returnKeyType="send"
-            onSubmitEditing={handleSend}
-            textAlign="right"
-          />
-          <TouchableOpacity
-            style={[styles.sendBtn, { backgroundColor: inputText.trim() ? "#FFD700" : "#334155" }]}
-            onPress={handleSend}
-            disabled={!inputText.trim() || isSending}
+        <View style={[styles.inputArea, { paddingBottom: insets.bottom + 8 }]}>
+          {/* Quick Replies */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.quickRepliesContainer}
+            keyboardShouldPersistTaps="always"
           >
-            {isSending ? (
-              <ActivityIndicator color="#1A0533" size="small" />
-            ) : (
-              <Text style={[styles.sendBtnText, { color: inputText.trim() ? "#1A0533" : "#9BA1A6" }]}>↑</Text>
-            )}
-          </TouchableOpacity>
+            {QUICK_REPLIES.map((qr) => (
+              <TouchableOpacity
+                key={qr}
+                style={styles.quickReplyBtn}
+                onPress={() => handleSend(qr)}
+                disabled={isSending}
+              >
+                <Text style={styles.quickReplyText}>{qr}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+
+          {/* Text Input Row */}
+          <View style={styles.inputRow}>
+            <TextInput
+              style={styles.input}
+              placeholder="اكتب رسالة..."
+              placeholderTextColor="#9BA1A6"
+              value={inputText}
+              onChangeText={setInputText}
+              multiline
+              maxLength={1000}
+              returnKeyType="send"
+              onSubmitEditing={() => handleSend()}
+              textAlign="right"
+            />
+            <TouchableOpacity
+              style={[styles.sendBtn, { backgroundColor: inputText.trim() ? "#FFD700" : "#334155" }]}
+              onPress={() => handleSend()}
+              disabled={!inputText.trim() || isSending}
+            >
+              {isSending ? (
+                <ActivityIndicator color="#1A0533" size="small" />
+              ) : (
+                <Text style={[styles.sendBtnText, { color: inputText.trim() ? "#1A0533" : "#9BA1A6" }]}>↑</Text>
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
       )}
     </KeyboardAvoidingView>
@@ -307,15 +340,33 @@ const styles = StyleSheet.create({
     borderTopColor: "#334155",
   },
   disabledBannerText: { fontSize: 13, color: "#9BA1A6" },
-  inputContainer: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    paddingHorizontal: 12,
-    paddingTop: 10,
-    gap: 8,
+  inputArea: {
     borderTopWidth: 0.5,
     borderTopColor: "#334155",
     backgroundColor: "#2D1B4E",
+  },
+  quickRepliesContainer: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 8,
+    flexDirection: "row",
+  },
+  quickReplyBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "#FFD700",
+    backgroundColor: "rgba(255,215,0,0.08)",
+  },
+  quickReplyText: { fontSize: 13, color: "#FFD700" },
+  inputRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    paddingHorizontal: 12,
+    paddingTop: 4,
+    paddingBottom: 4,
+    gap: 8,
   },
   input: {
     flex: 1,

@@ -107,6 +107,13 @@ export default function TrackingScreen() {
   // mutation إعادة المحاولة - ينشئ طلب جديد حقيقي في السيرفر
   const requestRideMutation = trpc.rides.request.useMutation();
 
+  // عدد الرسائل غير المقروءة للبادج على زر الشات
+  const { data: unreadData } = trpc.rides.unreadCount.useQuery(
+    { rideId: activeRideId || rideId, readerType: "passenger" },
+    { enabled: (activeRideId || rideId) > 0 && currentStep > 0, refetchInterval: 5000 }
+  );
+  const unreadCount = unreadData?.count ?? 0;
+
   // طلب صلاحيات الإشعارات عند فتح الشاشة
   useEffect(() => {
     registerPassengerNotifications();
@@ -669,20 +676,29 @@ export default function TrackingScreen() {
                   <Text style={styles.callIcon}>📞</Text>
                 </TouchableOpacity>
               )}
-              <TouchableOpacity
-                style={[styles.callBtn, { backgroundColor: "#0a7ea4" }]}
-                onPress={() => router.push({
-                  pathname: "/ride/chat" as any,
-                  params: {
-                    rideId: (activeRideId || rideId).toString(),
-                    passengerId: passengerId.toString(),
-                    driverName,
-                    rideStatus: ride?.status ?? "accepted",
-                  },
-                })}
-              >
-                <Text style={styles.callIcon}>💬</Text>
-              </TouchableOpacity>
+              <View style={{ position: "relative" }}>
+                <TouchableOpacity
+                  style={[styles.callBtn, { backgroundColor: "#0a7ea4" }]}
+                  onPress={() => router.push({
+                    pathname: "/ride/chat" as any,
+                    params: {
+                      rideId: (activeRideId || rideId).toString(),
+                      passengerId: passengerId.toString(),
+                      driverName,
+                      rideStatus: ride?.status ?? "accepted",
+                    },
+                  })}
+                >
+                  <Text style={styles.callIcon}>💬</Text>
+                </TouchableOpacity>
+                {unreadCount > 0 && (
+                  <View style={styles.chatBadge}>
+                    <Text style={styles.chatBadgeText}>
+                      {unreadCount > 9 ? "9+" : unreadCount}
+                    </Text>
+                  </View>
+                )}
+              </View>
             </View>
           )}
         </View>
@@ -857,6 +873,21 @@ const styles = StyleSheet.create({
     borderColor: "#3D2070",
   },
   callIcon: { fontSize: 18 },
+  chatBadge: {
+    position: "absolute",
+    top: -4,
+    right: -4,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: "#EF4444",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 4,
+    borderWidth: 1.5,
+    borderColor: "#1A0533",
+  },
+  chatBadgeText: { color: "#fff", fontSize: 10, fontWeight: "700" },
   stepsRow: {
     flexDirection: "row",
     alignItems: "center",
