@@ -29,7 +29,10 @@ export const API_BASE_URL = env.apiBaseUrl;
  * Metro runs on 8081, API server runs on 3000.
  * URL pattern: https://PORT-sandboxid.region.domain
  */
-// الـ domain الثابت للمشروع - يُستخدم على الأجهزة الحقيقية (iOS/Android)
+// رابط السيرفر الحالي - يُستخدم على الأجهزة الحقيقية (iOS/Android)
+// هذا الرابط يمر عبر Metro proxy الذي يوجه /api/* إلى منفذ 3000
+const DEV_API_URL = "https://8081-i2kp8nof4xv790r5ppxsc-1023b92c.us2.manus.computer";
+// الـ domain الثابت للمشروع - يُستخدم عند النشر الرسمي
 const PRODUCTION_API_URL = "https://mosulride-jlhuqvse.manus.space";
 
 export function getApiBaseUrl(): string {
@@ -37,18 +40,13 @@ export function getApiBaseUrl(): string {
   // This ensures the admin panel works from any device (iPhone, Android, browser)
   // Metro proxy in metro.config.js forwards /api/* to port 3000
   if (ReactNative.Platform.OS === "web" && typeof window !== "undefined" && window.location) {
-    // Use relative URL (empty string) so /api/trpc becomes a relative path
-    // This works regardless of which port/domain the user is accessing from
     return "";
   }
 
   // على الأجهزة الحقيقية (iOS/Android):
-  // إذا كانت EXPO_PUBLIC_API_BASE_URL مضبوطة (وضع التطوير) استخدمها
-  // وإلا استخدم الـ domain الثابت (وضع الإنتاج)
-  if (env.apiBaseUrl) {
-    return env.apiBaseUrl.replace(/\/$/, "");
-  }
-  return PRODUCTION_API_URL;
+  // استخدام رابط 8081 مع الـ proxy لضمان الاتصال بالسيرفر المحلي الحالي
+  // هذا يضمن ظهور OTP وكل التغييرات الجديدة
+  return DEV_API_URL;
 }
 
 export const SESSION_TOKEN_KEY = "app_session_token";
