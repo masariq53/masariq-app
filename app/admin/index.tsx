@@ -12,6 +12,7 @@ import {
   Image,
   Modal,
   TextInput,
+  Platform,
 } from "react-native";
 import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -75,6 +76,7 @@ export default function AdminDashboard() {
   const [parcelSearch, setParcelSearch] = useState("");
   const [parcelStatusFilter, setParcelStatusFilter] = useState<"all" | "pending" | "accepted" | "picked_up" | "in_transit" | "delivered" | "cancelled" | "returned">("all");
   const [parcelTypeFilter, setParcelTypeFilter] = useState<"all" | "instant" | "intercity">("all");
+  const [parcelCityFilter, setParcelCityFilter] = useState("");
   const [parcelPage, setParcelPage] = useState(0);
   const PARCEL_PAGE_SIZE = 10;
   const [selectedParcelId, setSelectedParcelId] = useState<number | null>(null);
@@ -85,6 +87,7 @@ export default function AdminDashboard() {
   const [ridesPage, setRidesPage] = useState(0);
   const [ridesStatusFilter, setRidesStatusFilter] = useState<"all" | "searching" | "accepted" | "driver_arrived" | "in_progress" | "completed" | "cancelled">("all");
   const [ridesSearch, setRidesSearch] = useState("");
+  const [ridesCityFilter, setRidesCityFilter] = useState("");
   const [showRidesFilters, setShowRidesFilters] = useState(false);
   const [selectedRide, setSelectedRide] = useState<any | null>(null);
   const [showRideModal, setShowRideModal] = useState(false);
@@ -95,6 +98,7 @@ export default function AdminDashboard() {
   const [driverStatusFilter, setDriverStatusFilter] = useState<"all" | "active" | "blocked" | "pending" | "verified">("all");
   const [driverSortBy, setDriverSortBy] = useState<"name" | "rating" | "rides" | "newest">("newest");
   const [driverRatingFilter, setDriverRatingFilter] = useState<"all" | "4+" | "3+" | "below3">("all");
+  const [driverCityFilter, setDriverCityFilter] = useState("");
   const [showDriverFilters, setShowDriverFilters] = useState(false);
 
   // ─── Passenger Filters ────────────────────────────────────────────
@@ -555,7 +559,9 @@ export default function AdminDashboard() {
       {/* Content */}
       <ScrollView
         style={styles.scroll}
-        showsVerticalScrollIndicator={false}
+        showsVerticalScrollIndicator={Platform.OS === 'web'}
+        scrollEventThrottle={16}
+        decelerationRate="normal"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#FFD700" />}
       >
         {isLoading ? (
@@ -743,7 +749,7 @@ export default function AdminDashboard() {
               const totalPages = Math.max(1, Math.ceil(totalRides / PAGE_SIZE));
 
               // Client-side search filter
-              const filteredRides = ridesSearch.trim()
+              let filteredRides = ridesSearch.trim()
                 ? rides.filter((r: any) => {
                     const q = ridesSearch.trim().toLowerCase();
                     return (
@@ -757,6 +763,15 @@ export default function AdminDashboard() {
                     );
                   })
                 : rides;
+
+              // City filter (based on pickupAddress)
+              if (ridesCityFilter.trim()) {
+                const cq = ridesCityFilter.trim().toLowerCase();
+                filteredRides = filteredRides.filter((r: any) =>
+                  (r.pickupAddress || "").toLowerCase().includes(cq) ||
+                  (r.dropoffAddress || "").toLowerCase().includes(cq)
+                );
+              }
 
               return (
                 <View style={styles.section}>
@@ -796,7 +811,7 @@ export default function AdminDashboard() {
                   {showRidesFilters && (
                     <View style={styles.filterPanel}>
                       <Text style={styles.filterLabel}>تصفية حسب الحالة</Text>
-                      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
                         <View style={{ flexDirection: "row", gap: 6 }}>
                           {([
                             { key: "all", label: "الكل" },
@@ -817,6 +832,24 @@ export default function AdminDashboard() {
                           ))}
                         </View>
                       </ScrollView>
+
+                      {/* City Filter */}
+                      <Text style={styles.filterLabel}>🏙️ تصفية حسب المدينة</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#1A0533', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1, borderColor: ridesCityFilter ? '#FFD700' : '#2D1B4E' }}>
+                        <TextInput
+                          value={ridesCityFilter}
+                          onChangeText={v => { setRidesCityFilter(v); setRidesPage(0); }}
+                          placeholder="اكتب اسم المدينة..."
+                          placeholderTextColor="#6B5A8A"
+                          style={{ flex: 1, color: '#FFFFFF', fontSize: 13, paddingVertical: 0 }}
+                          returnKeyType="search"
+                        />
+                        {ridesCityFilter ? (
+                          <TouchableOpacity onPress={() => { setRidesCityFilter(''); setRidesPage(0); }}>
+                            <Text style={{ color: '#9B8EC4', fontSize: 14 }}>✕</Text>
+                          </TouchableOpacity>
+                        ) : null}
+                      </View>
                     </View>
                   )}
 
@@ -1136,6 +1169,14 @@ export default function AdminDashboard() {
                     filteredDrivers = filteredDrivers.filter(d => d.isVerified);
                   }
 
+                  // City filter
+                  if (driverCityFilter.trim()) {
+                    const cq = driverCityFilter.trim().toLowerCase();
+                    filteredDrivers = filteredDrivers.filter(d =>
+                      ((d as any).city || "").toLowerCase().includes(cq)
+                    );
+                  }
+
                   // Rating filter
                   if (driverRatingFilter === "4+") {
                     filteredDrivers = filteredDrivers.filter(d => parseFloat(d.rating?.toString() || "0") >= 4);
@@ -1233,7 +1274,7 @@ export default function AdminDashboard() {
 
                     {/* Sort */}
                     <Text style={filterStyles.filterLabel}>ترتيب حسب</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
                       <View style={{ flexDirection: 'row', gap: 6 }}>
                         {([
                           { key: 'newest', label: '🕐 الأحدث' },
@@ -1251,6 +1292,24 @@ export default function AdminDashboard() {
                         ))}
                       </View>
                     </ScrollView>
+
+                    {/* City Filter */}
+                    <Text style={filterStyles.filterLabel}>🏙️ تصفية حسب المدينة</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#1A0533', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1, borderColor: driverCityFilter ? '#FFD700' : '#2D1B4E' }}>
+                      <TextInput
+                        value={driverCityFilter}
+                        onChangeText={v => { setDriverCityFilter(v); setDriversPage(0); }}
+                        placeholder="اكتب اسم المدينة..."
+                        placeholderTextColor="#6B5A8A"
+                        style={{ flex: 1, color: '#FFFFFF', fontSize: 13, paddingVertical: 0 }}
+                        returnKeyType="search"
+                      />
+                      {driverCityFilter ? (
+                        <TouchableOpacity onPress={() => { setDriverCityFilter(''); setDriversPage(0); }}>
+                          <Text style={{ color: '#9B8EC4', fontSize: 14 }}>✕</Text>
+                        </TouchableOpacity>
+                      ) : null}
+                    </View>
                   </View>
                 )}
 
@@ -2589,6 +2648,24 @@ export default function AdminDashboard() {
 
 
 
+            {/* City Filter for Parcels */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#1A0533', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1, borderColor: parcelCityFilter ? '#FFD700' : '#2D1B4E', marginBottom: 10 }}>
+              <Text style={{ fontSize: 13, marginRight: 6 }}>🏙️</Text>
+              <TextInput
+                value={parcelCityFilter}
+                onChangeText={v => { setParcelCityFilter(v); setParcelPage(0); }}
+                placeholder="تصفية حسب المدينة..."
+                placeholderTextColor="#6B5A8A"
+                style={{ flex: 1, color: '#FFFFFF', fontSize: 13, paddingVertical: 0 }}
+                returnKeyType="search"
+              />
+              {parcelCityFilter ? (
+                <TouchableOpacity onPress={() => { setParcelCityFilter(''); setParcelPage(0); }}>
+                  <Text style={{ color: '#9B8EC4', fontSize: 14 }}>✕</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+
             {/* Parcels List */}
             {parcelsLoading ? (
               <View style={{ alignItems: 'center', padding: 24 }}>
@@ -2601,7 +2678,18 @@ export default function AdminDashboard() {
               </View>
             ) : (
               <>
-                {adminParcelsData.parcels.map((parcel: any) => {
+                {(parcelCityFilter.trim()
+                  ? adminParcelsData.parcels.filter((p: any) => {
+                      const cq = parcelCityFilter.trim().toLowerCase();
+                      return (
+                        (p.pickupAddress || "").toLowerCase().includes(cq) ||
+                        (p.dropoffAddress || "").toLowerCase().includes(cq) ||
+                        (p.fromCity || "").toLowerCase().includes(cq) ||
+                        (p.toCity || "").toLowerCase().includes(cq)
+                      );
+                    })
+                  : adminParcelsData.parcels
+                ).map((parcel: any) => {
                   const STATUS_COLORS: Record<string, string> = {
                     pending: '#F59E0B', accepted: '#3B82F6', picked_up: '#8B5CF6',
                     in_transit: '#6366F1', delivered: '#22C55E', cancelled: '#EF4444', returned: '#6B7280'
