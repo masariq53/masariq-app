@@ -4107,40 +4107,38 @@ export default function AdminDashboard() {
       {/* Block Driver Modal */}
       {/* Unblock Confirmation Modal */}
       <Modal visible={showUnblockModal} transparent animationType="fade" onRequestClose={() => setShowUnblockModal(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={{ backgroundColor: '#1e0a3c', borderRadius: 16, padding: 24, width: '85%', maxWidth: 400 }}>
+        <Pressable style={[styles.modalOverlay, { cursor: 'default' } as any]} onPress={() => { setShowUnblockModal(false); setUnblockTargetDriver(null); }}>
+          <Pressable onPress={e => e.stopPropagation()} style={{ backgroundColor: '#1e0a3c', borderRadius: 16, padding: 24, width: '85%', maxWidth: 400 }}>
             <Text style={{ color: '#fff', fontSize: 18, fontWeight: '800', marginBottom: 8, textAlign: 'right' }}>✅ تفعيل الحساب</Text>
             <Text style={{ color: '#ccc', fontSize: 14, marginBottom: 24, textAlign: 'right' }}>هل تريد تفعيل حساب {unblockTargetDriver?.name}؟</Text>
             <View style={{ flexDirection: 'row', gap: 12 }}>
-              <TouchableOpacity
-                style={{ flex: 1, backgroundColor: '#22C55E', borderRadius: 10, padding: 12, alignItems: 'center' }}
+              <Pressable
+                style={({ pressed }) => ({ flex: 1, backgroundColor: pressed ? '#16A34A' : '#22C55E', borderRadius: 10, padding: 12, alignItems: 'center', cursor: 'pointer' } as any)}
                 onPress={() => {
                   if (unblockTargetDriver) {
-                    blockDriver.mutate(
-                      { driverId: unblockTargetDriver.id, isBlocked: false },
-                    );
+                    blockDriver.mutate({ driverId: unblockTargetDriver.id, isBlocked: false });
                   }
                   setShowUnblockModal(false);
                   setUnblockTargetDriver(null);
                 }}
               >
                 <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>تفعيل</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={{ flex: 1, backgroundColor: '#333', borderRadius: 10, padding: 12, alignItems: 'center' }}
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => ({ flex: 1, backgroundColor: pressed ? '#444' : '#333', borderRadius: 10, padding: 12, alignItems: 'center', cursor: 'pointer' } as any)}
                 onPress={() => { setShowUnblockModal(false); setUnblockTargetDriver(null); }}
               >
                 <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>إلغاء</Text>
-              </TouchableOpacity>
+              </Pressable>
             </View>
-          </View>
-        </View>
+          </Pressable>
+        </Pressable>
       </Modal>
 
       {/* Block Modal */}
       <Modal visible={showBlockModal} transparent animationType="fade" onRequestClose={() => setShowBlockModal(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={{ backgroundColor: '#1e0a3c', borderRadius: 16, padding: 24, width: '85%', maxWidth: 400 }}>
+        <Pressable style={[styles.modalOverlay, { cursor: 'default' } as any]} onPress={() => setShowBlockModal(false)}>
+          <Pressable onPress={e => e.stopPropagation()} style={{ backgroundColor: '#1e0a3c', borderRadius: 16, padding: 24, width: '85%', maxWidth: 400 }}>
             <Text style={{ color: '#fff', fontSize: 18, fontWeight: '800', marginBottom: 8, textAlign: 'right' }}>🚫 تعطيل الحساب</Text>
             <Text style={{ color: '#ccc', fontSize: 14, marginBottom: 16, textAlign: 'right' }}>سبب تعطيل حساب {blockTargetDriver?.name} (اختياري):</Text>
             <TextInput
@@ -4153,8 +4151,8 @@ export default function AdminDashboard() {
               numberOfLines={3}
             />
             <View style={{ flexDirection: 'row', gap: 12 }}>
-              <TouchableOpacity
-                style={{ flex: 1, backgroundColor: '#EF4444', borderRadius: 10, padding: 12, alignItems: 'center' }}
+              <Pressable
+                style={({ pressed }) => ({ flex: 1, backgroundColor: pressed ? '#DC2626' : '#EF4444', borderRadius: 10, padding: 12, alignItems: 'center', cursor: 'pointer' } as any)}
                 onPress={() => {
                   if (blockTargetDriver) {
                     blockDriver.mutate({ driverId: blockTargetDriver.id, isBlocked: true, blockReason: blockReasonInput || undefined });
@@ -4163,16 +4161,16 @@ export default function AdminDashboard() {
                 }}
               >
                 <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>تعطيل</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={{ flex: 1, backgroundColor: '#333', borderRadius: 10, padding: 12, alignItems: 'center' }}
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => ({ flex: 1, backgroundColor: pressed ? '#444' : '#333', borderRadius: 10, padding: 12, alignItems: 'center', cursor: 'pointer' } as any)}
                 onPress={() => setShowBlockModal(false)}
               >
                 <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>إلغاء</Text>
-              </TouchableOpacity>
+              </Pressable>
             </View>
-          </View>
-        </View>
+          </Pressable>
+        </Pressable>
       </Modal>
 
       {/* ─── Passenger Block Modal ─────────────────────────────────── */}
@@ -4726,8 +4724,8 @@ export default function AdminDashboard() {
 
       {/* Agent Reject Reason Modal */}
       <Modal visible={showAgentRejectModal} transparent animationType="fade" onRequestClose={() => setShowAgentRejectModal(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={{ backgroundColor: '#1e0a3c', borderRadius: 16, padding: 24, width: '85%', maxWidth: 400 }}>
+        <Pressable style={[styles.modalOverlay, { cursor: 'default' } as any]} onPress={() => setShowAgentRejectModal(false)}>
+          <Pressable onPress={e => e.stopPropagation()} style={{ backgroundColor: '#1e0a3c', borderRadius: 16, padding: 24, width: '85%', maxWidth: 400 }}>
             <Text style={{ color: '#fff', fontSize: 18, fontWeight: '800', marginBottom: 8, textAlign: 'right' }}>❌ رفض طلب الوكيل</Text>
             <TextInput
               value={agentRejectReason}
@@ -4738,8 +4736,8 @@ export default function AdminDashboard() {
               multiline numberOfLines={3}
             />
             <View style={{ flexDirection: 'row', gap: 12 }}>
-              <TouchableOpacity
-                style={{ flex: 1, backgroundColor: '#EF4444', borderRadius: 10, padding: 12, alignItems: 'center' }}
+              <Pressable
+                style={({ pressed }) => ({ flex: 1, backgroundColor: pressed ? '#DC2626' : '#EF4444', borderRadius: 10, padding: 12, alignItems: 'center', cursor: 'pointer' } as any)}
                 onPress={() => {
                   if (selectedAgent) {
                     rejectAgentMutation.mutate({ agentId: selectedAgent.id, rejectionReason: agentRejectReason || "" });
@@ -4750,16 +4748,16 @@ export default function AdminDashboard() {
                 }}
               >
                 <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>رفض</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={{ flex: 1, backgroundColor: '#333', borderRadius: 10, padding: 12, alignItems: 'center' }}
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => ({ flex: 1, backgroundColor: pressed ? '#444' : '#333', borderRadius: 10, padding: 12, alignItems: 'center', cursor: 'pointer' } as any)}
                 onPress={() => setShowAgentRejectModal(false)}
               >
                 <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>إلغاء</Text>
-              </TouchableOpacity>
+              </Pressable>
             </View>
-          </View>
-        </View>
+          </Pressable>
+        </Pressable>
       </Modal>
 
       {/* Driver Documents Modal */}
@@ -5103,9 +5101,9 @@ export default function AdminDashboard() {
                 )
               )}
             </ScrollView>
-            <TouchableOpacity style={[styles.modalClose, { margin: 12 }]} onPress={() => setHistoryDriverId(null)}>
+            <Pressable style={[styles.modalClose, { margin: 12, cursor: 'pointer' } as any]} onPress={() => setHistoryDriverId(null)}>
               <Text style={styles.modalCloseText}>إغلاق</Text>
-            </TouchableOpacity>
+            </Pressable>
           </View>
         </View>
       </Modal>
@@ -5116,9 +5114,9 @@ export default function AdminDashboard() {
           {previewImage && (
             <Image source={{ uri: previewImage }} style={styles.modalImage} resizeMode="contain" />
           )}
-          <TouchableOpacity style={styles.modalClose} onPress={() => setPreviewImage(null)}>
+          <Pressable style={[styles.modalClose, { cursor: 'pointer' } as any]} onPress={() => setPreviewImage(null)}>
             <Text style={styles.modalCloseText}>إغلاق</Text>
-          </TouchableOpacity>
+          </Pressable>
         </View>
       </Modal>
 
@@ -5171,8 +5169,8 @@ export default function AdminDashboard() {
         animationType="fade"
         onRequestClose={hideConfirm}
       >
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-          <View style={{ backgroundColor: '#1E0F4A', borderRadius: 20, padding: 24, width: '100%', maxWidth: 400, borderWidth: 1, borderColor: '#3D2B5E' }}>
+        <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', alignItems: 'center', justifyContent: 'center', padding: 24, cursor: 'default' } as any} onPress={hideConfirm}>
+          <Pressable onPress={e => e.stopPropagation()} style={{ backgroundColor: '#1E0F4A', borderRadius: 20, padding: 24, width: '100%', maxWidth: 400, borderWidth: 1, borderColor: '#3D2B5E' }}>
             {/* Title */}
             <Text style={{ color: '#FFFFFF', fontSize: 18, fontWeight: '800', textAlign: 'center', marginBottom: 12 }}>
               {confirmDialog.title}
@@ -5183,21 +5181,21 @@ export default function AdminDashboard() {
             </Text>
             {/* Buttons */}
             <View style={{ flexDirection: 'row', gap: 12 }}>
-              <TouchableOpacity
+              <Pressable
                 onPress={hideConfirm}
-                style={{ flex: 1, paddingVertical: 12, borderRadius: 12, backgroundColor: '#2D1B4E', alignItems: 'center', borderWidth: 1, borderColor: '#4D3B6E' }}
+                style={({ pressed }) => ({ flex: 1, paddingVertical: 12, borderRadius: 12, backgroundColor: pressed ? '#3D2B5E' : '#2D1B4E', alignItems: 'center', borderWidth: 1, borderColor: '#4D3B6E', cursor: 'pointer' } as any)}
               >
                 <Text style={{ color: '#C4B5D4', fontSize: 15, fontWeight: '700' }}>إلغاء</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
+              </Pressable>
+              <Pressable
                 onPress={confirmDialog.onConfirm}
-                style={{ flex: 1, paddingVertical: 12, borderRadius: 12, backgroundColor: confirmDialog.confirmColor, alignItems: 'center' }}
+                style={({ pressed }) => ({ flex: 1, paddingVertical: 12, borderRadius: 12, backgroundColor: confirmDialog.confirmColor, alignItems: 'center', opacity: pressed ? 0.85 : 1, cursor: 'pointer' } as any)}
               >
                 <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '800' }}>{confirmDialog.confirmText}</Text>
-              </TouchableOpacity>
+              </Pressable>
             </View>
-          </View>
-        </View>
+          </Pressable>
+        </Pressable>
       </Modal>
     </View>
   );
