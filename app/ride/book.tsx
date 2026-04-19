@@ -356,6 +356,13 @@ export default function BookRideScreen() {
     { enabled: !!dropPin }
   );
 
+  // التحقق من وجود رحلة نشطة للراكب (لمنع الحجز المزدوج)
+  const activeRideQuery = trpc.rides.passengerActiveRide.useQuery(
+    { passengerId: passenger?.id ?? 0 },
+    { enabled: !!passenger?.id, refetchInterval: 10000 }
+  );
+  const hasActiveRide = !!activeRideQuery.data && ["searching", "accepted", "driver_arrived", "in_progress"].includes(activeRideQuery.data.status);
+
   // جلب الخصم النشط للراكب
   const currentMultiplier = rideTypes.find((r) => r.id === selectedRide)?.multiplier ?? 1;
   const currentFare = fareQuery.data ? Math.round(fareQuery.data.fare * currentMultiplier) : 0;
@@ -517,6 +524,36 @@ export default function BookRideScreen() {
   };
 
   const handleConfirm = () => {
+    // منع الحجز إذا كان الراكب لديه رحلة نشطة
+    if (hasActiveRide) {
+      const activeStatus = activeRideQuery.data?.status;
+      const statusLabel: Record<string, string> = {
+        searching: "قيد البحث عن سائق",
+        accepted: "مقبولة من سائق",
+        driver_arrived: "السائق وصل لموقعك",
+        in_progress: "جارية الآن",
+      };
+      Alert.alert(
+        "لديك رحلة نشطة",
+        `لا يمكن طلب رحلة جديدة أثناء وجود رحلة ${statusLabel[activeStatus ?? ""] ?? "نشطة"}.\n\nيرجى إكمال رحلتك الحالية أولاً.`,
+        [
+          { text: "إغلاق", style: "cancel" },
+          {
+            text: "متابعة الرحلة",
+            onPress: () => {
+              router.push({
+                pathname: "/ride/tracking",
+                params: {
+                  rideId: activeRideQuery.data!.id,
+                  passengerId: passenger?.id ?? 0,
+                },
+              });
+            },
+          },
+        ]
+      );
+      return;
+    }
     if (!dropPin) {
       Alert.alert("تنبيه", "يرجى تحديد وجهتك");
       return;
@@ -807,10 +844,23 @@ export default function BookRideScreen() {
                 </Text>
               </View>
             )}
+            {hasActiveRide && (
+              <TouchableOpacity
+                style={{ backgroundColor: "#FFF3CD", borderRadius: 10, padding: 12, marginBottom: 8, flexDirection: "row", alignItems: "center", gap: 8 }}
+                onPress={() => router.push({ pathname: "/ride/tracking", params: { rideId: activeRideQuery.data!.id, passengerId: passenger?.id ?? 0 } })}
+              >
+                <Text style={{ fontSize: 18 }}>⚠️</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: "#856404", fontWeight: "700", fontSize: 13 }}>لديك رحلة نشطة</Text>
+                  <Text style={{ color: "#856404", fontSize: 12, marginTop: 2 }}>اضغط هنا لمتابعة رحلتك الحالية</Text>
+                </View>
+                <Text style={{ color: "#856404", fontSize: 18 }}>→</Text>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity
-              style={[styles.confirmBtn, (!dropPin || requestRide.isPending || (!!dropPin && (fareQuery.isLoading || !fareQuery.data))) && styles.confirmBtnDisabled]}
+              style={[styles.confirmBtn, (hasActiveRide || !dropPin || requestRide.isPending || (!!dropPin && (fareQuery.isLoading || !fareQuery.data))) && styles.confirmBtnDisabled]}
               onPress={handleConfirm}
-              disabled={!dropPin || requestRide.isPending || (!!dropPin && (fareQuery.isLoading || !fareQuery.data))}
+              disabled={hasActiveRide || !dropPin || requestRide.isPending || (!!dropPin && (fareQuery.isLoading || !fareQuery.data))}
             >
               {requestRide.isPending ? (
                 <ActivityIndicator color="#1A0533" />
