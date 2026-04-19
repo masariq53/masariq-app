@@ -69,8 +69,8 @@ export default function CaptainProfileScreen() {
           onPress: async () => {
             // Only logout from driver session - passenger session stays
             await logout();
-            // مسح الـ navigation stack بالكامل لمنع السحب للرجوع لشاشات الكابتن
-            router.dismissAll();
+            // استخدام try/catch لتجنب خطأ POP_TO_TOP إذا لم يكن هناك stack
+            try { router.dismissAll(); } catch (_) {}
             router.replace("/(tabs)/profile" as any);
           },
         },

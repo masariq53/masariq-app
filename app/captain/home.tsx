@@ -257,8 +257,8 @@ export default function CaptainHomeScreen() {
             text: "حسناً",
             onPress: async () => {
               await logout();
-              // مسح الـ navigation stack بالكامل
-              router.dismissAll();
+              // استخدام try/catch لتجنب خطأ POP_TO_TOP إذا لم يكن هناك stack
+              try { router.dismissAll(); } catch (_) {}
               router.replace("/(tabs)/profile" as any);
             },
           },
