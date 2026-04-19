@@ -141,16 +141,13 @@ export default function HistoryScreen() {
     firstPageQuery.refetch();
   };
 
-  const callDriver = (phone: string) => {
+  const callDriver = async (phone: string) => {
     const cleanPhone = phone.replace(/[^+\d]/g, "");
-    const telUrl = `tel:${cleanPhone}`;
-    Linking.canOpenURL(telUrl).then((supported) => {
-      if (supported) {
-        Linking.openURL(telUrl);
-      } else {
-        Alert.alert("رقم السائق", cleanPhone);
-      }
-    });
+    try {
+      await Linking.openURL(`tel:${cleanPhone}`);
+    } catch {
+      Alert.alert("رقم السائق", cleanPhone);
+    }
   };
 
   const renderItem = ({ item }: { item: RideItem }) => {

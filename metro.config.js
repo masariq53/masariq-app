@@ -21,6 +21,7 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
 config.server = config.server || {};
 config.server.enhanceMiddleware = (middleware) => {
   return (req, res, next) => {
+    // Proxy /api requests to the API server
     if (req.url.startsWith("/api/") || req.url.startsWith("/api")) {
       const http = require("http");
       const apiPort = process.env.API_PORT || 3000;
@@ -43,6 +44,61 @@ config.server.enhanceMiddleware = (middleware) => {
       req.pipe(proxyReq, { end: true });
       return;
     }
+
+    // Intercept Expo manifest requests and strip debuggerHost
+    // This prevents Expo Go from attempting WebSocket connections
+    // which fail in sandbox environments (proxy returns HTML instead of 101)
+    const isManifestRequest =
+      req.headers["expo-platform"] ||
+      (req.headers["accept"] && req.headers["accept"].includes("application/expo+json"));
+
+    if (isManifestRequest && (req.url === "/" || req.url === "")) {
+      // Let Metro handle the request first, then intercept the response
+      const originalWrite = res.write.bind(res);
+      const originalEnd = res.end.bind(res);
+      const originalWriteHead = res.writeHead.bind(res);
+
+      let responseBody = "";
+      let statusCode = 200;
+      let responseHeaders = {};
+
+      res.writeHead = (code, headers) => {
+        statusCode = code;
+        responseHeaders = headers || {};
+      };
+
+      res.write = (chunk) => {
+        responseBody += chunk.toString();
+      };
+
+      res.end = (chunk) => {
+        if (chunk) responseBody += chunk.toString();
+
+        try {
+          const manifest = JSON.parse(responseBody);
+
+          // Remove debuggerHost to prevent WebSocket connection attempts
+          if (manifest.extra && manifest.extra.expoGo) {
+            delete manifest.extra.expoGo.debuggerHost;
+            console.log("[Metro] Stripped debuggerHost from manifest for Expo Go compatibility");
+          }
+
+          const newBody = JSON.stringify(manifest);
+          responseHeaders["content-length"] = Buffer.byteLength(newBody).toString();
+          responseHeaders["content-type"] = "application/expo+json";
+
+          originalWriteHead(statusCode, responseHeaders);
+          originalEnd(newBody);
+        } catch (e) {
+          // Not JSON or parse error, pass through as-is
+          originalWriteHead(statusCode, responseHeaders);
+          originalEnd(responseBody);
+        }
+      };
+
+      return middleware(req, res, next);
+    }
+
     return middleware(req, res, next);
   };
 };

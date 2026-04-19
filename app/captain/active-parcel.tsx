@@ -269,7 +269,7 @@ export default function ActiveParcelScreen() {
           <View style={styles.detailDivider} />
           <View style={styles.detailRow}>
             <Text style={styles.detailLabel}>الهاتف</Text>
-            <TouchableOpacity onPress={() => Linking.openURL(`tel:${parcel.recipientPhone}`)}>
+            <TouchableOpacity onPress={async () => { try { await Linking.openURL(`tel:${parcel.recipientPhone}`); } catch { Alert.alert('الهاتف', parcel.recipientPhone); } }}>
               <Text style={[styles.detailValue, styles.phoneLink]}>📞 {parcel.recipientPhone}</Text>
             </TouchableOpacity>
           </View>
@@ -287,7 +287,7 @@ export default function ActiveParcelScreen() {
               <View style={styles.detailDivider} />
               <View style={styles.detailRow}>
                 <Text style={styles.detailLabel}>الهاتف</Text>
-                <TouchableOpacity onPress={() => Linking.openURL(`tel:${parcel.senderPhone}`)}>
+                <TouchableOpacity onPress={async () => { try { await Linking.openURL(`tel:${parcel.senderPhone}`); } catch { Alert.alert('الهاتف', parcel.senderPhone ?? ''); } }}>
                   <Text style={[styles.detailValue, styles.phoneLink]}>📞 {parcel.senderPhone}</Text>
                 </TouchableOpacity>
               </View>

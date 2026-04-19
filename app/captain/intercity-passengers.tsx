@@ -103,12 +103,12 @@ export default function IntercityPassengersScreen() {
     setRefreshing(false);
   }, []);
 
-  const handleCall = (phone: string) => {
-    const url = `tel:${phone}`;
-    Linking.canOpenURL(url).then((can) => {
-      if (can) Linking.openURL(url);
-      else Alert.alert("خطأ", "لا يمكن إجراء المكالمة");
-    });
+  const handleCall = async (phone: string) => {
+    try {
+      await Linking.openURL(`tel:${phone}`);
+    } catch {
+      Alert.alert("خطأ", "لا يمكن إجراء المكالمة");
+    }
   };
 
   const handleOpenMap = (lat: string, lng: string, name: string) => {

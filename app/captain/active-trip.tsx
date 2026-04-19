@@ -516,17 +516,13 @@ export default function CaptainActiveTripScreen() {
             {ride?.passengerPhone && (
               <TouchableOpacity
                 style={styles.actionBtn}
-                onPress={() => {
-                  // تنظيف رقم الهاتف من أي مسافات أو أحرف غير ضرورية
+                onPress={async () => {
                   const cleanPhone = (ride.passengerPhone ?? "").replace(/[^+\d]/g, "");
-                  const telUrl = `tel:${cleanPhone}`;
-                  Linking.canOpenURL(telUrl).then((supported) => {
-                    if (supported) {
-                      Linking.openURL(telUrl);
-                    } else {
-                      Alert.alert("الاتصال", `رقم الراكب: ${cleanPhone}`);
-                    }
-                  });
+                  try {
+                    await Linking.openURL(`tel:${cleanPhone}`);
+                  } catch {
+                    Alert.alert("الاتصال", `رقم الراكب: ${cleanPhone}`);
+                  }
                 }}
               >
                 <Text style={styles.actionIcon}>📞</Text>
