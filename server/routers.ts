@@ -2231,7 +2231,7 @@ export const appRouter = router({
         blockReason: z.string().optional(),
       }))
       .mutation(async ({ input }) => {
-        const db = await getDb();
+        const db = await (await import("./db")).getDb();
         if (!db) throw new Error("DB not available");
         const { passengers: passengersTable } = await import("../drizzle/schema");
         const { eq } = await import("drizzle-orm");
