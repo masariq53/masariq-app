@@ -54,6 +54,10 @@ type RideItem = {
   fare: number;
   pickupAddress: string;
   dropoffAddress: string;
+  pickupLat: number;
+  pickupLng: number;
+  dropoffLat: number;
+  dropoffLng: number;
   estimatedDistance: number;
   estimatedDuration: number;
   paymentMethod: string;
@@ -168,6 +172,13 @@ export default function HistoryScreen() {
         params: {
           rideId: item.id,
           passengerId: passenger?.id ?? 0,
+          fare: item.fare,
+          pickupLat: item.pickupLat,
+          pickupLng: item.pickupLng,
+          dropoffLat: item.dropoffLat,
+          dropoffLng: item.dropoffLng,
+          pickupAddress: item.pickupAddress,
+          dropoffAddress: item.dropoffAddress,
         },
       });
     } else {
