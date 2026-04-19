@@ -87,6 +87,8 @@ export default function TrackingScreen() {
   const mapRef = useRef<MapView>(null);
   const prevStepRef = useRef(0);
   const navigatedToRatingRef = useRef(false);
+  // منع تكرار الإشعارات - يحتفظ بآخر حالة تم إشعارها حتى لو عاد المستخدم للشاشة
+  const notifiedStatusRef = useRef<string | null>(null);
   const noDriversTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -261,9 +263,15 @@ export default function TrackingScreen() {
     if (step !== prevStepRef.current) {
       prevStepRef.current = step;
       setCurrentStep(step);
-      // إشعارات عند تغيير المرحلة
-      if (step === 1) notifyRideAccepted(ride.driver?.name ?? "السائق");
-      if (step === 2) notifyDriverArrived(ride.driver?.name ?? "السائق");
+      // إشعارات عند تغيير المرحلة - فقط إذا لم يتم إشعار هذه الحالة من قبل
+      if (step === 1 && notifiedStatusRef.current !== "accepted") {
+        notifiedStatusRef.current = "accepted";
+        notifyRideAccepted(ride.driver?.name ?? "السائق");
+      }
+      if (step === 2 && notifiedStatusRef.current !== "driver_arrived") {
+        notifiedStatusRef.current = "driver_arrived";
+        notifyDriverArrived(ride.driver?.name ?? "السائق");
+      }
 
       // تحريك الخريطة عند تغيير المرحلة
       if (step === 1 && ride.driver?.currentLat && ride.driver?.currentLng) {
@@ -287,7 +295,11 @@ export default function TrackingScreen() {
     if (ride.status === "completed" && !navigatedToRatingRef.current) {
       navigatedToRatingRef.current = true;
       setCompleted(true);
-      notifyRideCompleted(ride.fare ?? fare);
+      // إشعار الاكتمال مرة واحدة فقط
+      if (notifiedStatusRef.current !== "completed") {
+        notifiedStatusRef.current = "completed";
+        notifyRideCompleted(ride.fare ?? fare);
+      }
       setCurrentStep(4); // عرض مرحلة "وصلت" فوراً
       const navParams = {
         driverName: ride.driver?.name ?? "السائق",

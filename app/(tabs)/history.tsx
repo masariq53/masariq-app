@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -9,14 +9,19 @@ import {
   RefreshControl,
   Linking,
   Alert,
+  Modal,
+  ScrollView,
 } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { router } from "expo-router";
 import { trpc } from "@/lib/trpc";
 import { usePassenger } from "@/lib/passenger-context";
 import { useT } from "@/lib/i18n";
 
 type FilterType = "all" | "completed" | "cancelled";
+
+const ACTIVE_STATUSES = ["searching", "accepted", "driver_arrived", "in_progress"];
 
 function formatDate(isoStr: string) {
   const d = new Date(isoStr);
@@ -65,8 +70,6 @@ type RideItem = {
   } | null;
 };
 
-// FILTERS defined inside component to use translations
-
 const PAGE_SIZE = 15;
 
 export default function HistoryScreen() {
@@ -74,7 +77,7 @@ export default function HistoryScreen() {
   const insets = useSafeAreaInsets();
   const { passenger } = usePassenger();
   const FILTERS: { key: FilterType; label: string }[] = [
-    { key: "all", label: t.common.noData.replace("لا توجد بيانات", "الكل") },
+    { key: "all", label: "الكل" },
     { key: "completed", label: t.statusLabels.completed },
     { key: "cancelled", label: t.statusLabels.cancelled },
   ];
@@ -86,6 +89,10 @@ export default function HistoryScreen() {
   const [totalCompleted, setTotalCompleted] = useState(0);
   const [totalSpent, setTotalSpent] = useState(0);
   const [isFirstPage, setIsFirstPage] = useState(true);
+  // حالة الـ modal لتفاصيل الرحلة المكتملة/الملغاة
+  const [selectedRide, setSelectedRide] = useState<RideItem | null>(null);
+  // لمنع مسح الرحلات أثناء الـ refresh
+  const isRefreshingRef = useRef(false);
 
   // First page query (no cursor)
   const firstPageQuery = trpc.rides.passengerHistory.useQuery(
@@ -99,13 +106,14 @@ export default function HistoryScreen() {
     { enabled: !!passenger?.id && !isFirstPage && !!cursor }
   );
 
-  // Handle first page data
+  // Handle first page data - نحدّث allRides فقط عند وصول بيانات جديدة حقيقية
   useEffect(() => {
     if (firstPageQuery.data && "rides" in firstPageQuery.data) {
       setAllRides(firstPageQuery.data.rides as RideItem[]);
       setNextCursor(firstPageQuery.data.nextCursor);
       setTotalCompleted(firstPageQuery.data.totalCompleted);
       setTotalSpent(firstPageQuery.data.totalSpent);
+      isRefreshingRef.current = false;
     }
   }, [firstPageQuery.data]);
 
@@ -133,13 +141,14 @@ export default function HistoryScreen() {
     setCursor(nextCursor);
   }, [nextCursor, isLoadingMore]);
 
-  const handleRefresh = () => {
+  // إصلاح bug 1: لا نمسح allRides عند الـ refresh - نتركها حتى تصل البيانات الجديدة
+  const handleRefresh = useCallback(() => {
+    isRefreshingRef.current = true;
     setCursor(undefined);
-    setAllRides([]);
     setNextCursor(null);
     setIsFirstPage(true);
     firstPageQuery.refetch();
-  };
+  }, [firstPageQuery]);
 
   const callDriver = async (phone: string) => {
     const cleanPhone = phone.replace(/[^+\d]/g, "");
@@ -150,15 +159,42 @@ export default function HistoryScreen() {
     }
   };
 
+  // إصلاح bug 2: الضغط على الرحلة
+  const handleRidePress = useCallback((item: RideItem) => {
+    if (ACTIVE_STATUSES.includes(item.status)) {
+      // رحلة نشطة → انتقل لشاشة التتبع
+      router.push({
+        pathname: "/ride/tracking",
+        params: {
+          rideId: item.id,
+          passengerId: passenger?.id ?? 0,
+        },
+      });
+    } else {
+      // رحلة مكتملة أو ملغاة → اعرض التفاصيل في modal
+      setSelectedRide(item);
+    }
+  }, [passenger?.id]);
+
   const renderItem = ({ item }: { item: RideItem }) => {
     const statusInfo = getStatusInfo(item.status);
+    const isActive = ACTIVE_STATUSES.includes(item.status);
     return (
-      <View style={styles.card}>
+      <TouchableOpacity
+        style={[styles.card, isActive && styles.cardActive]}
+        onPress={() => handleRidePress(item)}
+        activeOpacity={0.75}
+      >
         {/* رأس البطاقة */}
         <View style={styles.cardHeader}>
           <Text style={styles.dateText}>{formatDate(item.createdAt)}</Text>
-          <View style={[styles.statusBadge, { backgroundColor: statusInfo.bg }]}>
-            <Text style={[styles.statusText, { color: statusInfo.color }]}>{statusInfo.label}</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <View style={[styles.statusBadge, { backgroundColor: statusInfo.bg }]}>
+              <Text style={[styles.statusText, { color: statusInfo.color }]}>{statusInfo.label}</Text>
+            </View>
+            {isActive && (
+              <Text style={{ color: "#FFD700", fontSize: 16 }}>›</Text>
+            )}
           </View>
         </View>
 
@@ -185,11 +221,6 @@ export default function HistoryScreen() {
             <Text style={styles.driverIcon}>👨‍✈️</Text>
             <View style={styles.driverInfo}>
               <Text style={styles.driverName}>{item.driver.name}</Text>
-              {item.driver.phone ? (
-                <TouchableOpacity onPress={() => callDriver(item.driver!.phone)}>
-                  <Text style={styles.driverPhone}>📞 {item.driver.phone}</Text>
-                </TouchableOpacity>
-              ) : null}
               {item.driver.vehicleModel ? (
                 <Text style={styles.driverCar}>
                   {item.driver.vehicleModel} {item.driver.vehicleColor}
@@ -218,7 +249,14 @@ export default function HistoryScreen() {
             <Text style={styles.detailValue}>{item.paymentMethod === "cash" ? "💵 نقداً" : "👛 محفظة"}</Text>
           </View>
         </View>
-      </View>
+
+        {/* زر متابعة الرحلة للرحلات النشطة */}
+        {isActive && (
+          <View style={styles.activeRideBanner}>
+            <Text style={styles.activeRideBannerText}>اضغط لمتابعة رحلتك الحالية →</Text>
+          </View>
+        )}
+      </TouchableOpacity>
     );
   };
 
@@ -301,7 +339,7 @@ export default function HistoryScreen() {
           <Text style={styles.emptyTitle}>{t.auth.login}</Text>
           <Text style={styles.emptyText}>{t.errors.sessionExpired}</Text>
         </View>
-      ) : allRides.length === 0 ? (
+      ) : allRides.length === 0 && !isRefetching ? (
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyIcon}>🚗</Text>
           <Text style={styles.emptyTitle}>{t.history.noRides}</Text>
@@ -331,6 +369,109 @@ export default function HistoryScreen() {
           showsVerticalScrollIndicator={false}
         />
       )}
+
+      {/* Modal تفاصيل الرحلة */}
+      <Modal
+        visible={!!selectedRide}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setSelectedRide(null)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalSheet}>
+            {selectedRide && (
+              <>
+                {/* رأس الـ modal */}
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>تفاصيل الرحلة</Text>
+                  <TouchableOpacity onPress={() => setSelectedRide(null)} style={styles.modalCloseBtn}>
+                    <Text style={styles.modalCloseText}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <ScrollView showsVerticalScrollIndicator={false}>
+                  {/* الحالة */}
+                  <View style={{ alignItems: "center", marginBottom: 16 }}>
+                    {(() => {
+                      const si = getStatusInfo(selectedRide.status);
+                      return (
+                        <View style={[styles.statusBadge, { backgroundColor: si.bg, paddingHorizontal: 16, paddingVertical: 8 }]}>
+                          <Text style={[styles.statusText, { color: si.color, fontSize: 15 }]}>{si.label}</Text>
+                        </View>
+                      );
+                    })()}
+                    <Text style={{ color: "#9B8EC4", fontSize: 12, marginTop: 6 }}>{formatDate(selectedRide.createdAt)}</Text>
+                  </View>
+
+                  {/* المسار */}
+                  <View style={[styles.routeBox, { backgroundColor: "#2D1B4E", borderRadius: 12, padding: 14, marginBottom: 12 }]}>
+                    <Text style={{ color: "#9B8EC4", fontSize: 11, marginBottom: 6 }}>المسار</Text>
+                    <View style={styles.routeRow}>
+                      <View style={styles.dotGreen} />
+                      <Text style={[styles.routeText, { flexShrink: 1 }]}>{selectedRide.pickupAddress || "موقع الانطلاق"}</Text>
+                    </View>
+                    <View style={styles.routeLine} />
+                    <View style={styles.routeRow}>
+                      <View style={styles.dotRed} />
+                      <Text style={[styles.routeText, { flexShrink: 1 }]}>{selectedRide.dropoffAddress || "الوجهة"}</Text>
+                    </View>
+                  </View>
+
+                  {/* معلومات السائق */}
+                  {selectedRide.driver && (
+                    <View style={[styles.driverRow, { marginBottom: 12 }]}>
+                      <Text style={styles.driverIcon}>👨‍✈️</Text>
+                      <View style={styles.driverInfo}>
+                        <Text style={styles.driverName}>{selectedRide.driver.name}</Text>
+                        {selectedRide.driver.phone ? (
+                          <TouchableOpacity onPress={() => callDriver(selectedRide.driver!.phone)}>
+                            <Text style={styles.driverPhone}>📞 {selectedRide.driver.phone}</Text>
+                          </TouchableOpacity>
+                        ) : null}
+                        {selectedRide.driver.vehicleModel ? (
+                          <Text style={styles.driverCar}>
+                            {selectedRide.driver.vehicleModel} {selectedRide.driver.vehicleColor}
+                            {selectedRide.driver.vehiclePlate ? ` • ${selectedRide.driver.vehiclePlate}` : ""}
+                          </Text>
+                        ) : null}
+                      </View>
+                      <Text style={styles.driverRating}>⭐ {selectedRide.driver.rating}</Text>
+                    </View>
+                  )}
+
+                  {/* تفاصيل مالية */}
+                  <View style={{ backgroundColor: "#2D1B4E", borderRadius: 12, padding: 14, gap: 10 }}>
+                    <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                      <Text style={{ color: "#9B8EC4", fontSize: 13 }}>الأجرة</Text>
+                      <Text style={{ color: "#FFD700", fontSize: 15, fontWeight: "bold" }}>{(selectedRide.fare ?? 0).toLocaleString("ar-IQ")} دينار</Text>
+                    </View>
+                    {selectedRide.estimatedDistance > 0 && (
+                      <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                        <Text style={{ color: "#9B8EC4", fontSize: 13 }}>المسافة</Text>
+                        <Text style={{ color: "#ECEDEE", fontSize: 13 }}>{selectedRide.estimatedDistance.toFixed(1)} كم</Text>
+                      </View>
+                    )}
+                    {selectedRide.estimatedDuration > 0 && (
+                      <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                        <Text style={{ color: "#9B8EC4", fontSize: 13 }}>المدة</Text>
+                        <Text style={{ color: "#ECEDEE", fontSize: 13 }}>{selectedRide.estimatedDuration} دقيقة</Text>
+                      </View>
+                    )}
+                    <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                      <Text style={{ color: "#9B8EC4", fontSize: 13 }}>طريقة الدفع</Text>
+                      <Text style={{ color: "#ECEDEE", fontSize: 13 }}>{selectedRide.paymentMethod === "cash" ? "💵 نقداً" : "👛 محفظة"}</Text>
+                    </View>
+                  </View>
+                </ScrollView>
+
+                <TouchableOpacity style={styles.modalDoneBtn} onPress={() => setSelectedRide(null)}>
+                  <Text style={styles.modalDoneBtnText}>إغلاق</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -402,6 +543,23 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#3D2070",
   },
+  cardActive: {
+    borderColor: "#FFD700",
+    borderWidth: 1.5,
+  },
+  activeRideBanner: {
+    backgroundColor: "rgba(255,215,0,0.1)",
+    borderRadius: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    marginTop: 8,
+    alignItems: "center",
+  },
+  activeRideBannerText: {
+    color: "#FFD700",
+    fontSize: 12,
+    fontWeight: "600",
+  },
   cardHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -455,4 +613,43 @@ const styles = StyleSheet.create({
   emptyText: { color: "#9B8EC4", fontSize: 14, textAlign: "center", lineHeight: 22 },
   footerLoader: { flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 16, gap: 8 },
   footerLoaderText: { color: "#9B8EC4", fontSize: 13 },
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    justifyContent: "flex-end",
+  },
+  modalSheet: {
+    backgroundColor: "#1A0533",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 20,
+    maxHeight: "85%",
+    borderTopWidth: 1,
+    borderColor: "#3D2070",
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  modalTitle: { color: "#FFFFFF", fontSize: 18, fontWeight: "bold" },
+  modalCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#2D1B4E",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modalCloseText: { color: "#9B8EC4", fontSize: 16 },
+  modalDoneBtn: {
+    backgroundColor: "#FFD700",
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: "center",
+    marginTop: 16,
+  },
+  modalDoneBtnText: { color: "#1A0533", fontSize: 16, fontWeight: "bold" },
 });
