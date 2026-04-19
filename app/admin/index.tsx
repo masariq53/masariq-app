@@ -4,6 +4,7 @@ import {
   Text,
   ScrollView,
   TouchableOpacity,
+  Pressable,
   StyleSheet,
   RefreshControl,
   Dimensions,
@@ -4176,8 +4177,8 @@ export default function AdminDashboard() {
 
       {/* ─── Passenger Block Modal ─────────────────────────────────── */}
       <Modal visible={showPassengerBlockModal} transparent animationType="fade" onRequestClose={() => setShowPassengerBlockModal(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={{ backgroundColor: '#1A0533', borderRadius: 16, padding: 20, width: '88%' }}>
+        <Pressable style={[styles.modalOverlay, { cursor: 'default' } as any]} onPress={() => { setShowPassengerBlockModal(false); setPassengerBlockReasonInput(""); }}>
+          <Pressable onPress={e => e.stopPropagation()} style={{ backgroundColor: '#1A0533', borderRadius: 16, padding: 20, width: '88%' }}>
             <Text style={{ color: '#FFD700', fontSize: 16, fontWeight: '800', marginBottom: 8, textAlign: 'right' }}>🚫 حظر المستخدم</Text>
             <Text style={{ color: '#ccc', fontSize: 13, marginBottom: 12, textAlign: 'right' }}>سيتم تعطيل حساب {blockTargetPassenger?.name} فوراً.</Text>
             <Text style={{ color: '#9B8EC4', fontSize: 12, marginBottom: 6, textAlign: 'right' }}>سبب الحظر (اختياري)</Text>
@@ -4189,8 +4190,8 @@ export default function AdminDashboard() {
               onChangeText={setPassengerBlockReasonInput}
             />
             <View style={{ flexDirection: 'row', gap: 10 }}>
-              <TouchableOpacity
-                style={{ flex: 1, backgroundColor: '#EF4444', borderRadius: 8, padding: 12, alignItems: 'center' }}
+              <Pressable
+                style={({ pressed }) => ({ flex: 1, backgroundColor: pressed ? '#DC2626' : '#EF4444', borderRadius: 8, padding: 12, alignItems: 'center', cursor: 'pointer' } as any)}
                 onPress={() => {
                   if (blockTargetPassenger) {
                     blockPassenger.mutate({ passengerId: blockTargetPassenger.id, isBlocked: true, blockReason: passengerBlockReasonInput || undefined });
@@ -4198,26 +4199,26 @@ export default function AdminDashboard() {
                 }}
               >
                 <Text style={{ color: '#fff', fontWeight: '700' }}>🚫 تأكيد الحظر</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={{ flex: 1, backgroundColor: '#2D1B4E', borderRadius: 8, padding: 12, alignItems: 'center' }}
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => ({ flex: 1, backgroundColor: pressed ? '#3D2B5E' : '#2D1B4E', borderRadius: 8, padding: 12, alignItems: 'center', cursor: 'pointer' } as any)}
                 onPress={() => { setShowPassengerBlockModal(false); setPassengerBlockReasonInput(""); }}
               >
                 <Text style={{ color: '#ccc', fontWeight: '700' }}>إلغاء</Text>
-              </TouchableOpacity>
+              </Pressable>
             </View>
-          </View>
-        </View>
+          </Pressable>
+        </Pressable>
       </Modal>
       {/* ─── Passenger Unblock Modal ──────────────────────────────────── */}
       <Modal visible={showPassengerUnblockModal} transparent animationType="fade" onRequestClose={() => setShowPassengerUnblockModal(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={{ backgroundColor: '#1A0533', borderRadius: 16, padding: 20, width: '88%' }}>
+        <Pressable style={[styles.modalOverlay, { cursor: 'default' } as any]} onPress={() => setShowPassengerUnblockModal(false)}>
+          <Pressable onPress={e => e.stopPropagation()} style={{ backgroundColor: '#1A0533', borderRadius: 16, padding: 20, width: '88%' }}>
             <Text style={{ color: '#FFD700', fontSize: 16, fontWeight: '800', marginBottom: 8, textAlign: 'right' }}>✅ تفعيل المستخدم</Text>
             <Text style={{ color: '#ccc', fontSize: 13, marginBottom: 20, textAlign: 'right' }}>هل تريد إعادة تفعيل حساب {unblockTargetPassenger?.name}؟</Text>
             <View style={{ flexDirection: 'row', gap: 10 }}>
-              <TouchableOpacity
-                style={{ flex: 1, backgroundColor: '#22C55E', borderRadius: 8, padding: 12, alignItems: 'center' }}
+              <Pressable
+                style={({ pressed }) => ({ flex: 1, backgroundColor: pressed ? '#16A34A' : '#22C55E', borderRadius: 8, padding: 12, alignItems: 'center', cursor: 'pointer' } as any)}
                 onPress={() => {
                   if (unblockTargetPassenger) {
                     blockPassenger.mutate({ passengerId: unblockTargetPassenger.id, isBlocked: false });
@@ -4225,16 +4226,16 @@ export default function AdminDashboard() {
                 }}
               >
                 <Text style={{ color: '#fff', fontWeight: '700' }}>✅ تفعيل الحساب</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={{ flex: 1, backgroundColor: '#2D1B4E', borderRadius: 8, padding: 12, alignItems: 'center' }}
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => ({ flex: 1, backgroundColor: pressed ? '#3D2B5E' : '#2D1B4E', borderRadius: 8, padding: 12, alignItems: 'center', cursor: 'pointer' } as any)}
                 onPress={() => setShowPassengerUnblockModal(false)}
               >
                 <Text style={{ color: '#ccc', fontWeight: '700' }}>إلغاء</Text>
-              </TouchableOpacity>
+              </Pressable>
             </View>
-          </View>
-        </View>
+          </Pressable>
+        </Pressable>
       </Modal>
       {/* Passenger Ride History Modal */}
       <Modal visible={!!historyPassengerId} transparent animationType="slide" onRequestClose={() => setHistoryPassengerId(null)}>
