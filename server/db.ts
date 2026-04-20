@@ -479,7 +479,8 @@ export async function updateDriverLocation(driverId: number, lat: number, lng: n
 export async function setDriverOnlineStatus(driverId: number, isOnline: boolean, isAvailable: boolean) {
   const db = await getDb();
   if (!db) return;
-  await db.update(drivers).set({ isOnline, isAvailable }).where(eq(drivers.id, driverId));
+  // تحديث lastActiveAt عند تغيير الحالة لضمان وصول الإشعارات
+  await db.update(drivers).set({ isOnline, isAvailable, lastActiveAt: new Date() }).where(eq(drivers.id, driverId));
 }
 
 export async function getNearbyDrivers(lat: number, lng: number, radiusKm: number = 5) {
