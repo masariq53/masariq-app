@@ -12,7 +12,7 @@ import { trpc } from "@/lib/trpc";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useT } from "@/lib/i18n";
 import { usePassenger } from "@/lib/passenger-context";
-import MapView, { Marker, Polyline, PROVIDER_DEFAULT } from "react-native-maps";
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE, PROVIDER_DEFAULT } from "react-native-maps";
 import { formatIQD } from "@/lib/utils";
 
 // إحداثيات المدن العراقية الرئيسية
@@ -479,7 +479,7 @@ export default function IntercityBrowseScreen() {
                         <View style={{ height: 160, borderRadius: 12, overflow: 'hidden', marginBottom: 10 }}>
                           <MapView
                             style={{ flex: 1 }}
-                            provider={PROVIDER_DEFAULT}
+                            provider={PROVIDER_GOOGLE}
                             initialRegion={{ latitude: midLat, longitude: midLng, latitudeDelta: latDelta, longitudeDelta: lngDelta }}
                             scrollEnabled={false}
                             zoomEnabled={false}

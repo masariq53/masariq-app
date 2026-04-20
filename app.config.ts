@@ -36,6 +36,7 @@ const env = {
   scheme: schemeFromBundleId,
   iosBundleId: bundleId,
   androidPackage: bundleId,
+  googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY || "",
 };
 
 const config: ExpoConfig = {
@@ -50,11 +51,19 @@ const config: ExpoConfig = {
   ios: {
     supportsTablet: true,
     bundleIdentifier: env.iosBundleId,
+    config: {
+      googleMapsApiKey: env.googleMapsApiKey,
+    },
     "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
   },
   android: {
+    config: {
+      googleMaps: {
+        apiKey: env.googleMapsApiKey,
+      },
+    },
     adaptiveIcon: {
       backgroundColor: "#E6F4FE",
       foregroundImage: "./assets/images/android-icon-foreground.png",
@@ -113,6 +122,7 @@ const config: ExpoConfig = {
         microphonePermission: "Allow $(PRODUCT_NAME) to access your microphone.",
       },
     ],
+    "expo-speech",
     [
       "expo-video",
       {

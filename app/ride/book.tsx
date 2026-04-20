@@ -18,7 +18,7 @@ import {
 import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import MapView, { Marker, Polyline, PROVIDER_DEFAULT } from "react-native-maps";
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE, PROVIDER_DEFAULT } from "react-native-maps";
 import * as Location from "expo-location";
 import { trpc } from "@/lib/trpc";
 import { usePassenger } from "@/lib/passenger-context";
@@ -613,7 +613,7 @@ export default function BookRideScreen() {
         <MapView
           ref={mapRef}
           style={styles.map}
-          provider={PROVIDER_DEFAULT}
+          provider={PROVIDER_GOOGLE}
           initialRegion={MOSUL_CENTER}
           onPress={handleMapPress}
           showsUserLocation

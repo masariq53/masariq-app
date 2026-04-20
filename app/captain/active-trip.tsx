@@ -8,24 +8,21 @@ import {
   Linking,
   ActivityIndicator,
   Alert,
+  ScrollView,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import MapView, { Marker, Polyline, PROVIDER_DEFAULT } from "react-native-maps";
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE, PROVIDER_DEFAULT } from "react-native-maps";
 import { useLocation } from "@/hooks/use-location";
 import { trpc } from "@/lib/trpc";
 import { useDriver } from "@/lib/driver-context";
 import { fetchOsrmRoute, type OsrmRouteResult, type LatLng } from "@/lib/osrm";
+import { useVoiceNavigation } from "@/hooks/use-voice-navigation";
 
 // مراحل الرحلة من منظور السائق
-// pickup   → السائق في طريقه لموقع الراكب
-// arrived  → السائق وصل لموقع الراكب (driver_arrived في DB)
-// in_trip  → الرحلة بدأت فعلاً (in_progress في DB)
-// done     → الرحلة اكتملت
 type TripPhase = "pickup" | "arrived" | "in_trip" | "done";
 
-// خريطة حالة DB → مرحلة محلية
 const STATUS_TO_PHASE: Record<string, TripPhase> = {
   accepted: "pickup",
   driver_arrived: "arrived",
@@ -38,31 +35,38 @@ export default function CaptainActiveTripScreen() {
   const params = useLocalSearchParams<{ rideId?: string }>();
   const { driver } = useDriver();
   const { coords, heading, isRealLocation } = useLocation();
-  // تتبع مستمر لموقع الكابتن أثناء الرحلة
   const isFirstLocation = useRef(true);
   const [isFollowingDriver, setIsFollowingDriver] = useState(true);
   const [phase, setPhase] = useState<TripPhase>("pickup");
   const mapRef = useRef<MapView>(null);
-  // منع useEffect من التراجع عن المرحلة المحلية بعد ضغط الزر
   const localPhaseRef = useRef<TripPhase | null>(null);
-  // مسارات OSRM الحقيقية
+
+  // مسارات الملاحة
   const [routeToPickup, setRouteToPickup] = useState<OsrmRouteResult | null>(null);
   const [routeToDropoff, setRouteToDropoff] = useState<OsrmRouteResult | null>(null);
   const [isLoadingRoute, setIsLoadingRoute] = useState(false);
   const prevDriverLatRef = useRef<number | null>(null);
   const prevDriverLngRef = useRef<number | null>(null);
 
+  // الخطوة الحالية في الملاحة
+  const [currentStepIndex, setCurrentStepIndex] = useState(0);
+  const [currentInstruction, setCurrentInstruction] = useState<string>("");
+  const [distanceToNext, setDistanceToNext] = useState<number>(0);
+
+  // الملاحة الصوتية
+  const voiceNav = useVoiceNavigation();
+
   const rideId = params.rideId ? parseInt(params.rideId) : 0;
   const driverId = driver?.id ?? 0;
 
-  // عدد الرسائل غير المقروءة للبادج على زر الشات
+  // عدد الرسائل غير المقروءة
   const { data: unreadData } = trpc.rides.unreadCount.useQuery(
     { rideId, readerType: "driver" },
     { enabled: rideId > 0 && phase !== "done", refetchInterval: 5000 }
   );
   const unreadCount = unreadData?.count ?? 0;
 
-  // جلب بيانات الرحلة الحقيقية من السيرفر - polling كل 4 ثوانٍ للاستجابة السريعة
+  // جلب بيانات الرحلة
   const rideQuery = trpc.rides.driverActiveRide.useQuery(
     { driverId, rideId: rideId || undefined },
     {
@@ -82,43 +86,36 @@ export default function CaptainActiveTripScreen() {
     ? { latitude: ride.dropoffLat, longitude: ride.dropoffLng }
     : { latitude: 36.3600, longitude: 43.1450 };
 
-  // معالجة إلغاء الرحلة من طرف الراكب بشكل احترافي
+  // معالجة إلغاء الرحلة
   const setDriverAvailable = trpc.driver.setStatus.useMutation();
   const cancelledHandledRef = useRef(false);
 
   useEffect(() => {
     if (!ride?.status) return;
-
-    // إذا ألغى الراكب الرحلة بينما السائق في الطريق
     if (ride.status === "cancelled" && !cancelledHandledRef.current) {
       cancelledHandledRef.current = true;
-      // تغيير حالة السائق إلى متاح فوراً من جهة التطبيق
+      voiceNav.stop();
       if (driverId > 0) {
         setDriverAvailable.mutate({ driverId, isOnline: true, isAvailable: true });
       }
-      // رجوع تلقائي فوري بدون Alert - استخدام replace لتجنب GO_BACK error
       router.replace("/captain/home" as any);
       return;
     }
-
     const mappedPhase = STATUS_TO_PHASE[ride.status];
     if (!mappedPhase) return;
-    // مرتبة المراحل: pickup < arrived < in_trip < done
     const phaseOrder: TripPhase[] = ["pickup", "arrived", "in_trip", "done"];
     const dbPhaseIndex = phaseOrder.indexOf(mappedPhase);
     const currentPhaseIndex = phaseOrder.indexOf(localPhaseRef.current ?? phase);
-    // فقط تحديث إذا كانت حالة DB أحدث من الحالة المحلية
     if (dbPhaseIndex > currentPhaseIndex) {
       localPhaseRef.current = mappedPhase;
       setPhase(mappedPhase);
     } else if (localPhaseRef.current === null) {
-      // أول تحميل: استخدم حالة DB
       localPhaseRef.current = mappedPhase;
       setPhase(mappedPhase);
     }
   }, [ride?.status]);
 
-  // تمركز الخريطة على موقع الراكب عند أول تحميل
+  // تمركز الخريطة عند أول تحميل
   useEffect(() => {
     if (ride && mapRef.current) {
       mapRef.current.animateToRegion({
@@ -127,11 +124,11 @@ export default function CaptainActiveTripScreen() {
         latitudeDelta: 0.04,
         longitudeDelta: 0.04,
       }, 800);
-      isFirstLocation.current = false; // بعد التمركز الأولي نبدأ بتتبع الكابتن
+      isFirstLocation.current = false;
     }
   }, [ride?.id]);
 
-  // تتبع موقع الكابتن بسلاسة أثناء الرحلة
+  // تتبع موقع الكابتن بسلاسة
   useEffect(() => {
     if (!isRealLocation || !mapRef.current || isFirstLocation.current) return;
     if (!isFollowingDriver) return;
@@ -141,18 +138,20 @@ export default function CaptainActiveTripScreen() {
     );
   }, [isRealLocation, coords.latitude, coords.longitude, isFollowingDriver]);
 
-   // جلب مسار الراكب → الوجهة (ذهبي) مرة واحدة عند تحميل بيانات الرحلة
+  // جلب مسار الراكب → الوجهة (ذهبي) مرة واحدة
   useEffect(() => {
     if (!ride) return;
     const pickup: LatLng = { latitude: ride.pickupLat, longitude: ride.pickupLng };
     const dropoff: LatLng = { latitude: ride.dropoffLat, longitude: ride.dropoffLng };
     setIsLoadingRoute(true);
     fetchOsrmRoute(pickup, dropoff).then((res) => {
-      if (res) setRouteToDropoff(res);
+      if (res) {
+        setRouteToDropoff(res);
+      }
     }).finally(() => setIsLoadingRoute(false));
   }, [ride?.id]);
 
-  // جلب/تحديث مسار السائق → الراكب (أزرق) عند تحرك السائق (فقط في مرحلة pickup و arrived)
+  // جلب/تحديث مسار السائق → الراكب (أزرق) + تفعيل الملاحة الصوتية
   useEffect(() => {
     if (!ride || (phase !== "pickup" && phase !== "arrived")) return;
     const prevLat = prevDriverLatRef.current;
@@ -167,46 +166,54 @@ export default function CaptainActiveTripScreen() {
     const driverPos: LatLng = { latitude: coords.latitude, longitude: coords.longitude };
     const pickup: LatLng = { latitude: ride.pickupLat, longitude: ride.pickupLng };
     fetchOsrmRoute(driverPos, pickup).then((res) => {
-      if (res) setRouteToPickup(res);
+      if (res) {
+        setRouteToPickup(res);
+        // تحديث خطوات الملاحة الصوتية
+        if (res.steps?.length) {
+          voiceNav.setSteps(res.steps);
+          if (res.steps[0]) {
+            setCurrentInstruction(res.steps[0].instruction);
+            setDistanceToNext(res.steps[0].distanceM);
+          }
+        }
+      }
     });
   }, [coords.latitude, coords.longitude, phase, ride?.id]);
 
-  const updateStatus = trpc.rides.updateStatus.useMutation();
-  // فتح خرائط Google Maps أو Apple Maps للملاحة
-  const openNavigation = (targetLat: number, targetLng: number, label: string) => {
-    const encodedLabel = encodeURIComponent(label);
-    if (Platform.OS === "ios") {
-      // iOS: نحاول Waze أولاً ثم Apple Maps
-      const wazeUrl = `waze://?ll=${targetLat},${targetLng}&navigate=yes`;
-      const appleMapsUrl = `maps://?daddr=${targetLat},${targetLng}&dirflg=d`;
-      const googleMapsUrl = `comgooglemaps://?daddr=${targetLat},${targetLng}&directionsmode=driving`;
-      
-      Linking.canOpenURL(wazeUrl).then((supported) => {
-        if (supported) {
-          Linking.openURL(wazeUrl);
-        } else {
-          Linking.canOpenURL(googleMapsUrl).then((gSupported) => {
-            if (gSupported) {
-              Linking.openURL(googleMapsUrl);
-            } else {
-              Linking.openURL(appleMapsUrl);
-            }
-          });
+  // تحديث الملاحة الصوتية عند تحرك السائق
+  useEffect(() => {
+    if (!isRealLocation) return;
+    voiceNav.onLocationUpdate({ latitude: coords.latitude, longitude: coords.longitude });
+  }, [coords.latitude, coords.longitude, isRealLocation]);
+
+  // تفعيل الملاحة الصوتية عند بدء مرحلة جديدة
+  useEffect(() => {
+    if (!ride) return;
+    if (phase === "pickup") {
+      voiceNav.start(ride.pickupAddress || "موقع الراكب");
+    } else if (phase === "in_trip") {
+      // عند بدء الرحلة: استخدم مسار الوجهة
+      if (routeToDropoff?.steps?.length) {
+        voiceNav.setSteps(routeToDropoff.steps);
+        voiceNav.start(ride.dropoffAddress || "الوجهة");
+        if (routeToDropoff.steps[0]) {
+          setCurrentInstruction(routeToDropoff.steps[0].instruction);
+          setDistanceToNext(routeToDropoff.steps[0].distanceM);
         }
-      });
-    } else {
-      // Android: Google Maps
-      const googleMapsUrl = `google.navigation:q=${targetLat},${targetLng}&mode=d`;
-      Linking.canOpenURL(googleMapsUrl).then((supported) => {
-        if (supported) {
-          Linking.openURL(googleMapsUrl);
-        } else {
-          // Fallback to browser Google Maps
-          Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${targetLat},${targetLng}&travelmode=driving`);
-        }
-      });
+      } else {
+        voiceNav.start(ride.dropoffAddress || "الوجهة");
+      }
     }
-  };
+  }, [phase, ride?.id]);
+
+  // تنظيف الملاحة الصوتية عند الخروج
+  useEffect(() => {
+    return () => {
+      voiceNav.stop();
+    };
+  }, []);
+
+  const updateStatus = trpc.rides.updateStatus.useMutation();
 
   const handlePhaseAction = () => {
     const actualRideId = ride?.id ?? rideId;
@@ -214,25 +221,24 @@ export default function CaptainActiveTripScreen() {
       Alert.alert("خطأ", "لم يتم تحميل بيانات الرحلة. تأكد من الاتصال بالإنترنت.");
       return;
     }
-    if (updateStatus.isPending) return; // منع الضغط المزدوج
+    if (updateStatus.isPending) return;
 
     if (phase === "pickup") {
-      // السائق وصل لموقع الراكب - تحديث محلي فوري
       localPhaseRef.current = "arrived";
       setPhase("arrived");
+      voiceNav.announceArrival("موقع الراكب");
       mapRef.current?.animateToRegion({ ...pickupCoord, latitudeDelta: 0.03, longitudeDelta: 0.03 }, 800);
       updateStatus.mutate(
         { rideId: actualRideId, status: "driver_arrived" },
         {
           onError: () => {
             localPhaseRef.current = "pickup";
-            setPhase("pickup"); // رجوع للحالة السابقة عند الخطأ
+            setPhase("pickup");
             Alert.alert("خطأ", "فشل تحديث الحالة. تأكد من الاتصال بالإنترنت.");
           },
         }
       );
     } else if (phase === "arrived") {
-      // بدأت الرحلة فعلاً - تحديث محلي فوري
       localPhaseRef.current = "in_trip";
       setPhase("in_trip");
       mapRef.current?.animateToRegion({ ...destCoord, latitudeDelta: 0.04, longitudeDelta: 0.04 }, 800);
@@ -241,15 +247,15 @@ export default function CaptainActiveTripScreen() {
         {
           onError: () => {
             localPhaseRef.current = "arrived";
-            setPhase("arrived"); // رجوع للحالة السابقة عند الخطأ
+            setPhase("arrived");
             Alert.alert("خطأ", "فشل تحديث الحالة. تأكد من الاتصال بالإنترنت.");
           },
         }
       );
     } else if (phase === "in_trip") {
-      // إنهاء الرحلة - تحديث محلي فوري ثم إرسال للسيرفر
       localPhaseRef.current = "done";
       setPhase("done");
+      voiceNav.stop();
       const fareVal = ride?.fare?.toString() ?? "0";
       const distVal = ride?.estimatedDistance?.toString() ?? "0";
       const durVal = ride?.estimatedDuration?.toString() ?? "0";
@@ -275,13 +281,12 @@ export default function CaptainActiveTripScreen() {
           },
           onError: () => {
             localPhaseRef.current = "in_trip";
-            setPhase("in_trip"); // رجوع للحالة السابقة عند الخطأ
+            setPhase("in_trip");
             Alert.alert("خطأ", "فشل إنهاء الرحلة. تأكد من الاتصال بالإنترنت.");
           },
         }
       );
     } else if (phase === "done") {
-      // الرحلة اكتملت بالفعل - استخدام replace بدل back() لتجنب GO_BACK error
       router.replace("/captain/home" as any);
     }
   };
@@ -295,7 +300,6 @@ export default function CaptainActiveTripScreen() {
       btnTextColor: "#1A0533",
       navTarget: pickupCoord,
       navLabel: ride?.pickupAddress || "موقع الراكب",
-      route: [coords, pickupCoord],
       statusDotColor: "#FFD700",
     },
     arrived: {
@@ -306,7 +310,6 @@ export default function CaptainActiveTripScreen() {
       btnTextColor: "#FFFFFF",
       navTarget: pickupCoord,
       navLabel: ride?.pickupAddress || "موقع الراكب",
-      route: [coords, pickupCoord],
       statusDotColor: "#22C55E",
     },
     in_trip: {
@@ -317,7 +320,6 @@ export default function CaptainActiveTripScreen() {
       btnTextColor: "#FFFFFF",
       navTarget: destCoord,
       navLabel: ride?.dropoffAddress || "الوجهة",
-      route: [pickupCoord, destCoord],
       statusDotColor: "#22C55E",
     },
     done: {
@@ -328,12 +330,22 @@ export default function CaptainActiveTripScreen() {
       btnTextColor: "#1A0533",
       navTarget: destCoord,
       navLabel: "",
-      route: [pickupCoord, destCoord],
       statusDotColor: "#FFD700",
     },
   };
 
   const config = phaseConfig[phase];
+
+  // حساب المسافة المتبقية والوقت
+  const activeRoute = phase === "in_trip" ? routeToDropoff : routeToPickup;
+  const remainingKm = activeRoute?.distanceKm ?? 0;
+  const remainingMin = activeRoute?.durationMin ?? 0;
+
+  // تنسيق المسافة
+  function formatDistanceShort(km: number): string {
+    if (km < 1) return `${Math.round(km * 1000)} م`;
+    return `${km.toFixed(1)} كم`;
+  }
 
   if (rideQuery.isLoading) {
     return (
@@ -348,12 +360,12 @@ export default function CaptainActiveTripScreen() {
     <View style={styles.container}>
       <StatusBar style="light" />
 
-      {/* خريطة حقيقية */}
-        {Platform.OS !== "web" ? (
+      {/* خريطة Google Maps الحقيقية */}
+      {Platform.OS !== "web" ? (
         <MapView
           ref={mapRef}
           style={styles.map}
-          provider={PROVIDER_DEFAULT}
+          provider={PROVIDER_GOOGLE}
           initialRegion={{
             latitude: pickupCoord.latitude,
             longitude: pickupCoord.longitude,
@@ -362,6 +374,8 @@ export default function CaptainActiveTripScreen() {
           }}
           showsUserLocation={false}
           showsMyLocationButton={false}
+          showsTraffic={true}
+          showsCompass={true}
           onPanDrag={() => setIsFollowingDriver(false)}
         >
           {/* موقع الكابتن - سيارة تتدور حسب اتجاه السير */}
@@ -375,19 +389,22 @@ export default function CaptainActiveTripScreen() {
               <Text style={{ fontSize: 26 }}>🚗</Text>
             </View>
           </Marker>
+
           {/* موقع الراكب */}
           <Marker coordinate={pickupCoord} title="موقع الراكب">
             <View style={styles.pickupMarker}>
               <Text style={{ fontSize: 22 }}>👤</Text>
             </View>
           </Marker>
+
           {/* الوجهة */}
           <Marker coordinate={destCoord} title="الوجهة">
             <View style={styles.destMarker}>
               <Text style={{ fontSize: 22 }}>🏁</Text>
             </View>
           </Marker>
-          {/* مسار السائق → الراكب (أزرق) - Mapbox - يظهر فقط عند توفر المسار الحقيقي */}
+
+          {/* مسار السائق → الراكب (أزرق متقطع) */}
           {(phase === "pickup" || phase === "arrived") &&
             routeToPickup && routeToPickup.coords.length >= 2 && (
               <Polyline
@@ -398,7 +415,8 @@ export default function CaptainActiveTripScreen() {
               />
             )
           }
-          {/* مسار الراكب → الوجهة (ذهبي) - Mapbox - يظهر فقط عند توفر المسار الحقيقي */}
+
+          {/* مسار الراكب → الوجهة (ذهبي) */}
           {routeToDropoff && routeToDropoff.coords.length >= 2 && (
             <Polyline
               coordinates={routeToDropoff.coords}
@@ -419,6 +437,40 @@ export default function CaptainActiveTripScreen() {
         <View style={styles.routeLoadingBadge}>
           <ActivityIndicator size="small" color="#FFD700" style={{ marginRight: 6 }} />
           <Text style={styles.routeLoadingText}>جاري تحميل المسار...</Text>
+        </View>
+      )}
+
+      {/* ─── لوحة الملاحة العلوية (التعليمة الحالية) ─── */}
+      {Platform.OS !== "web" && currentInstruction !== "" && (phase === "pickup" || phase === "in_trip") && (
+        <View style={[styles.navInstructionBar, { top: insets.top + 8 }]}>
+          {/* أيقونة الاتجاه */}
+          <View style={styles.navIconBox}>
+            <Text style={styles.navIcon}>
+              {currentInstruction.includes("يمين") || currentInstruction.includes("right") ? "➡️" :
+               currentInstruction.includes("يسار") || currentInstruction.includes("left") ? "⬅️" :
+               currentInstruction.includes("دوار") || currentInstruction.includes("roundabout") ? "🔄" :
+               currentInstruction.includes("وصل") || currentInstruction.includes("destination") ? "🏁" :
+               "⬆️"}
+            </Text>
+          </View>
+          {/* التعليمة والمسافة */}
+          <View style={styles.navTextBox}>
+            <Text style={styles.navInstructionText} numberOfLines={2}>{currentInstruction}</Text>
+            {distanceToNext > 0 && (
+              <Text style={styles.navDistanceText}>
+                {distanceToNext >= 1000
+                  ? `${(distanceToNext / 1000).toFixed(1)} كم`
+                  : `${Math.round(distanceToNext)} م`}
+              </Text>
+            )}
+          </View>
+          {/* المسافة الكلية والوقت */}
+          {remainingKm > 0 && (
+            <View style={styles.navEtaBox}>
+              <Text style={styles.navEtaKm}>{formatDistanceShort(remainingKm)}</Text>
+              <Text style={styles.navEtaMin}>{remainingMin} د</Text>
+            </View>
+          )}
         </View>
       )}
 
@@ -444,7 +496,6 @@ export default function CaptainActiveTripScreen() {
       {phase !== "in_trip" && phase !== "done" && (
         <TouchableOpacity style={[styles.backBtn, { top: insets.top + 8, left: 16 }]} onPress={() => {
           if (phase === "pickup") {
-            // مرحلة "في الطريق للراكب" - يُسمح بالإلغاء مع تحذير
             Alert.alert(
               "⚠️ إلغاء الرحلة",
               "هل تريد إلغاء الرحلة والرجوع؟ سيؤثر ذلك على تقييمك.",
@@ -454,6 +505,7 @@ export default function CaptainActiveTripScreen() {
                   text: "نعم، إلغاء",
                   style: "destructive",
                   onPress: () => {
+                    voiceNav.stop();
                     updateStatus.mutate(
                       { rideId: ride?.id ?? rideId, status: "cancelled", cancelReason: "إلغاء من السائق" },
                       { onSettled: () => router.replace("/captain/home" as any) }
@@ -463,16 +515,16 @@ export default function CaptainActiveTripScreen() {
               ]
             );
           } else if (phase === "arrived") {
-            // مرحلة "وصل وينتظر الراكب" - يُسمح بالإلغاء مع تحذير أقوى
             Alert.alert(
               "⚠️ إلغاء الرحلة",
-              "وصلت لموقع الراكب بالفعل. هل تريد إلغاء الرحلة؟ سيؤثر ذلك على تقييمك بشكل أكبر.",
+              "وصلت لموقع الراكب بالفعل. هل تريد إلغاء الرحلة؟",
               [
                 { text: "لا، انتظر الراكب", style: "cancel" },
                 {
                   text: "نعم، إلغاء",
                   style: "destructive",
                   onPress: () => {
+                    voiceNav.stop();
                     updateStatus.mutate(
                       { rideId: ride?.id ?? rideId, status: "cancelled", cancelReason: "إلغاء من السائق بعد الوصول" },
                       { onSettled: () => router.replace("/captain/home" as any) }
@@ -487,13 +539,13 @@ export default function CaptainActiveTripScreen() {
         </TouchableOpacity>
       )}
 
-      {/* مرحلة in_trip: لا يوجد زر رجوع - الرحلة لا تُلغى بعد ركوب الراكب */}
-
       {/* شريط الحالة */}
-      <View style={[styles.statusBar, { top: insets.top + 8 }]}>
-        <View style={[styles.statusDot, { backgroundColor: config.statusDotColor }]} />
-        <Text style={styles.statusTitle}>{config.title}</Text>
-      </View>
+      {(currentInstruction === "" || phase === "arrived" || phase === "done") && (
+        <View style={[styles.statusBar, { top: insets.top + 8 }]}>
+          <View style={[styles.statusDot, { backgroundColor: config.statusDotColor }]} />
+          <Text style={styles.statusTitle}>{config.title}</Text>
+        </View>
+      )}
 
       {/* لوحة الرحلة السفلية */}
       <View style={styles.tripSheet}>
@@ -528,7 +580,7 @@ export default function CaptainActiveTripScreen() {
                 <Text style={styles.actionIcon}>📞</Text>
               </TouchableOpacity>
             )}
-            {/* زر الشات مع الراكب */}
+            {/* زر الشات */}
             <View style={{ position: "relative" }}>
               <TouchableOpacity
                 style={[styles.actionBtn, { borderColor: "#0a7ea4" }]}
@@ -552,12 +604,16 @@ export default function CaptainActiveTripScreen() {
                 </View>
               )}
             </View>
-            {/* زر الملاحة GPS */}
+            {/* زر الصوت - تشغيل/إيقاف الملاحة الصوتية */}
             <TouchableOpacity
-              style={[styles.actionBtn, { borderColor: "#FFD700" }]}
-              onPress={() => openNavigation(config.navTarget.latitude, config.navTarget.longitude, config.navLabel)}
+              style={[styles.actionBtn, { borderColor: "#22C55E" }]}
+              onPress={() => {
+                if (phase === "pickup" || phase === "in_trip") {
+                  voiceNav.start(config.navLabel);
+                }
+              }}
             >
-              <Text style={styles.actionIcon}>🧭</Text>
+              <Text style={styles.actionIcon}>🔊</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -575,11 +631,20 @@ export default function CaptainActiveTripScreen() {
           </View>
         </View>
 
-        {/* الأجرة والمسافة */}
+        {/* الأجرة والمسافة والوقت */}
         <View style={styles.fareRow}>
           <Text style={styles.fareItem}>💰 {ride?.fare?.toLocaleString("ar-IQ") ?? "—"} دينار</Text>
-          <Text style={styles.fareItem}>📏 {ride?.estimatedDistance?.toFixed(1) ?? "—"} كم</Text>
-          <Text style={styles.fareItem}>⏱ {ride?.estimatedDuration ?? "—"} دقيقة</Text>
+          {remainingKm > 0 ? (
+            <>
+              <Text style={styles.fareItem}>📏 {formatDistanceShort(remainingKm)}</Text>
+              <Text style={styles.fareItem}>⏱ {remainingMin} دقيقة</Text>
+            </>
+          ) : (
+            <>
+              <Text style={styles.fareItem}>📏 {ride?.estimatedDistance?.toFixed(1) ?? "—"} كم</Text>
+              <Text style={styles.fareItem}>⏱ {ride?.estimatedDuration ?? "—"} دقيقة</Text>
+            </>
+          )}
         </View>
 
         {/* شريط تقدم المراحل */}
@@ -615,14 +680,6 @@ export default function CaptainActiveTripScreen() {
           </Text>
         </TouchableOpacity>
 
-        {/* زر الملاحة الكبير */}
-        <TouchableOpacity
-          style={styles.navBtn}
-          onPress={() => openNavigation(config.navTarget.latitude, config.navTarget.longitude, config.navLabel)}
-        >
-          <Text style={styles.navBtnText}>🧭 فتح الملاحة (Google Maps / Waze)</Text>
-        </TouchableOpacity>
-
         <View style={{ height: insets.bottom + 8 }} />
       </View>
     </View>
@@ -654,6 +711,65 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   routeLoadingText: { color: "#FFD700", fontSize: 12, fontWeight: "600" },
+
+  // ─── لوحة الملاحة العلوية ───────────────────────────────────────────────────
+  navInstructionBar: {
+    position: "absolute",
+    left: 12,
+    right: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#1A0533",
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderWidth: 1.5,
+    borderColor: "#FFD700",
+    zIndex: 100,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.5,
+    shadowRadius: 6,
+    elevation: 10,
+    gap: 10,
+  },
+  navIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#2D1B4E",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#FFD700",
+  },
+  navIcon: { fontSize: 22 },
+  navTextBox: { flex: 1 },
+  navInstructionText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "700",
+    lineHeight: 20,
+  },
+  navDistanceText: {
+    color: "#FFD700",
+    fontSize: 13,
+    fontWeight: "600",
+    marginTop: 2,
+  },
+  navEtaBox: {
+    alignItems: "center",
+    backgroundColor: "#2D1B4E",
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: "#3D2070",
+  },
+  navEtaKm: { color: "#FFD700", fontSize: 13, fontWeight: "700" },
+  navEtaMin: { color: "#9B8EC4", fontSize: 11 },
+
+  // ─── باقي الـ styles ─────────────────────────────────────────────────────────
   backBtn: {
     position: "absolute",
     width: 40,
@@ -807,16 +923,6 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   actionMainBtnText: { fontSize: 16, fontWeight: "bold" },
-  navBtn: {
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: "center",
-    marginBottom: 4,
-    backgroundColor: "#2D1B4E",
-    borderWidth: 1,
-    borderColor: "#3D2070",
-  },
-  navBtnText: { color: "#9B8EC4", fontSize: 14 },
   recenterBtn: {
     position: "absolute",
     right: 16,

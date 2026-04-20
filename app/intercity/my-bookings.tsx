@@ -8,7 +8,7 @@ import { useRouter } from "expo-router";
 import { ScreenContainer } from "@/components/screen-container";
 import { trpc } from "@/lib/trpc";
 import { usePassenger } from "@/lib/passenger-context";
-import MapView, { Marker, Polyline, PROVIDER_DEFAULT } from "react-native-maps";
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE, PROVIDER_DEFAULT } from "react-native-maps";
 
 const CITY_COORDS: Record<string, { latitude: number; longitude: number }> = {
   "الموصل": { latitude: 36.3359, longitude: 43.1189 },
@@ -339,7 +339,7 @@ export default function MyIntercityBookingsScreen() {
                     <View style={{ height: 130, borderRadius: 10, overflow: 'hidden', marginBottom: 10 }}>
                       <MapView
                         style={{ flex: 1 }}
-                        provider={PROVIDER_DEFAULT}
+                        provider={PROVIDER_GOOGLE}
                         initialRegion={{ latitude: midLat, longitude: midLng, latitudeDelta: latDelta, longitudeDelta: lngDelta }}
                         scrollEnabled={false}
                         zoomEnabled={false}

@@ -18,7 +18,7 @@ import {
 import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import MapView, { Marker, Circle, Polyline, PROVIDER_DEFAULT } from "react-native-maps";
+import MapView, { Marker, Circle, Polyline, PROVIDER_GOOGLE, PROVIDER_DEFAULT } from "react-native-maps";
 import { useMemo, useEffect as useEffectOsrm } from "react";
 import { useDriver } from "@/lib/driver-context";
 import { useLocation } from "@/hooks/use-location";
@@ -496,10 +496,11 @@ export default function CaptainHomeScreen() {
         <MapView
           ref={mapRef}
           style={styles.map}
-          provider={PROVIDER_DEFAULT}
+          provider={PROVIDER_GOOGLE}
           initialRegion={MOSUL_CENTER}
           showsUserLocation={false}
           showsMyLocationButton={false}
+          showsTraffic={true}
           onPanDrag={() => {
             // عند تحريك الخريطة يدوياً: إيقاف التتبع التلقائي
             setIsFollowingDriver(false);

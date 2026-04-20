@@ -14,7 +14,7 @@ import {
 import { router, useLocalSearchParams } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import MapView, { Marker, Polyline, PROVIDER_DEFAULT } from "react-native-maps";
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE, PROVIDER_DEFAULT } from "react-native-maps";
 import { trpc } from "@/lib/trpc";
 import { fetchOsrmRoute, type OsrmRouteResult, type LatLng } from "@/lib/osrm";
 import {
@@ -542,7 +542,7 @@ export default function TrackingScreen() {
         <MapView
           ref={mapRef}
           style={styles.map}
-          provider={PROVIDER_DEFAULT}
+          provider={PROVIDER_GOOGLE}
           initialRegion={{
             latitude: pickupCoord.latitude,
             longitude: pickupCoord.longitude,

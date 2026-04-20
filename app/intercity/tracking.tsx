@@ -4,7 +4,7 @@ import {
   ActivityIndicator, Linking, Alert, Platform, Animated,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import MapView, { Marker, Polyline, PROVIDER_DEFAULT, AnimatedRegion } from "react-native-maps";
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE, PROVIDER_DEFAULT, AnimatedRegion } from "react-native-maps";
 import { fetchOsrmRoute, type OsrmRouteResult, type LatLng } from "@/lib/osrm";
 import { ScreenContainer } from "@/components/screen-container";
 import { trpc } from "@/lib/trpc";
@@ -257,7 +257,7 @@ export default function IntercityTrackingScreen() {
         <MapView
           ref={mapRef}
           style={styles.map}
-          provider={PROVIDER_DEFAULT}
+          provider={PROVIDER_GOOGLE}
           initialRegion={defaultRegion}
           showsUserLocation
           showsMyLocationButton={false}
