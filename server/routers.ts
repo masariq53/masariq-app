@@ -159,6 +159,9 @@ import {
   getActiveDiscountForPassenger,
   calculateDiscountedFare,
   consumeFreeRide,
+  saveAgentPushToken,
+  getAgentPushToken,
+  sendPushNotification,
 } from "./db";
 import { storagePut } from "./storage";
 import { transcribeAudio } from "./_core/voiceTranscription";
@@ -3391,6 +3394,14 @@ export const appRouter = router({
         return getAgentByPassengerId(input.passengerId);
       }),
 
+    // حفظ push token للوكيل
+    savePushToken: publicProcedure
+      .input(z.object({ agentId: z.number(), token: z.string() }))
+      .mutation(async ({ input }) => {
+        await saveAgentPushToken(input.agentId, input.token);
+        return { success: true };
+      }),
+
     // جلب قائمة الوكلاء (للإدارة)
     getAll: publicProcedure
       .input(z.object({ status: z.string().optional() }))
@@ -3406,6 +3417,10 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => {
         await updateAgentStatus(input.agentId, "approved", input.adminNotes);
+        try {
+          const agentToken = await getAgentPushToken(input.agentId);
+          if (agentToken) await sendPushNotification(agentToken, "✅ تم قبول حسابك كوكيل", "مرحباً بك! تم اعتماد حسابك كوكيل في مسار", { type: "agent_approved" });
+        } catch (e) { console.warn("[Push] agent approve notify failed:", e); }
         return { success: true };
       }),
 
@@ -3418,6 +3433,10 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => {
         await updateAgentStatus(input.agentId, "rejected", input.adminNotes, input.rejectionReason);
+        try {
+          const agentToken = await getAgentPushToken(input.agentId);
+          if (agentToken) await sendPushNotification(agentToken, "❌ تم رفض طلبك كوكيل", input.rejectionReason || "للمزيد من التفاصيل تواصل مع الدعم الفني", { type: "agent_rejected" });
+        } catch (e) { console.warn("[Push] agent reject notify failed:", e); }
         return { success: true };
       }),
 
@@ -3429,6 +3448,10 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => {
         await updateAgentStatus(input.agentId, "suspended", input.adminNotes);
+        try {
+          const agentToken = await getAgentPushToken(input.agentId);
+          if (agentToken) await sendPushNotification(agentToken, "⚠️ تم تعليق حسابك", "تم تعليق حساب الوكيل الخاص بك. تواصل مع الإدارة", { type: "agent_suspended" });
+        } catch (e) { console.warn("[Push] agent suspend notify failed:", e); }
         return { success: true };
       }),
 
@@ -3562,6 +3585,25 @@ export const appRouter = router({
           }
         }
         const parcel = await createParcel({ ...parcelData, price: parcelFinalPrice });
+        // إشعار الكباتن المتاحين عند إنشاء طرد فوري
+        if (input.deliveryType === "instant") {
+          try {
+            const nearbyDriversForParcel = await getNearbyDrivers(
+              input.pickupLat ?? 36.335, input.pickupLng ?? 43.119, 15
+            );
+            for (const drv of nearbyDriversForParcel.slice(0, 10)) {
+              const drvToken = await getDriverPushToken(drv.id);
+              if (drvToken) {
+                await sendPushNotification(
+                  drvToken,
+                  "📦 طرد جديد قريب منك",
+                  `من: ${input.pickupAddress} → إلى: ${input.dropoffAddress}`,
+                  { type: "new_parcel", parcelId: parcel.id }
+                );
+              }
+            }
+          } catch (e) { console.warn("[Push] parcel notify drivers failed:", e); }
+        }
         // استهلاك الخصم
         if (parcelAppliedDiscountId !== null) {
           const parcelActiveDiscountForConsume = await getActiveDiscountForPassenger(input.senderId, "parcel");
@@ -3601,6 +3643,21 @@ export const appRouter = router({
           return { success: false, reason: "insufficient_balance", balance: balanceCheck.balance, minimum: balanceCheck.minRequired };
         }
         await acceptParcel(input.parcelId, input.driverId, input.price);
+        // إشعار الراكب عند قبول الكابتن للطرد
+        try {
+          const acceptedParcel = await getParcelById(input.parcelId);
+          if (acceptedParcel?.senderId) {
+            const senderToken = await getPassengerPushToken(acceptedParcel.senderId);
+            if (senderToken) {
+              await sendPushNotification(
+                senderToken,
+                "🚚 تم قبول طردك",
+                "سائق على الطريق إليك لالتقاط طردك",
+                { type: "parcel_accepted", parcelId: input.parcelId }
+              );
+            }
+          }
+        } catch (e) { console.warn("[Push] parcel accept notify failed:", e); }
         return { success: true };
       }),
 
@@ -3613,6 +3670,37 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => {
         await updateParcelStatus(input.parcelId, input.status, input.updatedBy, input.note);
+        // إشعار الراكب بتغيير حالة الطرد
+        try {
+          const statusParcel = await getParcelById(input.parcelId);
+          if (statusParcel?.senderId) {
+            const statusSenderToken = await getPassengerPushToken(statusParcel.senderId);
+            if (statusSenderToken) {
+              const statusTitles: Record<string, string> = {
+                picked_up: "📦 تم التقاط طردك",
+                in_transit: "🚚 طردك في الطريق",
+                delivered: "✅ تم تسليم طردك بنجاح",
+                cancelled: "❌ تم إلغاء طردك",
+                returned: "🔄 تم إعادة طردك",
+              };
+              const statusBodies: Record<string, string> = {
+                picked_up: "السائق التقط طردك وهو في طريقه للتسليم",
+                in_transit: "طردك في الطريق إلى المستلم",
+                delivered: "وصل طردك بسلامة إلى المستلم",
+                cancelled: "تم إلغاء طردك. يرجى التواصل مع الدعم للمزيد",
+                returned: "تم إعادة طردك إلى نقطة الالتقاط",
+              };
+              const notifTitle = statusTitles[input.status];
+              const notifBody = statusBodies[input.status];
+              if (notifTitle) {
+                await sendPushNotification(
+                  statusSenderToken, notifTitle, notifBody,
+                  { type: "parcel_status", parcelId: input.parcelId, status: input.status }
+                );
+              }
+            }
+          }
+        } catch (e) { console.warn("[Push] parcel status notify failed:", e); }
         // خصم عمولة الشركة عند تسليم الطرد
         if (input.status === "delivered") {
           try {

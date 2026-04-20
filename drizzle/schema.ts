@@ -432,6 +432,8 @@ export const agents = mysqlTable("agents", {
   // إجمالي عمليات الشحن
   totalRecharges: int("totalRecharges").default(0).notNull(),
   totalRechargeAmount: decimal("totalRechargeAmount", { precision: 15, scale: 2 }).default("0").notNull(),
+  // إشعارات
+  pushToken: varchar("pushToken", { length: 500 }),
   // ملاحظات الإدارة
   adminNotes: text("adminNotes"),
   approvedAt: timestamp("approvedAt"),

@@ -4045,3 +4045,30 @@ export async function consumeFreeRide(discountId: number) {
     await db.update(userDiscounts).set({ isActive: false }).where(eq(userDiscounts.id, discountId));
   }
 }
+
+
+// ─── Agent Push Token ─────────────────────────────────────────────────────────
+
+export async function saveAgentPushToken(agentId: number, token: string) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(agents).set({ pushToken: token }).where(eq(agents.id, agentId));
+}
+
+export async function getAgentPushToken(agentId: number): Promise<string | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const [agent] = await db.select({ pushToken: agents.pushToken }).from(agents).where(eq(agents.id, agentId)).limit(1);
+  return agent?.pushToken ?? null;
+}
+
+// ─── Helper: إرسال إشعار Push مساعد ─────────────────────────────────────────
+
+export async function sendPushNotification(token: string, title: string, body: string, data?: Record<string, unknown>) {
+  if (!token || !token.startsWith("ExponentPushToken[")) return;
+  fetch("https://exp.host/--/api/v2/push/send", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Accept": "application/json" },
+    body: JSON.stringify({ to: token, sound: "default", title, body, data: data ?? {}, priority: "high" }),
+  }).catch((err) => console.warn("[Push] Failed:", err));
+}
