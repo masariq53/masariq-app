@@ -138,15 +138,21 @@ export default function CaptainActiveTripScreen() {
     );
   }, [isRealLocation, coords.latitude, coords.longitude, isFollowingDriver]);
 
-  // جلب مسار الراكب → الوجهة (ذهبي) - يُعاد جلبه عند بدء الرحلة أيضاً
+  // جلب مسار الراكب → الوجهة (ذهبي) - يُجلب عند أول تحميل وعند بدء الرحلة
   const dropoffRouteFetchedRef = useRef(false);
   useEffect(() => {
     if (!ride) return;
-    // جلب عند أول تحميل أو عند بدء الرحلة
-    if (dropoffRouteFetchedRef.current && phase !== "in_trip") return;
     const pickup: LatLng = { latitude: ride.pickupLat, longitude: ride.pickupLng };
     const dropoff: LatLng = { latitude: ride.dropoffLat, longitude: ride.dropoffLng };
     setIsLoadingRoute(true);
+    // عند الانتقال لـ in_trip، أعد الجلب دائماً بإعادة ضبط الـ ref
+    if (phase === "in_trip") {
+      dropoffRouteFetchedRef.current = false;
+    }
+    if (dropoffRouteFetchedRef.current) {
+      setIsLoadingRoute(false);
+      return;
+    }
     fetchOsrmRoute(pickup, dropoff).then((res) => {
       if (res) {
         setRouteToDropoff(res);
@@ -160,7 +166,7 @@ export default function CaptainActiveTripScreen() {
         }
       }
     }).finally(() => setIsLoadingRoute(false));
-  }, [ride?.id, phase === "in_trip"]);  // إعادة الجلب عند الانتقال لـ in_trip
+  }, [ride?.id, phase]);  // إعادة الجلب عند أي تغيير في المرحلة
 
   // جلب/تحديث مسار السائق → الراكب (أزرق) + تفعيل الملاحة الصوتية
   useEffect(() => {

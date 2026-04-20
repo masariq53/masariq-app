@@ -1,9 +1,9 @@
 /**
  * lib/places.ts
  *
- * Google Places API (New) + Geocoding API
- * Primary: Places API (New) - POST /v1/places:autocomplete
- * Fallback: Nominatim (OpenStreetMap)
+ * Google Places API - Autocomplete + Details
+ * يستخدم Legacy Autocomplete API (GET) لأنه يعمل بشكل موثوق على iOS/Android
+ * مع Nominatim كـ fallback
  */
 
 import { GOOGLE_MAPS_API_KEY } from "./config";
@@ -16,7 +16,7 @@ export type PlaceResult = {
   longitude: number;
 };
 
-// ─── Google Places API (New) - Autocomplete ───────────────────────────────────
+// ─── Google Places Autocomplete + Details ────────────────────────────────────
 
 export async function searchGooglePlaces(
   query: string,
@@ -24,116 +24,127 @@ export async function searchGooglePlaces(
   userLng?: number
 ): Promise<PlaceResult[]> {
   if (!query || query.trim().length < 2) return [];
+
+  // إذا ما في API Key استخدم Nominatim مباشرة
   if (!GOOGLE_MAPS_API_KEY) {
-    console.warn("[places] Google Maps API Key غير موجود");
     return searchNominatim(query, userLat, userLng);
   }
 
   try {
-    const body: Record<string, any> = {
-      input: query,
-      languageCode: "ar",
-      includedRegionCodes: ["iq"],
-    };
+    // بناء URL للـ Autocomplete
+    let url =
+      `https://maps.googleapis.com/maps/api/place/autocomplete/json` +
+      `?input=${encodeURIComponent(query)}` +
+      `&language=ar` +
+      `&components=country:iq` +
+      `&key=${GOOGLE_MAPS_API_KEY}`;
 
-    // إضافة location bias حول موقع المستخدم
+    // إضافة location bias إذا عندنا موقع المستخدم
     if (userLat && userLng) {
-      body.locationBias = {
-        circle: {
-          center: { latitude: userLat, longitude: userLng },
-          radius: 50000,
-        },
-      };
+      url += `&location=${userLat},${userLng}&radius=50000`;
     }
 
-    const res = await fetch("https://places.googleapis.com/v1/places:autocomplete", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Goog-Api-Key": GOOGLE_MAPS_API_KEY,
-      },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(8000),
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeoutId);
 
     if (!res.ok) {
-      console.warn("[places] Places API (New) HTTP", res.status);
+      console.warn("[places] Autocomplete HTTP", res.status);
       return searchNominatim(query, userLat, userLng);
     }
 
     const data = await res.json() as {
-      suggestions?: Array<{
-        placePrediction?: {
-          placeId: string;
-          text: { text: string };
-          structuredFormat?: {
-            mainText: { text: string };
-            secondaryText?: { text: string };
-          };
+      status: string;
+      predictions?: Array<{
+        place_id: string;
+        description: string;
+        structured_formatting?: {
+          main_text: string;
+          secondary_text?: string;
         };
       }>;
-      error?: { message: string };
+      error_message?: string;
     };
 
-    if (data.error) {
-      console.warn("[places] Places API (New) error:", data.error.message);
+    if (data.status !== "OK" && data.status !== "ZERO_RESULTS") {
+      console.warn("[places] Autocomplete status:", data.status, data.error_message);
       return searchNominatim(query, userLat, userLng);
     }
 
-    if (!data.suggestions?.length) return [];
+    if (!data.predictions?.length) return [];
 
-    // جلب تفاصيل (إحداثيات) لأول 6 نتائج
-    const results = await Promise.all(
-      data.suggestions.slice(0, 6).map(async (s) => {
-        const pred = s.placePrediction;
-        if (!pred) return null;
-        const detail = await getPlaceDetailsNew(pred.placeId);
-        if (!detail) return null;
-        const name = pred.structuredFormat?.mainText?.text || pred.text.text.split("،")[0];
-        const address = pred.structuredFormat?.secondaryText?.text || pred.text.text;
-        return {
-          id: pred.placeId,
-          name,
-          address,
-          latitude: detail.lat,
-          longitude: detail.lng,
-        } as PlaceResult;
-      })
-    );
+    // جلب إحداثيات أول 5 نتائج بشكل متتالي (مو متوازي) لتجنب rate limit
+    const results: PlaceResult[] = [];
+    for (const pred of data.predictions.slice(0, 5)) {
+      const coords = await getPlaceCoords(pred.place_id);
+      if (!coords) continue;
 
-    return results.filter((r): r is PlaceResult => r !== null);
-  } catch (err) {
-    console.warn("[places] Places API (New) exception:", err);
+      const name = pred.structured_formatting?.main_text || pred.description.split("،")[0];
+      const address = pred.structured_formatting?.secondary_text || pred.description;
+
+      results.push({
+        id: pred.place_id,
+        name,
+        address,
+        latitude: coords.lat,
+        longitude: coords.lng,
+      });
+    }
+
+    if (results.length === 0) {
+      return searchNominatim(query, userLat, userLng);
+    }
+
+    return results;
+  } catch (err: any) {
+    if (err?.name === "AbortError") {
+      console.warn("[places] Autocomplete timeout");
+    } else {
+      console.warn("[places] Autocomplete error:", err);
+    }
     return searchNominatim(query, userLat, userLng);
   }
 }
 
-// ─── Google Places API (New) - Place Details ─────────────────────────────────
+// ─── جلب إحداثيات مكان بـ place_id ──────────────────────────────────────────
 
-async function getPlaceDetailsNew(placeId: string): Promise<{ lat: number; lng: number } | null> {
+async function getPlaceCoords(placeId: string): Promise<{ lat: number; lng: number } | null> {
   try {
-    const res = await fetch(
-      `https://places.googleapis.com/v1/places/${placeId}?fields=location`,
-      {
-        headers: {
-          "X-Goog-Api-Key": GOOGLE_MAPS_API_KEY,
-          "X-Goog-FieldMask": "location",
-        },
-        signal: AbortSignal.timeout(6000),
-      }
-    );
+    const url =
+      `https://maps.googleapis.com/maps/api/place/details/json` +
+      `?place_id=${placeId}` +
+      `&fields=geometry` +
+      `&key=${GOOGLE_MAPS_API_KEY}`;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 6000);
+
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeoutId);
+
     if (!res.ok) return null;
+
     const data = await res.json() as {
-      location?: { latitude: number; longitude: number };
+      status: string;
+      result?: {
+        geometry?: {
+          location?: { lat: number; lng: number };
+        };
+      };
     };
-    if (!data.location) return null;
-    return { lat: data.location.latitude, lng: data.location.longitude };
+
+    const loc = data.result?.geometry?.location;
+    if (!loc) return null;
+
+    return { lat: loc.lat, lng: loc.lng };
   } catch {
     return null;
   }
 }
 
-// ─── Google Reverse Geocoding (Geocoding API - لا يزال يعمل) ─────────────────
+// ─── Google Reverse Geocoding ─────────────────────────────────────────────────
 
 export async function reverseGeocodeGoogle(lat: number, lng: number): Promise<string> {
   if (!GOOGLE_MAPS_API_KEY) return reverseGeocodeNominatim(lat, lng);
@@ -145,7 +156,12 @@ export async function reverseGeocodeGoogle(lat: number, lng: number): Promise<st
       `&language=ar` +
       `&key=${GOOGLE_MAPS_API_KEY}`;
 
-    const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 6000);
+
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeoutId);
+
     if (!res.ok) return reverseGeocodeNominatim(lat, lng);
 
     const data = await res.json() as {
@@ -198,10 +214,16 @@ async function searchNominatim(
       viewboxParam = "&viewbox=38.7945,29.0617,48.5756,37.3743&bounded=1";
     }
     const url = `https://nominatim.openstreetmap.org/search?q=${encoded}&format=json&limit=6&addressdetails=1&accept-language=ar&countrycodes=iq${viewboxParam}`;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+
     const res = await fetch(url, {
       headers: { "User-Agent": "MasarApp/1.0" },
-      signal: AbortSignal.timeout(8000),
+      signal: controller.signal,
     });
+    clearTimeout(timeoutId);
+
     if (!res.ok) return [];
     const data = await res.json() as Array<{
       place_id: number;
@@ -230,10 +252,16 @@ async function searchNominatim(
 async function reverseGeocodeNominatim(lat: number, lng: number): Promise<string> {
   try {
     const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=ar`;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 6000);
+
     const res = await fetch(url, {
       headers: { "User-Agent": "MasarApp/1.0" },
-      signal: AbortSignal.timeout(6000),
+      signal: controller.signal,
     });
+    clearTimeout(timeoutId);
+
     if (!res.ok) return "";
     const data = await res.json();
     const addr = data.address;
