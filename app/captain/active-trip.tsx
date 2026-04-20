@@ -27,11 +27,13 @@ import {
   Linking,
   ActivityIndicator,
   Alert,
+  Animated,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from "react-native-maps";
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE, AnimatedRegion } from "react-native-maps";
+import Svg, { Path, Circle } from "react-native-svg";
 import { useLocation } from "@/hooks/use-location";
 import { trpc } from "@/lib/trpc";
 import { useDriver } from "@/lib/driver-context";
@@ -125,6 +127,17 @@ export default function CaptainActiveTripScreen() {
   const [isFollowingDriver, setIsFollowingDriver] = useState(true);
   const firstLoadRef = useRef(true);
 
+  // AnimatedRegion لحركة سلسة للماركر
+  const driverAnimCoord = useRef(
+    new AnimatedRegion({
+      latitude: 36.3392,
+      longitude: 43.1289,
+      latitudeDelta: 0,
+      longitudeDelta: 0,
+    })
+  ).current;
+  const markerRef = useRef<any>(null);
+
   // إعادة الحساب 
   const isReroutingRef = useRef(false);
 
@@ -184,9 +197,9 @@ export default function CaptainActiveTripScreen() {
         mapRef.current?.animateCamera({
           center: { latitude: pickupCoord.latitude, longitude: pickupCoord.longitude },
           heading: heading ?? 0,
-          pitch: 60,
-          zoom: 17,
-          altitude: 300,
+          pitch: 70,
+          zoom: 18.5,
+          altitude: 150,
         }, { duration: 1500 });
       }, 500);
     }
@@ -235,28 +248,28 @@ export default function CaptainActiveTripScreen() {
       // المسار الأزرق: من موقع الكابتن الحالي → موقع الراكب
       fetchRoute(driverPos, realPickup, true);
       voiceNav.start(ride.pickupAddress || "موقع الراكب");
-      // استخدام animateCamera مع 3D عند بدء المرحلة
+      // كاميرا خلف السيارة
       setTimeout(() => {
         mapRef.current?.animateCamera({
           center: driverPos,
           heading: heading ?? 0,
-          pitch: 60,
-          zoom: 17,
-          altitude: 300,
+          pitch: 70,
+          zoom: 18.5,
+          altitude: 150,
         }, { duration: 1000 });
       }, 300);
     } else if (phase === "in_trip") {
       // المسار البنفسجي: من موقع الكابتن الحالي → الوجهة (ليس من موقع الراكب)
       fetchRoute(driverPos, realDest, false);
       voiceNav.start(ride.dropoffAddress || "الوجهة");
-      // استخدام animateCamera مع 3D عند بدء الرحلة
+      // كاميرا خلف السيارة
       setTimeout(() => {
         mapRef.current?.animateCamera({
           center: driverPos,
           heading: heading ?? 0,
-          pitch: 60,
-          zoom: 17,
-          altitude: 300,
+          pitch: 70,
+          zoom: 18.5,
+          altitude: 150,
         }, { duration: 1000 });
       }, 300);
     }
@@ -297,17 +310,31 @@ export default function CaptainActiveTripScreen() {
     }
   }, [coords.latitude, coords.longitude, isRealLocation]);
 
-  // تتبع الكابتن على الخريطة - 3D مثل Waze 
+  // تحديث AnimatedRegion عند تحرك الكابتن
+  useEffect(() => {
+    const displayCoord = snappedCoords ?? { latitude: coords.latitude, longitude: coords.longitude };
+    driverAnimCoord.timing({
+      latitude: displayCoord.latitude,
+      longitude: displayCoord.longitude,
+      latitudeDelta: 0,
+      longitudeDelta: 0,
+      toValue: 0,
+      duration: 800,
+      useNativeDriver: false,
+    }).start();
+  }, [coords.latitude, coords.longitude, snappedCoords]);
+
+  // تتبع الكابتن على الخريطة - كاميرا خلف السيارة مثل Google Maps Navigation 
   useEffect(() => {
     if (!isFollowingDriver || !mapRef.current) return;
     const displayCoord = snappedCoords ?? { latitude: coords.latitude, longitude: coords.longitude };
     mapRef.current.animateCamera({
       center: displayCoord,
       heading: heading ?? 0,
-      pitch: 60,        // 3D tilt مثل Waze
-      zoom: 17,
-      altitude: 300,
-    }, { duration: 500 });
+      pitch: 70,         // زاوية عالية = منظور خلف السيارة
+      zoom: 18.5,        // زوم أكبر لرؤية الطريق بوضوح
+      altitude: 150,     // ارتفاع منخفض لمنظور قريب
+    }, { duration: 400 });
   }, [coords.latitude, coords.longitude, snappedCoords, heading, isFollowingDriver]);
 
   // ETA ديناميكي كل 30 ثانية 
@@ -362,9 +389,9 @@ export default function CaptainActiveTripScreen() {
       mapRef.current?.animateCamera({
         center: pickupCoord,
         heading: heading ?? 0,
-        pitch: 60,
-        zoom: 18,
-        altitude: 200,
+        pitch: 70,
+        zoom: 18.5,
+        altitude: 150,
       }, { duration: 800 });
       updateStatus.mutate(
         { rideId: actualRideId, status: "driver_arrived" },
@@ -502,12 +529,41 @@ export default function CaptainActiveTripScreen() {
           showsBuildings={true}
           onPanDrag={() => setIsFollowingDriver(false)}
         >
-          {/* موقع الكابتن - مثبّت على الطريق */}
-          <Marker coordinate={displayCoord} anchor={{ x: 0.5, y: 0.5 }} flat rotation={heading ?? 0}>
-            <View style={styles.driverMarker}>
-              <Text style={{ fontSize: 28 }}>🚗</Text>
+          {/* موقع الكابتن - سيارة احترافية مع AnimatedRegion */}
+          <Marker.Animated
+            ref={markerRef}
+            coordinate={driverAnimCoord as any}
+            anchor={{ x: 0.5, y: 0.7 }}
+            flat
+            rotation={heading ?? 0}
+            tracksViewChanges={false}
+          >
+            <View style={styles.driverMarkerContainer}>
+              {/* ظل تحت السيارة */}
+              <View style={styles.driverMarkerShadow} />
+              {/* سيارة SVG احترافية */}
+              <Svg width={44} height={44} viewBox="0 0 44 44">
+                {/* جسم السيارة */}
+                <Path
+                  d="M22 4 C18 4 10 8 9 16 L8 28 C8 30 9 32 11 33 L11 37 C11 39 13 40 15 40 L17 40 C19 40 20 39 20 37 L20 36 L24 36 L24 37 C24 39 25 40 27 40 L29 40 C31 40 33 39 33 37 L33 33 C35 32 36 30 36 28 L35 16 C34 8 26 4 22 4 Z"
+                  fill="#FFD700"
+                  stroke="#1A0533"
+                  strokeWidth={1.5}
+                />
+                {/* زجاج أمامي */}
+                <Path
+                  d="M14 14 C14 12 15 11 17 11 L27 11 C29 11 30 12 30 14 L30 20 C30 21 29 22 28 22 L16 22 C15 22 14 21 14 20 Z"
+                  fill="#1A0533"
+                  opacity={0.7}
+                />
+                {/* عجلات */}
+                <Circle cx={14} cy={30} r={4} fill="#1A0533" />
+                <Circle cx={30} cy={30} r={4} fill="#1A0533" />
+                <Circle cx={14} cy={30} r={2} fill="#555" />
+                <Circle cx={30} cy={30} r={2} fill="#555" />
+              </Svg>
             </View>
-          </Marker>
+          </Marker.Animated>
 
           {/* موقع الراكب */}
           <Marker coordinate={pickupCoord} title="موقع الراكب">
@@ -635,9 +691,9 @@ export default function CaptainActiveTripScreen() {
             mapRef.current?.animateCamera({
               center: displayCoord,
               heading: heading ?? 0,
-              pitch: 60,
-              zoom: 17,
-              altitude: 300,
+              pitch: 70,
+              zoom: 18.5,
+              altitude: 150,
             }, { duration: 600 });
           }}
         >
@@ -896,6 +952,15 @@ const styles = StyleSheet.create({
   backBtnText: { color: "#FFD700", fontSize: 18, fontWeight: "bold" },
 
   driverMarker: { alignItems: "center" },
+  driverMarkerContainer: { alignItems: "center", justifyContent: "center" },
+  driverMarkerShadow: {
+    position: "absolute",
+    bottom: -4,
+    width: 28,
+    height: 8,
+    borderRadius: 14,
+    backgroundColor: "rgba(0,0,0,0.35)",
+  },
   pickupMarker: { alignItems: "center" },
   destMarker: { alignItems: "center" },
 
