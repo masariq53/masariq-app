@@ -35,8 +35,8 @@ function smoothHeading(prev: number | null, next: number): number {
   let diff = next - prev;
   if (diff > 180) diff -= 360;
   if (diff < -180) diff += 360;
-  // تنعيم بنسبة 30% (قيمة منخفضة = أكثر سلاسة)
-  return (prev + diff * 0.3 + 360) % 360;
+  // تنعيم بنسبة 50% - توازن بين السلاسة والاستجابة السريعة
+  return (prev + diff * 0.5 + 360) % 360;
 }
 
 export function useLocation(): LocationState {
@@ -147,8 +147,8 @@ export function useLocation(): LocationState {
         const subscription = await Location.watchPositionAsync(
           {
             accuracy: Location.Accuracy.BestForNavigation,
-            timeInterval: 1000,    // تحديث كل 1 ثانية للتتبع السلس
-            distanceInterval: 3,   // أو عند تحرك 3 أمتار
+            timeInterval: 500,     // تحديث كل 500ms للتتبع اللحظي مثل Waze
+            distanceInterval: 1,   // أو عند تحرك 1 متر
           },
           (location) => {
             const newCoords = {

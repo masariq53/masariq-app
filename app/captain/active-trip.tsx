@@ -54,7 +54,7 @@ const STATUS_TO_PHASE: Record<string, TripPhase> = {
 
 const REROUTE_THRESHOLD_M = 50; // إعادة حساب المسار عند انحراف > 50م
 const ETA_UPDATE_INTERVAL_MS = 30_000;
-const SNAP_BUFFER_SIZE = 4;
+const SNAP_BUFFER_SIZE = 2; // تحديث snap أسرع - كل نقطتين GPS
 
 // مساعدات 
 
@@ -73,6 +73,38 @@ function haversineM(a: LatLng, b: LatLng): number {
 function distanceToPolyline(point: LatLng, polyline: LatLng[]): number {
   if (!polyline.length) return Infinity;
   return Math.min(...polyline.map((p) => haversineM(point, p)));
+}
+
+// اختيار أفضل نقطة snap مع مراعاة اتجاه الحركة لتجنب القفز للطريق المقابل
+function pickBestSnappedPoint(snapped: LatLng[], current: LatLng, heading: number | null): LatLng {
+  if (snapped.length === 1) return snapped[0];
+  if (heading == null) return snapped[snapped.length - 1];
+
+  // حساب الاتجاه من الموقع الحالي لكل نقطة snap
+  // نختار النقطة التي اتجاهها أقرب لاتجاه الحركة الحالي
+  const headingRad = (heading * Math.PI) / 180;
+  const hx = Math.sin(headingRad);
+  const hy = Math.cos(headingRad);
+
+  let best = snapped[0];
+  let bestScore = -Infinity;
+
+  for (const pt of snapped) {
+    const dx = pt.longitude - current.longitude;
+    const dy = pt.latitude - current.latitude;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    if (len === 0) continue;
+    // dot product: كلما كان أعلى كلما كان الاتجاه أقرب
+    const dot = (dx / len) * hx + (dy / len) * hy;
+    // نطرح المسافة لتفضيل النقاط القريبة
+    const dist = haversineM(current, pt);
+    const score = dot * 2 - dist / 50; // وزن الاتجاه ضعف وزن المسافة
+    if (score > bestScore) {
+      bestScore = score;
+      best = pt;
+    }
+  }
+  return best;
 }
 
 function formatEta(minutes: number): string {
@@ -277,25 +309,28 @@ export default function CaptainActiveTripScreen() {
     }
   }, [phase, ride?.id, ride?.pickupLat, ride?.pickupLng, coords.latitude, coords.longitude]);
 
-  // snap-to-road + إعادة حساب المسار عند تحرك الكابتن 
+  // snap-to-road في الخلفية + إعادة حساب المسار عند تحرك الكابتن
   useEffect(() => {
     if (!isRealLocation) return;
     const current: LatLng = { latitude: coords.latitude, longitude: coords.longitude };
 
-    // تراكم نقاط snap-to-road
+    // تحديث الملاحظة الصوتية فوراً
+    voiceNav.onLocationUpdate(current);
+
+    // snap-to-road في الخلفية فقط (لا يؤخر تحديث السهم)
+    // نتراكم نقطة واحدة فقط للتحقق من الطريق الصحيح
     snapBufferRef.current.push(current);
     if (snapBufferRef.current.length >= SNAP_BUFFER_SIZE) {
       const buffer = [...snapBufferRef.current];
       snapBufferRef.current = [];
       snapToRoads(buffer).then((snapped) => {
         if (snapped.length > 0) {
-          setSnappedCoords(snapped[snapped.length - 1]);
+          // اختيار أقرب نقطة في نفس اتجاه الحركة لتجنب القفز للطريق المقابل
+          const bestSnap = pickBestSnappedPoint(snapped, current, heading);
+          setSnappedCoords(bestSnap);
         }
       }).catch(() => {});
     }
-
-    // تحديث الملاحة الصوتية
-    voiceNav.onLocationUpdate(current);
 
     // إعادة حساب المسار عند الانحراف
     if (isReroutingRef.current || !ride) return;
@@ -313,32 +348,46 @@ export default function CaptainActiveTripScreen() {
     }
   }, [coords.latitude, coords.longitude, isRealLocation]);
 
-  // تحديث AnimatedRegion عند تحرك الكابتن
+  // تحديث AnimatedRegion - فوري من GPS مباشرة للسلاسة اللحظية
   useEffect(() => {
-    const displayCoord = snappedCoords ?? { latitude: coords.latitude, longitude: coords.longitude };
+    // استخدام GPS مباشرة لتحديث فوري بدون انتظار snap
     driverAnimCoord.timing({
-      latitude: displayCoord.latitude,
-      longitude: displayCoord.longitude,
+      latitude: coords.latitude,
+      longitude: coords.longitude,
       latitudeDelta: 0,
       longitudeDelta: 0,
       toValue: 0,
-      duration: 800,
+      duration: 300, // سريع وسلس - مثل Waze
       useNativeDriver: false,
     }).start();
-  }, [coords.latitude, coords.longitude, snappedCoords]);
+  }, [coords.latitude, coords.longitude]);
 
-  // تتبع الكابتن على الخريطة - كاميرا خلف السيارة مثل Google Maps Navigation 
+  // تحديث الكاميرا باستخدام snap إذا توفر (snapshot أكثر دقة)
+  useEffect(() => {
+    if (!snappedCoords) return;
+    driverAnimCoord.timing({
+      latitude: snappedCoords.latitude,
+      longitude: snappedCoords.longitude,
+      latitudeDelta: 0,
+      longitudeDelta: 0,
+      toValue: 0,
+      duration: 600,
+      useNativeDriver: false,
+    }).start();
+  }, [snappedCoords]);
+
+  // تتبع الكابتن على الخريطة - كاميرا خلف السيارة مثل Google Maps Navigation
   useEffect(() => {
     if (!isFollowingDriver || !mapRef.current) return;
-    const displayCoord = snappedCoords ?? { latitude: coords.latitude, longitude: coords.longitude };
+    // استخدام GPS مباشرة لتحديث فوري بدون انتظار snap
     mapRef.current.animateCamera({
-      center: displayCoord,
+      center: { latitude: coords.latitude, longitude: coords.longitude },
       heading: heading ?? 0,
-      pitch: 70,         // زاوية عالية = منظور خلف السيارة
-      zoom: 18.5,        // زوم أكبر لرؤية الطريق بوضوح
-      altitude: 150,     // ارتفاع منخفض لمنظور قريب
-    }, { duration: 400 });
-  }, [coords.latitude, coords.longitude, snappedCoords, heading, isFollowingDriver]);
+      pitch: 70,
+      zoom: 18.5,
+      altitude: 150,
+    }, { duration: 250 }); // سريع وسلس مثل Waze
+  }, [coords.latitude, coords.longitude, heading, isFollowingDriver]);
 
   // ETA ديناميكي كل 30 ثانية 
   useEffect(() => {
@@ -528,8 +577,9 @@ export default function CaptainActiveTripScreen() {
           showsUserLocation={false}
           showsMyLocationButton={false}
           showsTraffic={true}
-          showsCompass={true}
-          showsBuildings={true}
+          showsCompass={false}
+          showsBuildings={false}
+          showsIndoorLevelPicker={false}
           onPanDrag={() => setIsFollowingDriver(false)}
         >
           {/* موقع الكابتن - سهم Waze احترافي */}
