@@ -130,7 +130,10 @@ async function fetchGoogleDirections(from: LatLng, to: LatLng): Promise<OsrmRout
     `&key=${GOOGLE_MAPS_API_KEY}`;
 
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(12000) });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 12000);
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeoutId);
     if (!res.ok) { console.warn("[directions] Google HTTP", res.status); return null; }
 
     const data = await res.json() as {
@@ -200,7 +203,10 @@ async function fetchMapboxDirect(from: LatLng, to: LatLng): Promise<OsrmRouteRes
     `?access_token=${MAPBOX_TOKEN}&geometries=geojson&overview=full`;
 
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(12000) });
+    const controller2 = new AbortController();
+    const timeoutId2 = setTimeout(() => controller2.abort(), 12000);
+    const res = await fetch(url, { signal: controller2.signal });
+    clearTimeout(timeoutId2);
     if (!res.ok) { console.warn("[osrm] Mapbox HTTP", res.status); return null; }
 
     const data = await res.json() as {

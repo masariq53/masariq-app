@@ -168,16 +168,18 @@ export default function CaptainActiveTripScreen() {
     }).finally(() => setIsLoadingRoute(false));
   }, [ride?.id, phase]);  // إعادة الجلب عند أي تغيير في المرحلة
 
-  // جلب/تحديث مسار السائق → الراكب (أزرق) + تفعيل الملاحة الصوتية
+  // جلب/تحديث مسار السائق → الراكب (أزرق)
+  // يُجلب فوراً عند تحميل الشاشة وعند تغير الموقع بمقدار كبير (50م)
   useEffect(() => {
     if (!ride || (phase !== "pickup" && phase !== "arrived")) return;
+    if (!isRealLocation && coords.latitude === 36.3392) return; // انتظر الموقع الحقيقي
     const prevLat = prevDriverLatRef.current;
     const prevLng = prevDriverLngRef.current;
-    if (
-      prevLat !== null && prevLng !== null &&
-      Math.abs(coords.latitude - prevLat) < 0.0001 &&
-      Math.abs(coords.longitude - prevLng) < 0.0001
-    ) return;
+    // جلب فوري أول مرة (prevLat === null) أو عند تغير الموقع بأكثر من 50م
+    const movedEnough = prevLat === null || prevLng === null ||
+      Math.abs(coords.latitude - prevLat) > 0.0005 ||
+      Math.abs(coords.longitude - prevLng) > 0.0005;
+    if (!movedEnough) return;
     prevDriverLatRef.current = coords.latitude;
     prevDriverLngRef.current = coords.longitude;
     const driverPos: LatLng = { latitude: coords.latitude, longitude: coords.longitude };
@@ -195,7 +197,7 @@ export default function CaptainActiveTripScreen() {
         }
       }
     });
-  }, [coords.latitude, coords.longitude, phase, ride?.id]);
+  }, [coords.latitude, coords.longitude, phase, ride?.id, isRealLocation]);
 
   // تحديث الملاحة الصوتية عند تحرك السائق
   useEffect(() => {
