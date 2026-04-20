@@ -1,8 +1,8 @@
 /**
  * lib/places.ts
  *
- * Google Places Autocomplete + Geocoding API
- * Primary: Google Places API (دقيق، يدعم العربي والكردي)
+ * Google Places API (New) + Geocoding API
+ * Primary: Places API (New) - POST /v1/places:autocomplete
  * Fallback: Nominatim (OpenStreetMap)
  */
 
@@ -21,7 +21,7 @@ export type PlaceResult = {
   longitude: number;
 };
 
-// ─── Google Places Autocomplete ───────────────────────────────────────────────
+// ─── Google Places API (New) - Autocomplete ───────────────────────────────────
 
 export async function searchGooglePlaces(
   query: string,
@@ -35,53 +35,71 @@ export async function searchGooglePlaces(
   }
 
   try {
-    // استخدام location bias حول موقع المستخدم (نطاق 50كم)
-    const locationBias = userLat && userLng
-      ? `&location=${userLat},${userLng}&radius=50000`
-      : "&components=country:iq";
+    const body: Record<string, any> = {
+      input: query,
+      languageCode: "ar",
+      includedRegionCodes: ["iq"],
+    };
 
-    const url =
-      `https://maps.googleapis.com/maps/api/place/autocomplete/json` +
-      `?input=${encodeURIComponent(query)}` +
-      `&language=ar` +
-      `&components=country:iq` +
-      locationBias +
-      `&key=${GOOGLE_MAPS_API_KEY}`;
+    // إضافة location bias حول موقع المستخدم
+    if (userLat && userLng) {
+      body.locationBias = {
+        circle: {
+          center: { latitude: userLat, longitude: userLng },
+          radius: 50000,
+        },
+      };
+    }
 
-    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    const res = await fetch("https://places.googleapis.com/v1/places:autocomplete", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": GOOGLE_MAPS_API_KEY,
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(8000),
+    });
+
     if (!res.ok) {
-      console.warn("[places] Google Autocomplete HTTP", res.status);
+      console.warn("[places] Places API (New) HTTP", res.status);
       return searchNominatim(query, userLat, userLng);
     }
 
     const data = await res.json() as {
-      status: string;
-      predictions?: Array<{
-        place_id: string;
-        description: string;
-        structured_formatting: {
-          main_text: string;
-          secondary_text: string;
+      suggestions?: Array<{
+        placePrediction?: {
+          placeId: string;
+          text: { text: string };
+          structuredFormat?: {
+            mainText: { text: string };
+            secondaryText?: { text: string };
+          };
         };
       }>;
+      error?: { message: string };
     };
 
-    if (data.status !== "OK" && data.status !== "ZERO_RESULTS") {
-      console.warn("[places] Google Autocomplete status:", data.status);
+    if (data.error) {
+      console.warn("[places] Places API (New) error:", data.error.message);
       return searchNominatim(query, userLat, userLng);
     }
 
-    if (!data.predictions?.length) return [];
+    if (!data.suggestions?.length) return [];
 
-    // جلب تفاصيل أول 6 نتائج (الإحداثيات)
+    // جلب تفاصيل (إحداثيات) لأول 6 نتائج
     const results = await Promise.all(
-      data.predictions.slice(0, 6).map(async (pred) => {
-        const detail = await getPlaceDetails(pred.place_id);
+      data.suggestions.slice(0, 6).map(async (s) => {
+        const pred = s.placePrediction;
+        if (!pred) return null;
+        const detail = await getPlaceDetailsNew(pred.placeId);
         if (!detail) return null;
+        const name = pred.structuredFormat?.mainText?.text || pred.text.text.split("،")[0];
+        const address = pred.structuredFormat?.secondaryText?.text || pred.text.text;
         return {
-          id: pred.place_id,
-          name: pred.structured_formatting.main_text,
-          address: pred.structured_formatting.secondary_text || pred.description,
+          id: pred.placeId,
+          name,
+          address,
           latitude: detail.lat,
           longitude: detail.lng,
         } as PlaceResult;
@@ -90,41 +108,37 @@ export async function searchGooglePlaces(
 
     return results.filter((r): r is PlaceResult => r !== null);
   } catch (err) {
-    console.warn("[places] Google Autocomplete error:", err);
+    console.warn("[places] Places API (New) exception:", err);
     return searchNominatim(query, userLat, userLng);
   }
 }
 
-// ─── Google Place Details (للحصول على الإحداثيات) ────────────────────────────
+// ─── Google Places API (New) - Place Details ─────────────────────────────────
 
-async function getPlaceDetails(placeId: string): Promise<{ lat: number; lng: number } | null> {
+async function getPlaceDetailsNew(placeId: string): Promise<{ lat: number; lng: number } | null> {
   try {
-    const url =
-      `https://maps.googleapis.com/maps/api/place/details/json` +
-      `?place_id=${placeId}` +
-      `&fields=geometry` +
-      `&key=${GOOGLE_MAPS_API_KEY}`;
-
-    const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
+    const res = await fetch(
+      `https://places.googleapis.com/v1/places/${placeId}?fields=location`,
+      {
+        headers: {
+          "X-Goog-Api-Key": GOOGLE_MAPS_API_KEY,
+          "X-Goog-FieldMask": "location",
+        },
+        signal: AbortSignal.timeout(6000),
+      }
+    );
     if (!res.ok) return null;
-
     const data = await res.json() as {
-      status: string;
-      result?: {
-        geometry: {
-          location: { lat: number; lng: number };
-        };
-      };
+      location?: { latitude: number; longitude: number };
     };
-
-    if (data.status !== "OK" || !data.result) return null;
-    return data.result.geometry.location;
+    if (!data.location) return null;
+    return { lat: data.location.latitude, lng: data.location.longitude };
   } catch {
     return null;
   }
 }
 
-// ─── Google Reverse Geocoding ─────────────────────────────────────────────────
+// ─── Google Reverse Geocoding (Geocoding API - لا يزال يعمل) ─────────────────
 
 export async function reverseGeocodeGoogle(lat: number, lng: number): Promise<string> {
   if (!GOOGLE_MAPS_API_KEY) return reverseGeocodeNominatim(lat, lng);
@@ -154,7 +168,6 @@ export async function reverseGeocodeGoogle(lat: number, lng: number): Promise<st
       return reverseGeocodeNominatim(lat, lng);
     }
 
-    // استخراج اسم الشارع والحي
     const result = data.results[0];
     const components = result.address_components;
     const route = components.find((c) => c.types.includes("route"))?.long_name;
