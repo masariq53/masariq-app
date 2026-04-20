@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   View,
   Text,
@@ -132,6 +132,58 @@ export default function AdminDashboard() {
   const { data: stats, isLoading: statsLoading, refetch: refetchStats } = trpc.admin.stats.useQuery();
   const { data: recentRides, isLoading: ridesLoading, refetch: refetchRides } = trpc.admin.recentRides.useQuery({ limit: 8 });
   const { data: allDrivers, isLoading: driversLoading, refetch: refetchDrivers } = trpc.admin.drivers.useQuery({ limit: 500 });
+  // ذاكرة تخزين مؤقت لأسماء المناطق من الإحداثيات
+  const [driverLocationNames, setDriverLocationNames] = useState<Record<number, string>>({});
+  const geocodingInProgress = useRef<Set<number>>(new Set());
+  const reverseGeocodeDriver = useCallback(async (driverId: number, lat: number, lng: number) => {
+    if (geocodingInProgress.current.has(driverId)) return;
+    geocodingInProgress.current.add(driverId);
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=ar`,
+        { headers: { 'User-Agent': 'MasarIQ-Admin/1.0' } }
+      );
+      const data = await res.json();
+      const addr = data.address || {};
+      // عرض كامل: الدولة + المحافظة + القضاء/الناحية/القرية
+      const country = addr.country || '';
+      const state = addr.state || '';
+      const district = addr.district || addr.county || '';
+      const local = addr.village || addr.town || addr.suburb || addr.neighbourhood || addr.subdistrict || '';
+      const parts = [country, state, district, local].filter(Boolean);
+      // إزالة التكرار (بعض المناطق تكرر اسم المحافظة)
+      const unique = parts.filter((v, i, a) => a.indexOf(v) === i);
+      const name = unique.join(' • ') || 'غير محدد';
+      setDriverLocationNames(prev => ({ ...prev, [driverId]: name }));
+    } catch {
+      setDriverLocationNames(prev => ({ ...prev, [driverId]: 'غير متاح' }));
+    } finally {
+      geocodingInProgress.current.delete(driverId);
+    }
+  }, []);
+
+  // تحديث أسماء المناطق عند تحميل الكباتنة
+  useEffect(() => {
+    if (!allDrivers) return;
+    allDrivers.forEach((d: any) => {
+      if (d.currentLat && d.currentLng && !geocodingInProgress.current.has(d.id)) {
+        reverseGeocodeDriver(d.id, parseFloat(d.currentLat), parseFloat(d.currentLng));
+      }
+    });
+  }, [allDrivers, reverseGeocodeDriver]);
+
+  // تحديث تلقائي كل 7 ثواني لأسماء المناطق للكباتنة المتصلين
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!allDrivers) return;
+      allDrivers.forEach((d: any) => {
+        if (d.isOnline && d.currentLat && d.currentLng && !geocodingInProgress.current.has(d.id)) {
+          reverseGeocodeDriver(d.id, parseFloat(d.currentLat), parseFloat(d.currentLng));
+        }
+      });
+    }, 7000);
+    return () => clearInterval(interval);
+  }, [allDrivers, reverseGeocodeDriver]);
   const { data: driverCityRides, isLoading: cityRidesLoading } = trpc.admin.driverCityRides.useQuery(
     { driverId: historyDriverId ?? 0, fromDate: historyFromDate || undefined, toDate: historyToDate || undefined },
     { enabled: !!historyDriverId && historyTabState === 'city' }
@@ -1389,11 +1441,12 @@ export default function AdminDashboard() {
                         ) : (
                           <Text style={[styles.driverVehicle, { color: '#64748B' }]}>🔢 لا توجد لوحة</Text>
                         )}
-                        {(driver as any).country || (driver as any).city ? (
-                          <Text style={[styles.driverVehicle, { color: '#60A5FA' }]}>
-                            📍 {[(driver as any).country, (driver as any).city].filter(Boolean).join("، ")}
-                          </Text>
-                        ) : null}
+                        {/* موقع الكابتن من الإحداثيات الحالية أو القديمة كاحتياط */}
+                        <Text style={[styles.driverVehicle, { color: '#60A5FA' }]}>
+                          📍 {driverLocationNames[driver.id] ||
+                            (((driver as any).currentLat && (driver as any).currentLng) ? 'جاري تحديد...' :
+                              ([(driver as any).country, (driver as any).city].filter(Boolean).join('، ') || 'غير محدد'))}
+                        </Text>
                         {/* Wallet Balance */}
                         <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 3 }}>
                           <Text style={{ fontSize: 11, color: driver.isBlocked ? '#F59E0B' : '#22C55E', fontWeight: '700' }}>
