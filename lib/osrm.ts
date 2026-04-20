@@ -32,14 +32,14 @@ export type NavigationStep = {
 
 // ─── Cache ────────────────────────────────────────────────────────────────────
 
-const CACHE_TTL_MS = 3 * 60 * 1000; // 3 دقائق (أقل لأن Google يحسب الازدحام)
+const CACHE_TTL_MS = 60 * 1000; // دقيقة واحدة - تحديث سريع للمسارات مع الازدحام
 const CACHE_MAX_SIZE = 20;
 
 type CacheEntry = { result: OsrmRouteResult; fetchedAt: number };
 const routeCache = new Map<string, CacheEntry>();
 
 function roundCoord(val: number): number {
-  return Math.round(val * 10000) / 10000; // ~11m precision
+  return Math.round(val * 100000) / 100000; // ~1m precision - دقة أعلى لمسارات أدق
 }
 
 function makeCacheKey(fromLat: number, fromLng: number, toLat: number, toLng: number): string {

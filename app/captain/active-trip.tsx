@@ -37,7 +37,7 @@ import Svg, { Path, Circle } from "react-native-svg";
 import { useLocation } from "@/hooks/use-location";
 import { trpc } from "@/lib/trpc";
 import { useDriver } from "@/lib/driver-context";
-import { fetchOsrmRoute, type OsrmRouteResult, type LatLng } from "@/lib/osrm";
+import { fetchOsrmRoute, clearRouteCache, type OsrmRouteResult, type LatLng } from "@/lib/osrm";
 import { useVoiceNavigation } from "@/hooks/use-voice-navigation";
 import { snapToRoads, getDistanceMatrix } from "@/lib/google-maps";
 
@@ -52,7 +52,7 @@ const STATUS_TO_PHASE: Record<string, TripPhase> = {
   completed: "done",
 };
 
-const REROUTE_THRESHOLD_M = 80;
+const REROUTE_THRESHOLD_M = 50; // إعادة حساب المسار عند انحراف > 50م
 const ETA_UPDATE_INTERVAL_MS = 30_000;
 const SNAP_BUFFER_SIZE = 4;
 
@@ -206,10 +206,12 @@ export default function CaptainActiveTripScreen() {
   }, [ride?.id]);
 
   // دالة جلب المسار 
-  const fetchRoute = useCallback(async (from: LatLng, to: LatLng, isPickup: boolean) => {
+  const fetchRoute = useCallback(async (from: LatLng, to: LatLng, isPickup: boolean, forceRefresh = false) => {
     if (isReroutingRef.current) return;
     isReroutingRef.current = true;
     setIsLoadingRoute(true);
+    // مسح الـ cache عند إعادة الحساب القسري (rerouting)
+    if (forceRefresh) clearRouteCache();
     try {
       const result = await fetchOsrmRoute(from, to);
       if (!result) return;
@@ -302,10 +304,11 @@ export default function CaptainActiveTripScreen() {
 
     const distToRoute = distanceToPolyline(current, activeRoute.coords);
     if (distToRoute > REROUTE_THRESHOLD_M) {
+      // forceRefresh=true يمسح الـ cache ليجلب مساراً جديداً من الموقع الحالي
       if (phase === "pickup") {
-        fetchRoute(current, pickupCoord, true);
+        fetchRoute(current, pickupCoord, true, true);
       } else if (phase === "in_trip") {
-        fetchRoute(current, destCoord, false);
+        fetchRoute(current, destCoord, false, true);
       }
     }
   }, [coords.latitude, coords.longitude, isRealLocation]);
@@ -529,38 +532,36 @@ export default function CaptainActiveTripScreen() {
           showsBuildings={true}
           onPanDrag={() => setIsFollowingDriver(false)}
         >
-          {/* موقع الكابتن - سيارة احترافية مع AnimatedRegion */}
+          {/* موقع الكابتن - سهم Waze احترافي */}
           <Marker.Animated
             ref={markerRef}
             coordinate={driverAnimCoord as any}
-            anchor={{ x: 0.5, y: 0.7 }}
+            anchor={{ x: 0.5, y: 0.65 }}
             flat
             rotation={heading ?? 0}
             tracksViewChanges={false}
           >
             <View style={styles.driverMarkerContainer}>
-              {/* ظل تحت السيارة */}
+              {/* ظل تحت السهم */}
               <View style={styles.driverMarkerShadow} />
-              {/* سيارة SVG احترافية */}
-              <Svg width={44} height={44} viewBox="0 0 44 44">
-                {/* جسم السيارة */}
+              {/* سهم Waze أزرق بشكل مثلث مدبب */}
+              <Svg width={52} height={52} viewBox="0 0 52 52">
+                {/* ظل خارجي للعمق */}
                 <Path
-                  d="M22 4 C18 4 10 8 9 16 L8 28 C8 30 9 32 11 33 L11 37 C11 39 13 40 15 40 L17 40 C19 40 20 39 20 37 L20 36 L24 36 L24 37 C24 39 25 40 27 40 L29 40 C31 40 33 39 33 37 L33 33 C35 32 36 30 36 28 L35 16 C34 8 26 4 22 4 Z"
-                  fill="#FFD700"
-                  stroke="#1A0533"
-                  strokeWidth={1.5}
+                  d="M26 6 L44 44 L26 36 L8 44 Z"
+                  fill="rgba(0,0,0,0.25)"
+                  transform="translate(1.5, 2)"
                 />
-                {/* زجاج أمامي */}
+                {/* السهم الرئيسي - أزرق Waze */}
                 <Path
-                  d="M14 14 C14 12 15 11 17 11 L27 11 C29 11 30 12 30 14 L30 20 C30 21 29 22 28 22 L16 22 C15 22 14 21 14 20 Z"
-                  fill="#1A0533"
-                  opacity={0.7}
+                  d="M26 6 L44 44 L26 36 L8 44 Z"
+                  fill="#33AAFF"
+                  stroke="#FFFFFF"
+                  strokeWidth={2.5}
+                  strokeLinejoin="round"
                 />
-                {/* عجلات */}
-                <Circle cx={14} cy={30} r={4} fill="#1A0533" />
-                <Circle cx={30} cy={30} r={4} fill="#1A0533" />
-                <Circle cx={14} cy={30} r={2} fill="#555" />
-                <Circle cx={30} cy={30} r={2} fill="#555" />
+                {/* نقطة بيضاء في المنتصف للتمييز */}
+                <Circle cx={26} cy={26} r={5} fill="#FFFFFF" opacity={0.9} />
               </Svg>
             </View>
           </Marker.Animated>
@@ -672,13 +673,11 @@ export default function CaptainActiveTripScreen() {
         </View>
       )}
 
-      {/*  مؤشر تحميل المسار  */}
+      {/*  مؤشر إعادة الحساب  */}
       {isLoadingRoute && (
-        <View style={[styles.rerouteIndicator, { top: insets.top + 70 }]}>
-          <ActivityIndicator size="small" color="#FFD700" />
-          <Text style={styles.rerouteText}>
-            {isReroutingRef.current ? "إعادة حساب المسار..." : "جاري تحميل المسار..."}
-          </Text>
+        <View style={[styles.rerouteIndicator, { top: insets.top + 80 }]}>
+          <ActivityIndicator color="#FFD700" size="small" />
+          <Text style={styles.rerouteText}>جاري إعادة حساب المسار...</Text>
         </View>
       )}
 
