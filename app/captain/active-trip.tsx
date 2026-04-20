@@ -75,14 +75,34 @@ function distanceToPolyline(point: LatLng, polyline: LatLng[]): number {
   return Math.min(...polyline.map((p) => haversineM(point, p)));
 }
 
-// اختيار أفضل نقطة snap مع مراعاة اتجاه الحركة لتجنب القفز للطريق المقابل
-function pickBestSnappedPoint(snapped: LatLng[], current: LatLng, heading: number | null): LatLng {
+// اختيار أفضل نقطة snap باستخدام bearing من آخر نقطتين GPS لتجنب القفز للطريق المقابل
+function pickBestSnappedPoint(
+  snapped: LatLng[],
+  current: LatLng,
+  heading: number | null,
+  recentCoords: LatLng[]
+): LatLng {
   if (snapped.length === 1) return snapped[0];
-  if (heading == null) return snapped[snapped.length - 1];
 
-  // حساب الاتجاه من الموقع الحالي لكل نقطة snap
-  // نختار النقطة التي اتجاهها أقرب لاتجاه الحركة الحالي
-  const headingRad = (heading * Math.PI) / 180;
+  // حساب bearing حقيقي من آخر نقطتين GPS (أدق من heading اللحظي عند الاستدارة)
+  let effectiveHeading = heading;
+  if (recentCoords.length >= 2) {
+    const prev = recentCoords[recentCoords.length - 2];
+    const curr = recentCoords[recentCoords.length - 1];
+    const dLng = (curr.longitude - prev.longitude) * (Math.PI / 180);
+    const lat1 = prev.latitude * (Math.PI / 180);
+    const lat2 = curr.latitude * (Math.PI / 180);
+    const y = Math.sin(dLng) * Math.cos(lat2);
+    const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
+    const dist = haversineM(prev, curr);
+    if (dist > 2) { // فقط إذا تحرك أكثر من 2م
+      effectiveHeading = (Math.atan2(y, x) * (180 / Math.PI) + 360) % 360;
+    }
+  }
+
+  if (effectiveHeading == null) return snapped[snapped.length - 1];
+
+  const headingRad = (effectiveHeading * Math.PI) / 180;
   const hx = Math.sin(headingRad);
   const hy = Math.cos(headingRad);
 
@@ -94,11 +114,10 @@ function pickBestSnappedPoint(snapped: LatLng[], current: LatLng, heading: numbe
     const dy = pt.latitude - current.latitude;
     const len = Math.sqrt(dx * dx + dy * dy);
     if (len === 0) continue;
-    // dot product: كلما كان أعلى كلما كان الاتجاه أقرب
     const dot = (dx / len) * hx + (dy / len) * hy;
-    // نطرح المسافة لتفضيل النقاط القريبة
     const dist = haversineM(current, pt);
-    const score = dot * 2 - dist / 50; // وزن الاتجاه ضعف وزن المسافة
+    // وزن الاتجاه 3x وزن المسافة لتفضيل نفس السايد بشدة
+    const score = dot * 3 - dist / 30;
     if (score > bestScore) {
       bestScore = score;
       best = pt;
@@ -144,6 +163,8 @@ export default function CaptainActiveTripScreen() {
   // snap-to-road 
   const [snappedCoords, setSnappedCoords] = useState<LatLng | null>(null);
   const snapBufferRef = useRef<LatLng[]>([]);
+  // تتبع آخر 5 نقاط GPS لحساب bearing حقيقي عند الاستدارة
+  const recentCoordsRef = useRef<LatLng[]>([]);
 
   // ETA 
   const [etaMin, setEtaMin] = useState<number | null>(null);
@@ -267,17 +288,21 @@ export default function CaptainActiveTripScreen() {
     }
   }, [voiceNav]);
 
-  // جلب المسار الأولي عند تغيير المرحلة أو توفر الموقع 
+  // جلب المسار الأولي عند تغيير المرحلة أو توفر الموقع
   const routeFetchedRef = useRef<{ phase: TripPhase | null; rideId: number | null }>({ phase: null, rideId: null });
   useEffect(() => {
     // انتظار بيانات الرحلة الحقيقية قبل جلب أي مسار
     if (!ride || !ride.pickupLat || !ride.pickupLng) return;
+    // انتظار موقع GPS حقيقي قبل جلب المسار - هذا يضمن موقع لحظي وليس قديم
+    if (!isRealLocation) return;
     const driverPos: LatLng = { latitude: coords.latitude, longitude: coords.longitude };
     const realPickup: LatLng = { latitude: ride.pickupLat, longitude: ride.pickupLng };
     const realDest: LatLng = { latitude: ride.dropoffLat, longitude: ride.dropoffLng };
     // تجنب إعادة الجلب لنفس المرحلة ونفس الرحلة
     if (routeFetchedRef.current.phase === phase && routeFetchedRef.current.rideId === ride.id) return;
     routeFetchedRef.current = { phase, rideId: ride.id };
+    // مسح الـ cache لضمان مسار جديد من الموقع اللحظي وليس من موقع قديم
+    clearRouteCache();
     if (phase === "pickup") {
       // المسار الأزرق: من موقع الكابتن الحالي → موقع الراكب
       fetchRoute(driverPos, realPickup, true);
@@ -307,7 +332,7 @@ export default function CaptainActiveTripScreen() {
         }, { duration: 1000 });
       }, 300);
     }
-  }, [phase, ride?.id, ride?.pickupLat, ride?.pickupLng, coords.latitude, coords.longitude]);
+  }, [phase, ride?.id, ride?.pickupLat, ride?.pickupLng, coords.latitude, coords.longitude, isRealLocation]);
 
   // snap-to-road في الخلفية + إعادة حساب المسار عند تحرك الكابتن
   useEffect(() => {
@@ -317,16 +342,20 @@ export default function CaptainActiveTripScreen() {
     // تحديث الملاحظة الصوتية فوراً
     voiceNav.onLocationUpdate(current);
 
+    // تحديث سجل النقاط الأخيرة (5 نقاط كحد أقصى)
+    recentCoordsRef.current.push(current);
+    if (recentCoordsRef.current.length > 5) recentCoordsRef.current.shift();
+
     // snap-to-road في الخلفية فقط (لا يؤخر تحديث السهم)
-    // نتراكم نقطة واحدة فقط للتحقق من الطريق الصحيح
     snapBufferRef.current.push(current);
     if (snapBufferRef.current.length >= SNAP_BUFFER_SIZE) {
       const buffer = [...snapBufferRef.current];
+      const recentSnapshot = [...recentCoordsRef.current];
       snapBufferRef.current = [];
       snapToRoads(buffer).then((snapped) => {
         if (snapped.length > 0) {
-          // اختيار أقرب نقطة في نفس اتجاه الحركة لتجنب القفز للطريق المقابل
-          const bestSnap = pickBestSnappedPoint(snapped, current, heading);
+          // اختيار أقرب نقطة باستخدام bearing حقيقي من آخر نقطتين
+          const bestSnap = pickBestSnappedPoint(snapped, current, heading, recentSnapshot);
           setSnappedCoords(bestSnap);
         }
       }).catch(() => {});
@@ -348,21 +377,21 @@ export default function CaptainActiveTripScreen() {
     }
   }, [coords.latitude, coords.longitude, isRealLocation]);
 
-  // تحديث AnimatedRegion - فوري من GPS مباشرة للسلاسة اللحظية
+  // تحديث AnimatedRegion - حركة سلسة احترافية مثل Waze
   useEffect(() => {
-    // استخدام GPS مباشرة لتحديث فوري بدون انتظار snap
+    // GPS مباشرة لتحديث فوري - timing سريع وسلس
     driverAnimCoord.timing({
       latitude: coords.latitude,
       longitude: coords.longitude,
       latitudeDelta: 0,
       longitudeDelta: 0,
       toValue: 0,
-      duration: 300, // سريع وسلس - مثل Waze
+      duration: 400, // توازن بين السرعة والسلاسة
       useNativeDriver: false,
     }).start();
   }, [coords.latitude, coords.longitude]);
 
-  // تحديث الكاميرا باستخدام snap إذا توفر (snapshot أكثر دقة)
+  // تحديث باستخدام snap إذا توفر (دقة أعلى للسايد الصحيح)
   useEffect(() => {
     if (!snappedCoords) return;
     driverAnimCoord.timing({
@@ -371,7 +400,7 @@ export default function CaptainActiveTripScreen() {
       latitudeDelta: 0,
       longitudeDelta: 0,
       toValue: 0,
-      duration: 600,
+      duration: 500, // سلس وطبيعي
       useNativeDriver: false,
     }).start();
   }, [snappedCoords]);
@@ -379,14 +408,13 @@ export default function CaptainActiveTripScreen() {
   // تتبع الكابتن على الخريطة - كاميرا خلف السيارة مثل Google Maps Navigation
   useEffect(() => {
     if (!isFollowingDriver || !mapRef.current) return;
-    // استخدام GPS مباشرة لتحديث فوري بدون انتظار snap
     mapRef.current.animateCamera({
       center: { latitude: coords.latitude, longitude: coords.longitude },
       heading: heading ?? 0,
       pitch: 70,
       zoom: 18.5,
       altitude: 150,
-    }, { duration: 250 }); // سريع وسلس مثل Waze
+    }, { duration: 350 }); // سلس وطبيعي مثل Waze
   }, [coords.latitude, coords.longitude, heading, isFollowingDriver]);
 
   // ETA ديناميكي كل 30 ثانية 
