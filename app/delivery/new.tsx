@@ -19,6 +19,7 @@ import * as Location from "expo-location";
 import { trpc } from "@/lib/trpc";
 import { usePassenger } from "@/lib/passenger-context";
 import { formatIQD } from "@/lib/utils";
+import { searchGooglePlaces, reverseGeocodeGoogle } from "@/lib/places";
 
 const PARCEL_SIZES = [
   { id: "small", icon: "📦", label: "صغير", desc: "حتى 2 كغ", example: "مستندات، ملابس" },
@@ -36,43 +37,23 @@ type DeliveryType = "instant" | "intercity";
 type GpsCoords = { latitude: number; longitude: number } | null;
 type SearchResult = { display_name: string; lat: string; lon: string };
 
-// حدود العراق للبحث
-const iraqBounds = "38.7,29.0,48.6,37.4";
-
-async function searchNominatim(query: string, proximity?: GpsCoords): Promise<SearchResult[]> {
-  try {
-    const encoded = encodeURIComponent(query);
-    let viewboxParam = `&viewbox=${iraqBounds}&bounded=1`;
-    if (proximity) {
-      const delta = 0.5;
-      const minLat = proximity.latitude - delta;
-      const maxLat = proximity.latitude + delta;
-      const minLng = proximity.longitude - delta;
-      const maxLng = proximity.longitude + delta;
-      viewboxParam = `&viewbox=${minLng},${minLat},${maxLng},${maxLat}&bounded=0`;
-    }
-    const url = `https://nominatim.openstreetmap.org/search?q=${encoded}&format=json&limit=6&addressdetails=1&accept-language=ar&countrycodes=iq${viewboxParam}`;
-    const res = await fetch(url, { headers: { "User-Agent": "MasarApp/1.0" } });
-    if (!res.ok) return [];
-    return await res.json();
-  } catch {
-    return [];
-  }
+// بحث المواقع باستخدام Google Places API
+async function searchDeliveryPlaces(query: string, proximity?: GpsCoords): Promise<SearchResult[]> {
+  const results = await searchGooglePlaces(
+    query,
+    proximity?.latitude,
+    proximity?.longitude
+  );
+  return results.map(r => ({
+    display_name: r.name + (r.address ? ", " + r.address : ""),
+    lat: r.latitude.toString(),
+    lon: r.longitude.toString(),
+  }));
 }
 
-async function reverseGeocodeNominatim(lat: number, lon: number): Promise<string> {
-  try {
-    const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=ar`;
-    const res = await fetch(url, { headers: { "User-Agent": "MasarApp/1.0" } });
-    if (!res.ok) return "";
-    const data = await res.json();
-    const addr = data.address;
-    if (!addr) return data.display_name ?? "";
-    const parts = [addr.road, addr.neighbourhood || addr.suburb, addr.city || addr.town || addr.village].filter(Boolean);
-    return parts.length > 0 ? parts.join("، ") : (data.display_name ?? "");
-  } catch {
-    return "";
-  }
+async function reverseGeocodeDelivery(lat: number, lon: number): Promise<string> {
+  const result = await reverseGeocodeGoogle(lat, lon);
+  return result ?? "";
 }
 
 function shortenAddress(displayName: string): string {
@@ -143,7 +124,7 @@ export default function NewDeliveryScreen() {
     if (searchTimeout.current) clearTimeout(searchTimeout.current);
     searchTimeout.current = setTimeout(async () => {
       setSearchingDropoff(true);
-      const results = await searchNominatim(dropoffQuery, pickupCoords ?? undefined);
+      const results = await searchDeliveryPlaces(dropoffQuery, pickupCoords ?? undefined);
       setDropoffResults(results);
       setSearchingDropoff(false);
     }, 500);
@@ -184,7 +165,7 @@ export default function NewDeliveryScreen() {
         lon = loc.coords.longitude;
       }
       setPickupCoords({ latitude: lat, longitude: lon });
-      const address = await reverseGeocodeNominatim(lat, lon);
+      const address = await reverseGeocodeDelivery(lat, lon);
       if (address) {
         setPickupAddress(address);
       } else {

@@ -1317,23 +1317,29 @@ export const appRouter = router({
           distance = input.osrmDistanceKm;
           duration = input.osrmDurationMin;
         } else {
-          // استخدام Mapbox driving-traffic للحصول على وقت دقيق يأخذ حركة المرور بعين الاعتبار
+          // استخدام Google Distance Matrix API للحصول على مسافة ووقت دقيق مع بيانات الازدحام
           try {
-            const MAPBOX_TOKEN = "pk.eyJ1IjoibXVzdGFmYWlxMSIsImEiOiJjbW56NmpwcXcwOXprMnFzZDl1eTFjZWd0In0.nC_HXss0ue9QkBeyo5ZmQA";
-            const mapboxUrl = `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${input.pickupLng},${input.pickupLat};${input.dropoffLng},${input.dropoffLat}?access_token=${MAPBOX_TOKEN}&geometries=geojson&overview=full`;
-            const res = await fetch(mapboxUrl, {
-              signal: AbortSignal.timeout(8000),
-            });
+            const GOOGLE_KEY = process.env.GOOGLE_MAPS_API_KEY || "AIzaSyDk9e9try2bbIQRnsOrIJoojYAxXpx5uek";
+            const gmUrl = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${input.pickupLat},${input.pickupLng}&destinations=${input.dropoffLat},${input.dropoffLng}&mode=driving&departure_time=now&traffic_model=best_guess&key=${GOOGLE_KEY}`;
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 8000);
+            const res = await fetch(gmUrl, { signal: controller.signal });
+            clearTimeout(timer);
             if (res.ok) {
-              const data = await res.json() as { routes?: Array<{ distance: number; duration: number }> };
-              if (data.routes?.[0]) {
-                distance = data.routes[0].distance / 1000;
-                duration = Math.ceil(data.routes[0].duration / 60);
+              const data = await res.json() as {
+                status: string;
+                rows: Array<{ elements: Array<{ status: string; distance: { value: number }; duration: { value: number }; duration_in_traffic?: { value: number } }> }>;
+              };
+              if (data.status === "OK" && data.rows[0]?.elements[0]?.status === "OK") {
+                const el = data.rows[0].elements[0];
+                distance = el.distance.value / 1000;
+                const trafficDuration = el.duration_in_traffic ?? el.duration;
+                duration = Math.ceil(trafficDuration.value / 60);
               } else {
-                throw new Error("Mapbox no route");
+                throw new Error("Google Distance Matrix no route");
               }
             } else {
-              throw new Error("Mapbox error");
+              throw new Error("Google Distance Matrix error");
             }
           } catch {
             // fallback: خط مستقيم × 1.3

@@ -138,27 +138,51 @@ export default function CaptainActiveTripScreen() {
     );
   }, [isRealLocation, coords.latitude, coords.longitude, isFollowingDriver]);
 
-  // جلب مسار الراكب → الوجهة (ذهبي) - يُجلب عند أول تحميل وعند بدء الرحلة
-  const dropoffRouteFetchedRef = useRef(false);
+  // ─── منطق المسارات ───────────────────────────────────────────────────────────
+  // مرحلة pickup/arrived: يُجلب مسار الكابتن → الراكب (أزرق) فقط
+  // مرحلة in_trip: يُجلب مسار الراكب → الوجهة (ذهبي) فقط
+
+  // جلب مسار الكابتن → الراكب (أزرق) - فقط في مرحلة pickup/arrived
   useEffect(() => {
-    if (!ride) return;
+    if (!ride || (phase !== "pickup" && phase !== "arrived")) return;
+    // انتظر الموقع الحقيقي (تجنب الموقع الافتراضي)
+    if (coords.latitude === 36.3392 && coords.longitude === 43.1289 && !isRealLocation) return;
+    const prevLat = prevDriverLatRef.current;
+    const prevLng = prevDriverLngRef.current;
+    // جلب فوري أول مرة أو عند تحرك أكثر من 50م
+    const shouldFetch = prevLat === null || prevLng === null ||
+      Math.abs(coords.latitude - prevLat) > 0.0005 ||
+      Math.abs(coords.longitude - prevLng) > 0.0005;
+    if (!shouldFetch) return;
+    prevDriverLatRef.current = coords.latitude;
+    prevDriverLngRef.current = coords.longitude;
+    const driverPos: LatLng = { latitude: coords.latitude, longitude: coords.longitude };
+    const pickup: LatLng = { latitude: ride.pickupLat, longitude: ride.pickupLng };
+    setIsLoadingRoute(true);
+    fetchOsrmRoute(driverPos, pickup).then((res) => {
+      if (res) {
+        setRouteToPickup(res);
+        setRouteToDropoff(null); // امسح مسار الوجهة في هذه المرحلة
+        if (res.steps?.length) {
+          voiceNav.setSteps(res.steps);
+          setCurrentInstruction(res.steps[0].instruction);
+          setDistanceToNext(res.steps[0].distanceM);
+        }
+      }
+    }).finally(() => setIsLoadingRoute(false));
+  }, [coords.latitude, coords.longitude, phase, ride?.id, isRealLocation]);
+
+  // جلب مسار الراكب → الوجهة (ذهبي) - فقط عند بدء الرحلة (in_trip)
+  useEffect(() => {
+    if (!ride || phase !== "in_trip") return;
     const pickup: LatLng = { latitude: ride.pickupLat, longitude: ride.pickupLng };
     const dropoff: LatLng = { latitude: ride.dropoffLat, longitude: ride.dropoffLng };
+    setRouteToPickup(null); // امسح مسار الاستلام
     setIsLoadingRoute(true);
-    // عند الانتقال لـ in_trip، أعد الجلب دائماً بإعادة ضبط الـ ref
-    if (phase === "in_trip") {
-      dropoffRouteFetchedRef.current = false;
-    }
-    if (dropoffRouteFetchedRef.current) {
-      setIsLoadingRoute(false);
-      return;
-    }
     fetchOsrmRoute(pickup, dropoff).then((res) => {
       if (res) {
         setRouteToDropoff(res);
-        dropoffRouteFetchedRef.current = true;
-        // إذا كنا في مرحلة الرحلة، فعّل الملاحة الصوتية فوراً
-        if (phase === "in_trip" && res.steps?.length) {
+        if (res.steps?.length) {
           voiceNav.setSteps(res.steps);
           voiceNav.start(ride.dropoffAddress || "الوجهة");
           setCurrentInstruction(res.steps[0].instruction);
@@ -166,38 +190,7 @@ export default function CaptainActiveTripScreen() {
         }
       }
     }).finally(() => setIsLoadingRoute(false));
-  }, [ride?.id, phase]);  // إعادة الجلب عند أي تغيير في المرحلة
-
-  // جلب/تحديث مسار السائق → الراكب (أزرق)
-  // يُجلب فوراً عند تحميل الشاشة وعند تغير الموقع بمقدار كبير (50م)
-  useEffect(() => {
-    if (!ride || (phase !== "pickup" && phase !== "arrived")) return;
-    if (!isRealLocation && coords.latitude === 36.3392) return; // انتظر الموقع الحقيقي
-    const prevLat = prevDriverLatRef.current;
-    const prevLng = prevDriverLngRef.current;
-    // جلب فوري أول مرة (prevLat === null) أو عند تغير الموقع بأكثر من 50م
-    const movedEnough = prevLat === null || prevLng === null ||
-      Math.abs(coords.latitude - prevLat) > 0.0005 ||
-      Math.abs(coords.longitude - prevLng) > 0.0005;
-    if (!movedEnough) return;
-    prevDriverLatRef.current = coords.latitude;
-    prevDriverLngRef.current = coords.longitude;
-    const driverPos: LatLng = { latitude: coords.latitude, longitude: coords.longitude };
-    const pickup: LatLng = { latitude: ride.pickupLat, longitude: ride.pickupLng };
-    fetchOsrmRoute(driverPos, pickup).then((res) => {
-      if (res) {
-        setRouteToPickup(res);
-        // تحديث خطوات الملاحة الصوتية
-        if (res.steps?.length) {
-          voiceNav.setSteps(res.steps);
-          if (res.steps[0]) {
-            setCurrentInstruction(res.steps[0].instruction);
-            setDistanceToNext(res.steps[0].distanceM);
-          }
-        }
-      }
-    });
-  }, [coords.latitude, coords.longitude, phase, ride?.id, isRealLocation]);
+  }, [ride?.id, phase]);
 
   // تحديث الملاحة الصوتية عند تحرك السائق
   useEffect(() => {
@@ -445,12 +438,14 @@ export default function CaptainActiveTripScreen() {
             )
           }
 
-          {/* مسار الراكب → الوجهة (ذهبي) */}
-          {routeToDropoff && routeToDropoff.coords.length >= 2 && (
+          {/* مسار الراكب → الوجهة (ذهبي) - يظهر فقط في مرحلة in_trip */}
+          {phase === "in_trip" && routeToDropoff && routeToDropoff.coords.length >= 2 && (
             <Polyline
               coordinates={routeToDropoff.coords}
               strokeColor="#FFD700"
-              strokeWidth={5}
+              strokeWidth={6}
+              lineJoin="round"
+              lineCap="round"
             />
           )}
         </MapView>
