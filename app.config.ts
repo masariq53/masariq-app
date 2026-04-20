@@ -29,7 +29,7 @@ const schemeFromBundleId = `manus${timestamp}`;
 const env = {
   // App branding - update these values directly (do not use env vars)
   appName: "Masar iQ",
-  appSlug: "mosul-ride-app",
+  appSlug: "masar",
   // S3 URL of the app logo - set this to the URL returned by generate_image when creating custom logo
   // Leave empty to use the default icon from assets/images/icon.png
   logoUrl: "https://files.manuscdn.com/user_upload_by_module/session_file/310419663030219218/LTqdSPbROWlGIWhk.png",
@@ -142,8 +142,11 @@ const config: ExpoConfig = {
       },
     ],
   ],
-  // Note: EAS projectId removed for local dev to avoid Expo Go auth prompt
-  // Re-add when building for production: extra: { eas: { projectId: "jLhUqvseDGUrnnw2XKr64L" } }
+  extra: {
+    eas: {
+      projectId: "a3f589a7-571c-436c-bb26-a7078a28f100",
+    },
+  },
   experiments: {
     typedRoutes: true,
     reactCompiler: true,
