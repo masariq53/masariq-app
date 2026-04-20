@@ -66,7 +66,7 @@ function StatCard({
 export default function AdminDashboard() {
   const insets = useSafeAreaInsets();
   const [refreshing, setRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState<"overview" | "rides" | "drivers" | "passengers" | "pricing" | "intercity" | "support" | "agents" | "parcels" | "commissions" | "topups" | "promotions">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "rides" | "drivers" | "passengers" | "pricing" | "intercity" | "support" | "agents" | "parcels" | "commissions" | "topups" | "promotions" | "map">("overview");
   // ─── PIN Protection ─────────────────────────────────────────────────────────────────────────────────
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [pinInput, setPinInput] = useState("");
@@ -131,7 +131,10 @@ export default function AdminDashboard() {
 
   const { data: stats, isLoading: statsLoading, refetch: refetchStats } = trpc.admin.stats.useQuery();
   const { data: recentRides, isLoading: ridesLoading, refetch: refetchRides } = trpc.admin.recentRides.useQuery({ limit: 8 });
-  const { data: allDrivers, isLoading: driversLoading, refetch: refetchDrivers } = trpc.admin.drivers.useQuery({ limit: 500 });
+  const { data: allDrivers, isLoading: driversLoading, refetch: refetchDrivers } = trpc.admin.drivers.useQuery(
+    { limit: 500 },
+    { refetchInterval: activeTab === 'map' ? 7000 : activeTab === 'drivers' ? 30000 : false }
+  );
   // ذاكرة تخزين مؤقت لأسماء المناطق من الإحداثيات
   const [driverLocationNames, setDriverLocationNames] = useState<Record<number, string>>({});
   const geocodingInProgress = useRef<Set<number>>(new Set());
@@ -546,6 +549,7 @@ export default function AdminDashboard() {
     { id: "commissions", label: "العمولات", icon: "🏦" },
     { id: "topups", label: "محافظ التعبئة", icon: "💳" },
     { id: "promotions", label: "العروض", icon: "🎁" },
+    { id: "map", label: "خريطة الكباتنة", icon: "🗺️" },
   ] as const;
 
   // ─── PIN Authentication Screen ─────────────────────────────────────────────────────────────────────────────────
@@ -3535,6 +3539,86 @@ export default function AdminDashboard() {
         })()}
 
         <View style={{ height: 40 }} />
+
+        {/* ── Map Tab: خريطة الكباتنة المتصلين ── */}
+        {activeTab === 'map' && (() => {
+          const onlineDrivers = (allDrivers ?? []).filter((d: any) => d.isOnline && d.currentLat && d.currentLng);
+          return (
+            <View style={{ flex: 1, paddingHorizontal: 16, paddingTop: 8 }}>
+              <Text style={{ color: '#FFD700', fontSize: 18, fontWeight: '800', marginBottom: 4, textAlign: 'right' }}>
+                🗺️ خريطة الكباتنة المتصلين
+              </Text>
+              <Text style={{ color: '#9B8EC4', fontSize: 12, marginBottom: 16, textAlign: 'right' }}>
+                {onlineDrivers.length} كابتن متصل • يتجدد تلقائياً كل 7 ثواني
+              </Text>
+
+              {/* قائمة الكباتنة المتصلين مع روابط Google Maps */}
+              {onlineDrivers.length === 0 ? (
+                <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                  <Text style={{ fontSize: 48, marginBottom: 12 }}>🚫</Text>
+                  <Text style={{ color: '#9B8EC4', fontSize: 16, fontWeight: '600' }}>لا يوجد كباتنة متصلون حالياً</Text>
+                </View>
+              ) : (
+                <>
+                  {/* زر فتح جميع الكباتنة على خريطة Google Maps */}
+                  <TouchableOpacity
+                    style={{ backgroundColor: '#4285F4', borderRadius: 14, paddingVertical: 14, alignItems: 'center', marginBottom: 16, flexDirection: 'row', justifyContent: 'center', gap: 8 }}
+                    onPress={() => {
+                      const markers = onlineDrivers.map((d: any) =>
+                        `${parseFloat(d.currentLat).toFixed(6)},${parseFloat(d.currentLng).toFixed(6)}`
+                      ).join('|');
+                      const firstDriver = onlineDrivers[0] as any;
+                      const center = `${parseFloat(firstDriver.currentLat).toFixed(6)},${parseFloat(firstDriver.currentLng).toFixed(6)}`;
+                      Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${center}&markers=${markers}`);
+                    }}
+                  >
+                    <Text style={{ fontSize: 20 }}>🗺️</Text>
+                    <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '700' }}>فتح جميع الكباتنة على Google Maps</Text>
+                  </TouchableOpacity>
+
+                  {/* بطاقات الكباتنة المتصلين */}
+                  {onlineDrivers.map((d: any) => (
+                    <View key={d.id} style={{ backgroundColor: '#1A0533', borderRadius: 16, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: '#2D1B4E' }}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                        <TouchableOpacity
+                          style={{ backgroundColor: '#4285F4', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 6, flexDirection: 'row', alignItems: 'center', gap: 4 }}
+                          onPress={() => Linking.openURL(`https://www.google.com/maps?q=${parseFloat(d.currentLat).toFixed(6)},${parseFloat(d.currentLng).toFixed(6)}`)}
+                        >
+                          <Text style={{ fontSize: 14 }}>🗺️</Text>
+                          <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '700' }}>Google Maps</Text>
+                        </TouchableOpacity>
+                        <View style={{ alignItems: 'flex-end' }}>
+                          <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '700' }}>{d.name || 'كابتن'}</Text>
+                          <Text style={{ color: '#9B8EC4', fontSize: 12 }}>{d.phone}</Text>
+                        </View>
+                      </View>
+                      <View style={{ backgroundColor: '#0F0628', borderRadius: 10, padding: 10 }}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                          <Text style={{ color: '#60A5FA', fontSize: 12, fontFamily: 'monospace' }}>{parseFloat(d.currentLat).toFixed(5)}</Text>
+                          <Text style={{ color: '#9B8EC4', fontSize: 11 }}>خط العرض</Text>
+                        </View>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                          <Text style={{ color: '#60A5FA', fontSize: 12, fontFamily: 'monospace' }}>{parseFloat(d.currentLng).toFixed(5)}</Text>
+                          <Text style={{ color: '#9B8EC4', fontSize: 11 }}>خط الطول</Text>
+                        </View>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                          <Text style={{ color: '#9B8EC4', fontSize: 11 }}>
+                            {d.lastActiveAt ? new Date(d.lastActiveAt).toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : 'غير محدد'}
+                          </Text>
+                          <Text style={{ color: '#9B8EC4', fontSize: 11 }}>آخر نشاط</Text>
+                        </View>
+                      </View>
+                      <Text style={{ color: '#60A5FA', fontSize: 12, marginTop: 8, textAlign: 'right' }}>
+                        📍 {driverLocationNames[d.id] || (d.city ? `${d.country} • ${d.city}` : 'جاري تحديد...')}
+                      </Text>
+                    </View>
+                  ))}
+                </>
+              )}
+            </View>
+          );
+        })()}
+
       </ScrollView>
       {/* ─── Grant Driver Free Rides Modal ─── */}
       <Modal visible={showGrantModal} transparent animationType="slide" onRequestClose={() => { setShowGrantModal(false); setGrantTargetDriver(null); }}>

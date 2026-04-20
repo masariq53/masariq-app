@@ -467,13 +467,55 @@ export async function deleteDriver(driverId: number) {
   await db.delete(drivers).where(eq(drivers.id, driverId));
 }
 
+// كاش لأسماء المناطق لتجنب استدعاء Nominatim بكثرة (مفتاح: lat,lng مقرّب)
+const geocodeCache = new Map<string, { name: string; ts: number }>();
+const GEOCODE_TTL = 5 * 60 * 1000; // 5 دقائق
+
+async function reverseGeocodeLocation(lat: number, lng: number): Promise<string | null> {
+  const key = `${lat.toFixed(3)},${lng.toFixed(3)}`;
+  const cached = geocodeCache.get(key);
+  if (cached && Date.now() - cached.ts < GEOCODE_TTL) return cached.name;
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=ar`,
+      { headers: { 'User-Agent': 'MasarIQ/1.0' }, signal: AbortSignal.timeout(4000) }
+    );
+    const data = await res.json();
+    const addr = data.address || {};
+    const country = addr.country || '';
+    const state = addr.state || '';
+    const district = addr.district || addr.county || '';
+    const local = addr.village || addr.town || addr.suburb || addr.neighbourhood || addr.subdistrict || '';
+    const parts = [country, state, district, local].filter(Boolean);
+    const unique = parts.filter((v, i, a) => a.indexOf(v) === i);
+    const name = unique.join(' • ') || null;
+    if (name) geocodeCache.set(key, { name, ts: Date.now() });
+    return name;
+  } catch {
+    return null;
+  }
+}
+
 export async function updateDriverLocation(driverId: number, lat: number, lng: number) {
   const db = await getDb();
   if (!db) return;
+  // تحديث الإحداثيات فوراً
   await db
     .update(drivers)
     .set({ currentLat: lat.toString(), currentLng: lng.toString(), lastActiveAt: new Date() })
     .where(eq(drivers.id, driverId));
+  // تحديث اسم المنطقة في الخلفية (بدون انتظار)
+  reverseGeocodeLocation(lat, lng).then(name => {
+    if (!name) return;
+    getDb().then(db2 => {
+      if (!db2) return;
+      // نحفظ في حقل city (الجزء الثاني من الاسم) وcountry (الجزء الأول)
+      const parts = name.split(' • ');
+      const country = parts[0] || '';
+      const city = parts.slice(1).join(' • ') || '';
+      db2.update(drivers).set({ country, city }).where(eq(drivers.id, driverId)).catch(() => {});
+    });
+  }).catch(() => {});
 }
 
 export async function setDriverOnlineStatus(driverId: number, isOnline: boolean, isAvailable: boolean) {

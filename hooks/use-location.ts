@@ -25,6 +25,7 @@ export type LocationState = {
   error: string | null;
   isRealLocation: boolean;
   refresh: () => Promise<void>;
+  stopWatching: () => void;
 };
 
 export function useLocation(): LocationState {
@@ -154,22 +155,28 @@ export function useLocation(): LocationState {
     }
   }, []);
 
+  // دالة إيقاف GPS
+  const stopWatching = useCallback(() => {
+    if (watchSubscriptionRef.current) {
+      watchSubscriptionRef.current.remove();
+      watchSubscriptionRef.current = null;
+    }
+    if (Platform.OS === 'web' && webWatchIdRef.current !== null) {
+      navigator.geolocation.clearWatch(webWatchIdRef.current);
+      webWatchIdRef.current = null;
+    }
+    setIsRealLocation(false);
+  }, []);
+
   // بدء المراقبة عند تحميل الـ hook
   useEffect(() => {
     startWatching();
 
     // تنظيف عند unmount
     return () => {
-      if (watchSubscriptionRef.current) {
-        watchSubscriptionRef.current.remove();
-        watchSubscriptionRef.current = null;
-      }
-      if (Platform.OS === "web" && webWatchIdRef.current !== null) {
-        navigator.geolocation.clearWatch(webWatchIdRef.current);
-        webWatchIdRef.current = null;
-      }
+      stopWatching();
     };
-  }, [startWatching]);
+  }, [startWatching, stopWatching]);
 
   return {
     coords,
@@ -178,5 +185,6 @@ export function useLocation(): LocationState {
     error,
     isRealLocation,
     refresh: startWatching,
+    stopWatching,
   };
 }

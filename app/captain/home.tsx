@@ -64,7 +64,7 @@ export default function CaptainHomeScreen() {
     { enabled: !!driver?.id, refetchInterval: 60000 }
   );
   const walletBalance = walletBalanceQuery.data?.balance ?? driver?.walletBalance?.toString() ?? "0";
-  const { coords, heading, isRealLocation } = useLocation();
+  const { coords, heading, isRealLocation, refresh: startGPS, stopWatching: stopGPS } = useLocation();
   const [isOnline, setIsOnline] = useState(false);
   const [currentRequest, setCurrentRequest] = useState<PendingRide | null>(null);
   const [seenRideIds, setSeenRideIds] = useState<Set<number>>(new Set());
@@ -229,7 +229,12 @@ export default function CaptainHomeScreen() {
         isAvailable: newStatus,
       });
     }
-    if (!newStatus) {
+    if (newStatus) {
+      // تشغيل GPS عند ضغط "متاح"
+      startGPS();
+    } else {
+      // إيقاف GPS عند ضغط "غير متاح" لتوفير البطارية
+      stopGPS();
       setCurrentRequest(null);
       if (timerRef.current) clearInterval(timerRef.current);
     }
