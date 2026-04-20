@@ -217,17 +217,40 @@ export default function DriverRegisterScreen() {
     setIsLoading(true);
     try {
       const normalizedPhone = normalizePhone(passengerPhone);
-      // جلب الدولة والمدينة من الموقع الجغرافي
+      // جلب الدولة والمدينة من الموقع الجغرافي الحقيقي للجهاز
       let country: string | undefined;
       let city: string | undefined;
       try {
-        const geoRes = await fetch("https://ipapi.co/json/");
-        if (geoRes.ok) {
-          const geoData = await geoRes.json();
-          country = geoData.country_name || undefined;
-          city = geoData.city || undefined;
+        // محاولة الحصول على الموقع الحقيقي من GPS
+        const { getCurrentPositionAsync, requestForegroundPermissionsAsync } = await import('expo-location');
+        const { status } = await requestForegroundPermissionsAsync();
+        if (status === 'granted') {
+          const pos = await getCurrentPositionAsync({ accuracy: 3 });
+          const { latitude, longitude } = pos.coords;
+          // استخدام Nominatim للحصول على اسم المنطقة الحقيقية
+          const nomRes = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json&accept-language=ar`,
+            { headers: { 'User-Agent': 'MasarIQ-App/1.0' } }
+          );
+          if (nomRes.ok) {
+            const nomData = await nomRes.json();
+            const addr = nomData.address || {};
+            // الأولوية: county (القضاء) > city > town > village > state
+            city = addr.county || addr.city || addr.town || addr.village || addr.suburb || addr.state_district || addr.state || undefined;
+            country = addr.country || undefined;
+          }
         }
-      } catch (_) {}
+      } catch (_) {
+        // فولباك: ipapi
+        try {
+          const geoRes = await fetch('https://ipapi.co/json/');
+          if (geoRes.ok) {
+            const geoData = await geoRes.json();
+            country = geoData.country_name || undefined;
+            city = geoData.city || undefined;
+          }
+        } catch (__) {}
+      }
 
       await registerMutation.mutateAsync({
         phone: normalizedPhone,

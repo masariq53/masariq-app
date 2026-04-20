@@ -16,6 +16,7 @@ import {
   Platform,
 } from "react-native";
 import { router } from "expo-router";
+import { Linking } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { trpc } from "@/lib/trpc";
@@ -274,6 +275,13 @@ export default function AdminDashboard() {
   const [showSupportChatModal, setShowSupportChatModal] = useState(false);
   const [adminReplyText, setAdminReplyText] = useState("");
   const [selectedTicketSubject, setSelectedTicketSubject] = useState("");
+  // تتبع موقع كابتن محدد بشكل حي
+  const [liveTrackDriverId, setLiveTrackDriverId] = useState<number | null>(null);
+  const [liveTrackDriverName, setLiveTrackDriverName] = useState<string>('');
+  const { data: liveDriverLocation } = trpc.admin.driverLiveLocation.useQuery(
+    { driverId: liveTrackDriverId ?? 0 },
+    { enabled: !!liveTrackDriverId, refetchInterval: 7000 }
+  );
 
   const { data: supportTickets, isLoading: supportLoading, refetch: refetchSupport } = trpc.support.adminGetTickets.useQuery(
     { status: supportStatusFilter, userType: supportUserTypeFilter, limit: 100, offset: 0 },
@@ -1424,6 +1432,15 @@ export default function AdminDashboard() {
                         >
                           <Text style={{ fontSize: 18 }}>📋</Text>
                         </TouchableOpacity>
+                        {/* Live Location Tracking */}
+                        {driver.isOnline && (
+                          <TouchableOpacity
+                            style={[styles.docsBtn, { backgroundColor: '#0F3D2E' }]}
+                            onPress={() => { setLiveTrackDriverId(driver.id); setLiveTrackDriverName(driver.name || driver.phone || ''); }}
+                          >
+                            <Text style={{ fontSize: 18 }}>🗺️</Text>
+                          </TouchableOpacity>
+                        )}
                         {/* Commission Override */}
                         <TouchableOpacity
                           style={[styles.docsBtn, { backgroundColor: '#1A3320' }]}
@@ -5394,6 +5411,70 @@ export default function AdminDashboard() {
             </View>
           </Pressable>
         </Pressable>
+      </Modal>
+
+      {/* Modal تتبع موقع الكابتن الحي */}
+      <Modal visible={!!liveTrackDriverId} transparent animationType="fade" onRequestClose={() => setLiveTrackDriverId(null)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+          <View style={{ backgroundColor: '#1A1F2E', borderRadius: 20, padding: 20, width: '100%', maxWidth: 400 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <Text style={{ color: '#fff', fontSize: 17, fontWeight: '800' }}>📍 موقع {liveTrackDriverName}</Text>
+              <TouchableOpacity onPress={() => setLiveTrackDriverId(null)}>
+                <Text style={{ color: '#94A3B8', fontSize: 22 }}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            {liveDriverLocation ? (
+              liveDriverLocation.lat && liveDriverLocation.lng ? (
+                <View style={{ gap: 12 }}>
+                  <View style={{ backgroundColor: '#0F172A', borderRadius: 12, padding: 14, gap: 8 }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                      <Text style={{ color: '#94A3B8', fontSize: 13 }}>خط العرض</Text>
+                      <Text style={{ color: '#60A5FA', fontSize: 13, fontWeight: '700' }}>{liveDriverLocation.lat.toFixed(6)}</Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                      <Text style={{ color: '#94A3B8', fontSize: 13 }}>خط الطول</Text>
+                      <Text style={{ color: '#60A5FA', fontSize: 13, fontWeight: '700' }}>{liveDriverLocation.lng.toFixed(6)}</Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                      <Text style={{ color: '#94A3B8', fontSize: 13 }}>الحالة</Text>
+                      <Text style={{ color: liveDriverLocation.isOnline ? '#22C55E' : '#94A3B8', fontSize: 13, fontWeight: '700' }}>
+                        {liveDriverLocation.isOnline ? '🟢 متصل' : '⚫ غير متصل'}
+                      </Text>
+                    </View>
+                    {liveDriverLocation.lastActiveAt && (
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                        <Text style={{ color: '#94A3B8', fontSize: 13 }}>آخر نشاط</Text>
+                        <Text style={{ color: '#F59E0B', fontSize: 12 }}>
+                          {new Date(liveDriverLocation.lastActiveAt).toLocaleTimeString('ar-IQ')}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text style={{ color: '#64748B', fontSize: 11, textAlign: 'center' }}>يتجدد تلقائياً كل 7 ثواني</Text>
+                  <TouchableOpacity
+                    style={{ backgroundColor: '#1D4ED8', borderRadius: 12, paddingVertical: 12, alignItems: 'center' }}
+                    onPress={() => {
+                      const url = `https://www.google.com/maps?q=${liveDriverLocation.lat},${liveDriverLocation.lng}`;
+                      Linking.openURL(url);
+                    }}
+                  >
+                    <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>🗺️ فتح في خرائط Google</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View style={{ alignItems: 'center', padding: 20 }}>
+                  <Text style={{ color: '#F59E0B', fontSize: 15, textAlign: 'center' }}>⚠️ لا يوجد موقع محفوظ لهذا الكابتن</Text>
+                  <Text style={{ color: '#64748B', fontSize: 12, marginTop: 8, textAlign: 'center' }}>يجب أن يكون الكابتن متصلاً ويُحدِّث موقعه</Text>
+                </View>
+              )
+            ) : (
+              <View style={{ alignItems: 'center', padding: 20 }}>
+                <ActivityIndicator color="#60A5FA" size="large" />
+                <Text style={{ color: '#94A3B8', marginTop: 10 }}>جاري تحميل الموقع...</Text>
+              </View>
+            )}
+          </View>
+        </View>
       </Modal>
     </View>
   );

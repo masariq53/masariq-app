@@ -520,8 +520,9 @@ export const appRouter = router({
         if (dbForPush) {
           const { drivers: driversSchema } = await import("../drizzle/schema");
           const { and: andOp, eq: eqOp2, gt: gtOp, isNotNull: isNotNullOp } = await import("drizzle-orm");
-          const activeDrivers: { id: number; pushToken: string | null }[] = await dbForPush
-            .select({ id: driversSchema.id, pushToken: driversSchema.pushToken })
+          // جلب الكباتنة النشطين مع إحداثياتهم لفلترة المسافة
+          const activeDrivers: { id: number; pushToken: string | null; currentLat: string | null; currentLng: string | null }[] = await dbForPush
+            .select({ id: driversSchema.id, pushToken: driversSchema.pushToken, currentLat: driversSchema.currentLat, currentLng: driversSchema.currentLng })
             .from(driversSchema)
             .where(
               andOp(
@@ -531,15 +532,32 @@ export const appRouter = router({
                 isNotNullOp(driversSchema.pushToken)
               )
             );
+          // جلب نطاق الكابتن من إعدادات المنطقة
+          const { getPricingZone, detectCityFromCoords: detectCity2, calculateDistance: calcDist } = await import("./db");
+          const rideCity2 = detectCity2(input.pickupLat, input.pickupLng);
+          const zone2 = await getPricingZone(rideCity2, "sedan");
+          const notifRadiusKm = zone2?.captainRadiusKm ? parseFloat(zone2.captainRadiusKm.toString()) : 5;
           activeDriverTokens = activeDrivers
-            .filter((d: { id: number; pushToken: string | null }) => d.pushToken?.startsWith("ExponentPushToken["))
-            .map((d: { id: number; pushToken: string | null }) => [d.id, d.pushToken!] as [number, string]);
+            .filter((d) => {
+              if (!d.pushToken?.startsWith("ExponentPushToken[")) return false;
+              // فلترة حسب المسافة: فقط الكباتنة ضمن النطاق المحدد
+              if (d.currentLat && d.currentLng) {
+                const dist = calcDist(
+                  input.pickupLat, input.pickupLng,
+                  parseFloat(d.currentLat), parseFloat(d.currentLng)
+                );
+                return dist <= notifRadiusKm;
+              }
+              // إذا لم يكن للكابتن موقع محفوظ، لا نرسل له الإشعار
+              return false;
+            })
+            .map((d) => [d.id, d.pushToken!] as [number, string]);
           // تحديث كاش الذاكرة بالسائقين النشطين
           for (const [id, token] of activeDriverTokens) {
             driverPushTokens.set(id, token);
           }
         } else {
-          // فولباك: استخدام كاش الذاكرة
+          // فولباك: استخدام كاش الذاكرة (بدون فلترة مسافة)
           activeDriverTokens = Array.from(driverPushTokens.entries());
         }
         if (activeDriverTokens.length > 0) {
@@ -2542,6 +2560,33 @@ export const appRouter = router({
         return {
           parcels: enriched,
           totals: { count: enriched.length, delivered: delivered.length, cancelled: enriched.filter(p => p.status === 'cancelled').length, totalSpent: Math.round(totalSpent) }
+        };
+      }),
+
+    /**
+     * Get live location of a specific driver (for admin map)
+     */
+    driverLiveLocation: publicProcedure
+      .input(z.object({ driverId: z.number() }))
+      .query(async ({ input }) => {
+        const db = await getDb();
+        if (!db) return null;
+        const { drivers: driversSchema } = await import("../drizzle/schema");
+        const { eq } = await import("drizzle-orm");
+        const [d] = await db
+          .select({ id: driversSchema.id, name: driversSchema.name, currentLat: driversSchema.currentLat, currentLng: driversSchema.currentLng, isOnline: driversSchema.isOnline, isAvailable: driversSchema.isAvailable, lastActiveAt: driversSchema.lastActiveAt })
+          .from(driversSchema)
+          .where(eq(driversSchema.id, input.driverId))
+          .limit(1);
+        if (!d) return null;
+        return {
+          id: d.id,
+          name: d.name,
+          lat: d.currentLat ? parseFloat(d.currentLat.toString()) : null,
+          lng: d.currentLng ? parseFloat(d.currentLng.toString()) : null,
+          isOnline: d.isOnline,
+          isAvailable: d.isAvailable,
+          lastActiveAt: d.lastActiveAt,
         };
       }),
   }),
