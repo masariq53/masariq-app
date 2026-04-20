@@ -433,6 +433,23 @@ export default function AdminDashboard() {
     onError: (e) => Alert.alert('خطأ', e.message),
   });
 
+  // ─── Driver Free Rides (Promotions Tab) ─────────────────────────────────────────────────────────────────────────────────
+  const [driverFreeRidesPage, setDriverFreeRidesPage] = useState(0);
+  const [showGrantModal, setShowGrantModal] = useState(false);
+  const [grantTargetDriver, setGrantTargetDriver] = useState<any | null>(null);
+  const [grantCount, setGrantCount] = useState('25');
+  const [grantReason, setGrantReason] = useState('منح يدوي من الإدارة');
+  const [grantDriverSearch, setGrantDriverSearch] = useState('');
+  const [promotionsSubTab, setPromotionsSubTab] = useState<'settings' | 'drivers'>('settings');
+  const DRIVER_FREE_RIDES_PAGE_SIZE = 20;
+  const { data: allDriverFreeRides, isLoading: driverFreeRidesLoading, refetch: refetchDriverFreeRides } = trpc.discounts.getAllDriverFreeRides.useQuery(
+    { limit: 200, offset: 0 },
+    { enabled: activeTab === 'promotions' && promotionsSubTab === 'drivers' }
+  );
+  const grantDriverFreeRidesMutation = trpc.discounts.grantDriverFreeRides.useMutation({
+    onSuccess: (res) => { Alert.alert('✅ تم', res.message); refetchDriverFreeRides(); setShowGrantModal(false); setGrantTargetDriver(null); setGrantCount('25'); setGrantReason('منح يدوي من الإدارة'); },
+    onError: (e) => Alert.alert('خطأ', e.message),
+  });
   // ─── App Settings Queries & Mutations ─────────────────────────────────────────────────────────────────────────────────
   const { data: appSettings, refetch: refetchSettings } = trpc.settings.getAll.useQuery(
     undefined,
@@ -3259,7 +3276,7 @@ export default function AdminDashboard() {
             setSettingsSaving(true);
             const updates = [
               'passenger_welcome_bonus', 'driver_welcome_bonus',
-              'passenger_free_rides', 'global_free_rides_limit', 'promotions_enabled', 'admin_pin'
+              'passenger_free_rides', 'global_free_rides_limit', 'promotions_enabled', 'admin_pin', 'driver_free_rides_count'
             ].map(key => ({ key, value: getValue(key) }));
             setSettingMutation.mutate(updates);
           };
@@ -3291,65 +3308,157 @@ export default function AdminDashboard() {
           return (
             <View style={{ padding: 16 }}>
               <Text style={{ color: '#FFD700', fontSize: 18, fontWeight: '800', marginBottom: 4, textAlign: 'right' }}>🎁 إعدادات العروض</Text>
-              <Text style={{ color: '#9B8EC4', fontSize: 12, marginBottom: 20, textAlign: 'right' }}>تحكم في العروض والرصيد الترحيبي وحماية لوحة التحكم</Text>
+              <Text style={{ color: '#9B8EC4', fontSize: 12, marginBottom: 16, textAlign: 'right' }}>تحكم في العروض والرصيد الترحيبي وحماية لوحة التحكم</Text>
 
-              <SettingRow
-                label="تفعيل جميع العروض"
-                settingKey="promotions_enabled"
-                desc="تشغيل أو إيقاف جميع العروض دفعة واحدة"
-                isToggle
-              />
+              {/* Sub Tabs */}
+              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 20 }}>
+                {([['settings', '⚙️ الإعدادات'], ['drivers', '🚗 رحلات الكباتنة']] as const).map(([tab, label]) => (
+                  <TouchableOpacity key={tab} onPress={() => setPromotionsSubTab(tab)}
+                    style={{ flex: 1, paddingVertical: 10, borderRadius: 12, alignItems: 'center', backgroundColor: promotionsSubTab === tab ? '#7C3AED' : '#1A0533', borderWidth: 1, borderColor: promotionsSubTab === tab ? '#7C3AED' : '#2D1B4E' }}>
+                    <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 13 }}>{label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
 
-              <Text style={{ color: '#9B8EC4', fontSize: 13, fontWeight: '700', marginBottom: 12, textAlign: 'right' }}>👤 عروض الركاب</Text>
-              <SettingRow
-                label="رصيد ترحيبي للراكب الجديد (د.ع)"
-                settingKey="passenger_welcome_bonus"
-                desc="مبلغ يُضاف لمحفظة كل راكب جديد عند التسجيل - 0 = معطّل"
-                numeric
-              />
-              <SettingRow
-                label="رحلات مجانية لكل راكب جديد"
-                settingKey="passenger_free_rides"
-                desc="عدد الرحلات المجانية لكل مستخدم جديد - 0 = معطّل"
-                numeric
-              />
-              <SettingRow
-                label="الحد الأقصى للرحلات المجانية العالمية"
-                settingKey="global_free_rides_limit"
-                desc="مثال: 100 = أول 100 طلب فقط مجاني - 0 = بلا حد"
-                numeric
-              />
+              {promotionsSubTab === 'settings' && (
+                <>
+                  <SettingRow
+                    label="تفعيل جميع العروض"
+                    settingKey="promotions_enabled"
+                    desc="تشغيل أو إيقاف جميع العروض دفعة واحدة"
+                    isToggle
+                  />
 
-              <Text style={{ color: '#9B8EC4', fontSize: 13, fontWeight: '700', marginBottom: 12, textAlign: 'right', marginTop: 8 }}>🚗 عروض الكابتن</Text>
-              <SettingRow
-                label="رصيد ترحيبي للكابتن الجديد (د.ع)"
-                settingKey="driver_welcome_bonus"
-                desc="مبلغ يُضاف لمحفظة كل كابتن جديد عند قبول حسابه - 0 = معطّل"
-                numeric
-              />
+                  <Text style={{ color: '#9B8EC4', fontSize: 13, fontWeight: '700', marginBottom: 12, textAlign: 'right' }}>👤 عروض الركاب</Text>
+                  <SettingRow
+                    label="رصيد ترحيبي للراكب الجديد (د.ع)"
+                    settingKey="passenger_welcome_bonus"
+                    desc="مبلغ يُضاف لمحفظة كل راكب جديد عند التسجيل - 0 = معطّل"
+                    numeric
+                  />
+                  <SettingRow
+                    label="رحلات مجانية لكل راكب جديد"
+                    settingKey="passenger_free_rides"
+                    desc="عدد الرحلات المجانية لكل مستخدم جديد - 0 = معطّل"
+                    numeric
+                  />
+                  <SettingRow
+                    label="الحد الأقصى للرحلات المجانية العالمية"
+                    settingKey="global_free_rides_limit"
+                    desc="مثال: 100 = أول 100 طلب فقط مجاني - 0 = بلا حد"
+                    numeric
+                  />
 
-              <Text style={{ color: '#9B8EC4', fontSize: 13, fontWeight: '700', marginBottom: 12, textAlign: 'right', marginTop: 8 }}>🔒 حماية لوحة التحكم</Text>
-              <SettingRow
-                label="رمز PIN لوحة التحكم"
-                settingKey="admin_pin"
-                desc="رمز سري للدخول للوحة التحكم - الافتراضي: 1234"
-                numeric
-              />
+                  <Text style={{ color: '#9B8EC4', fontSize: 13, fontWeight: '700', marginBottom: 12, textAlign: 'right', marginTop: 8 }}>🚗 عروض الكابتن</Text>
+                  <SettingRow
+                    label="رصيد ترحيبي للكابتن الجديد (د.ع)"
+                    settingKey="driver_welcome_bonus"
+                    desc="مبلغ يُضاف لمحفظة كل كابتن جديد عند قبول حسابه - 0 = معطّل"
+                    numeric
+                  />
+                  <SettingRow
+                    label="رحلات مجانية لكل كابتن جديد"
+                    settingKey="driver_free_rides_count"
+                    desc="عدد الرحلات المجانية بدون عمولة لكل كابتن جديد - 0 = معطّل"
+                    numeric
+                  />
 
-              <TouchableOpacity
-                onPress={saveAll}
-                disabled={settingsSaving}
-                style={{ backgroundColor: settingsSaving ? '#4B3A6E' : '#FFD700', borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 8 }}
-              >
-                <Text style={{ color: '#1A0533', fontSize: 16, fontWeight: '800' }}>{settingsSaving ? 'جاري الحفظ...' : '✅ حفظ جميع الإعدادات'}</Text>
-              </TouchableOpacity>
+                  <Text style={{ color: '#9B8EC4', fontSize: 13, fontWeight: '700', marginBottom: 12, textAlign: 'right', marginTop: 8 }}>🔒 حماية لوحة التحكم</Text>
+                  <SettingRow
+                    label="رمز PIN لوحة التحكم"
+                    settingKey="admin_pin"
+                    desc="رمز سري للدخول للوحة التحكم - الافتراضي: 1234"
+                    numeric
+                  />
 
-              {/* Stats */}
-              {settings.find((s: any) => s.key === 'global_free_rides_used') && (
-                <View style={{ backgroundColor: '#1A0533', borderRadius: 14, padding: 14, borderWidth: 1, borderColor: '#2D1B4E', marginTop: 16 }}>
-                  <Text style={{ color: '#9B8EC4', fontSize: 12, textAlign: 'right', marginBottom: 4 }}>📊 إحصائيات</Text>
-                  <Text style={{ color: '#FFFFFF', fontSize: 14, textAlign: 'right' }}>الرحلات المجانية المستخدمة: <Text style={{ color: '#FFD700', fontWeight: '800' }}>{settings.find((s: any) => s.key === 'global_free_rides_used')?.value ?? '0'}</Text></Text>
-                </View>
+                  <TouchableOpacity
+                    onPress={saveAll}
+                    disabled={settingsSaving}
+                    style={{ backgroundColor: settingsSaving ? '#4B3A6E' : '#FFD700', borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 8 }}
+                  >
+                    <Text style={{ color: '#1A0533', fontSize: 16, fontWeight: '800' }}>{settingsSaving ? 'جاري الحفظ...' : '✅ حفظ جميع الإعدادات'}</Text>
+                  </TouchableOpacity>
+
+                  {settings.find((s: any) => s.key === 'global_free_rides_used') && (
+                    <View style={{ backgroundColor: '#1A0533', borderRadius: 14, padding: 14, borderWidth: 1, borderColor: '#2D1B4E', marginTop: 16 }}>
+                      <Text style={{ color: '#9B8EC4', fontSize: 12, textAlign: 'right', marginBottom: 4 }}>📊 إحصائيات</Text>
+                      <Text style={{ color: '#FFFFFF', fontSize: 14, textAlign: 'right' }}>الرحلات المجانية المستخدمة: <Text style={{ color: '#FFD700', fontWeight: '800' }}>{settings.find((s: any) => s.key === 'global_free_rides_used')?.value ?? '0'}</Text></Text>
+                    </View>
+                  )}
+                </>
+              )}
+
+              {promotionsSubTab === 'drivers' && (
+                <>
+                  {/* زر منح يدوي */}
+                  <TouchableOpacity
+                    onPress={() => setShowGrantModal(true)}
+                    style={{ backgroundColor: '#7C3AED', borderRadius: 14, paddingVertical: 14, alignItems: 'center', marginBottom: 16, flexDirection: 'row', justifyContent: 'center', gap: 8 }}
+                  >
+                    <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '800' }}>✨ منح رحلات مجانية لكابتن</Text>
+                  </TouchableOpacity>
+
+                  {/* إحصائيات سريعة */}
+                  {allDriverFreeRides && (
+                    <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
+                      {[
+                        { label: 'إجمالي الكباتنة', value: allDriverFreeRides.length, color: '#818cf8' },
+                        { label: 'نشطة', value: allDriverFreeRides.filter((d: any) => d.isActive).length, color: '#4ADE80' },
+                        { label: 'منتهية', value: allDriverFreeRides.filter((d: any) => !d.isActive).length, color: '#94a3b8' },
+                      ].map((stat) => (
+                        <View key={stat.label} style={{ flex: 1, backgroundColor: '#1A0533', borderRadius: 12, padding: 12, alignItems: 'center', borderWidth: 1, borderColor: '#2D1B4E' }}>
+                          <Text style={{ color: stat.color, fontSize: 22, fontWeight: '800' }}>{stat.value}</Text>
+                          <Text style={{ color: '#9B8EC4', fontSize: 11, marginTop: 2 }}>{stat.label}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+
+                  {/* قائمة الكباتنة */}
+                  {driverFreeRidesLoading ? (
+                    <ActivityIndicator color="#FFD700" style={{ marginTop: 40 }} />
+                  ) : !allDriverFreeRides || allDriverFreeRides.length === 0 ? (
+                    <View style={{ alignItems: 'center', marginTop: 40, gap: 8 }}>
+                      <Text style={{ fontSize: 40 }}>🎁</Text>
+                      <Text style={{ color: '#9B8EC4', fontSize: 14, textAlign: 'center' }}>لا يوجد سجل رحلات مجانية بعد</Text>
+                    </View>
+                  ) : (
+                    allDriverFreeRides.map((item: any) => (
+                      <View key={item.id} style={{ backgroundColor: '#1A0533', borderRadius: 14, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: item.isActive ? '#7C3AED' : '#2D1B4E' }}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                          <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10, backgroundColor: item.isActive ? '#166534' : '#374151' }}>
+                            <Text style={{ color: '#fff', fontSize: 11, fontWeight: '600' }}>{item.isActive ? 'نشط' : 'منتهي'}</Text>
+                          </View>
+                          <View style={{ alignItems: 'flex-end' }}>
+                            <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '700' }}>{item.driverName ?? 'كابتن'}</Text>
+                            <Text style={{ color: '#9B8EC4', fontSize: 12 }}>{item.driverPhone ?? ''}</Text>
+                          </View>
+                        </View>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                          <View style={{ alignItems: 'center' }}>
+                            <Text style={{ color: '#94a3b8', fontSize: 11 }}>إجمالي</Text>
+                            <Text style={{ color: '#FFFFFF', fontSize: 16, fontWeight: '700' }}>{item.totalFreeRides}</Text>
+                          </View>
+                          <View style={{ alignItems: 'center' }}>
+                            <Text style={{ color: '#94a3b8', fontSize: 11 }}>مستخدمة</Text>
+                            <Text style={{ color: '#4ADE80', fontSize: 16, fontWeight: '700' }}>{item.usedFreeRides}</Text>
+                          </View>
+                          <View style={{ alignItems: 'center' }}>
+                            <Text style={{ color: '#94a3b8', fontSize: 11 }}>متبقية</Text>
+                            <Text style={{ color: '#FFD700', fontSize: 16, fontWeight: '700' }}>{item.totalFreeRides - item.usedFreeRides}</Text>
+                          </View>
+                          <TouchableOpacity
+                            onPress={() => { setGrantTargetDriver({ id: item.driverId, name: item.driverName, phone: item.driverPhone }); setShowGrantModal(true); }}
+                            style={{ backgroundColor: '#7C3AED22', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: '#7C3AED' }}
+                          >
+                            <Text style={{ color: '#818cf8', fontSize: 12, fontWeight: '700' }}>+ منح</Text>
+                          </TouchableOpacity>
+                        </View>
+                        {item.grantReason && <Text style={{ color: '#6B7280', fontSize: 11, textAlign: 'right', marginTop: 6 }}>السبب: {item.grantReason}</Text>}
+                      </View>
+                    ))
+                  )}
+                </>
               )}
             </View>
           );
@@ -3357,6 +3466,95 @@ export default function AdminDashboard() {
 
         <View style={{ height: 40 }} />
       </ScrollView>
+      {/* ─── Grant Driver Free Rides Modal ─── */}
+      <Modal visible={showGrantModal} transparent animationType="slide" onRequestClose={() => { setShowGrantModal(false); setGrantTargetDriver(null); }}>
+        <View style={styles.modalOverlay}>
+          <View style={{ backgroundColor: '#1A0533', borderRadius: 20, width: '92%', padding: 20 }}>
+            <Text style={{ color: '#FFD700', fontSize: 16, fontWeight: '800', marginBottom: 4, textAlign: 'right' }}>✨ منح رحلات مجانية</Text>
+            <Text style={{ color: '#9B8EC4', fontSize: 12, marginBottom: 16, textAlign: 'right' }}>منح رحلات مجانية بدون عمولة لكابتن محدد</Text>
+
+            {/* اختيار الكابتن */}
+            {!grantTargetDriver ? (
+              <>
+                <Text style={{ color: '#9B8EC4', fontSize: 12, marginBottom: 6, textAlign: 'right' }}>اختر الكابتن</Text>
+                <TextInput
+                  value={grantDriverSearch}
+                  onChangeText={setGrantDriverSearch}
+                  placeholder="بحث باسم الكابتن..."
+                  placeholderTextColor="#6B5A8A"
+                  style={{ backgroundColor: '#0F0628', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: '#FFFFFF', fontSize: 14, borderWidth: 1, borderColor: '#2D1B4E', marginBottom: 8, textAlign: 'right' }}
+                />
+                <ScrollView style={{ maxHeight: 200 }} showsVerticalScrollIndicator={false}>
+                  {(allDrivers ?? []).filter((d: any) =>
+                    !grantDriverSearch || d.name?.includes(grantDriverSearch) || d.phone?.includes(grantDriverSearch)
+                  ).slice(0, 15).map((d: any) => (
+                    <TouchableOpacity
+                      key={d.id}
+                      style={{ padding: 12, borderRadius: 10, backgroundColor: '#1E1035', marginBottom: 6, borderWidth: 1, borderColor: '#2D1B4E' }}
+                      onPress={() => { setGrantTargetDriver({ id: d.id, name: d.name, phone: d.phone }); setGrantDriverSearch(''); }}
+                    >
+                      <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '600', textAlign: 'right' }}>{d.name}</Text>
+                      <Text style={{ color: '#9B8EC4', fontSize: 12, textAlign: 'right' }}>{d.phone}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </>
+            ) : (
+              <>
+                {/* معلومات الكابتن المختار */}
+                <View style={{ backgroundColor: '#0F0628', borderRadius: 12, padding: 12, marginBottom: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <TouchableOpacity onPress={() => setGrantTargetDriver(null)}>
+                    <Text style={{ color: '#9B8EC4', fontSize: 12 }}>تغيير</Text>
+                  </TouchableOpacity>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '700' }}>{grantTargetDriver.name}</Text>
+                    <Text style={{ color: '#9B8EC4', fontSize: 12 }}>{grantTargetDriver.phone}</Text>
+                  </View>
+                </View>
+
+                <Text style={{ color: '#9B8EC4', fontSize: 12, marginBottom: 6, textAlign: 'right' }}>عدد الرحلات المجانية</Text>
+                <TextInput
+                  value={grantCount}
+                  onChangeText={setGrantCount}
+                  keyboardType="number-pad"
+                  style={{ backgroundColor: '#0F0628', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: '#FFFFFF', fontSize: 18, fontWeight: '700', borderWidth: 1, borderColor: '#3D2070', marginBottom: 12, textAlign: 'center' }}
+                  placeholder="25"
+                  placeholderTextColor="#4B3A6E"
+                />
+
+                <Text style={{ color: '#9B8EC4', fontSize: 12, marginBottom: 6, textAlign: 'right' }}>سبب المنح</Text>
+                <TextInput
+                  value={grantReason}
+                  onChangeText={setGrantReason}
+                  style={{ backgroundColor: '#0F0628', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: '#FFFFFF', fontSize: 14, borderWidth: 1, borderColor: '#2D1B4E', marginBottom: 16, textAlign: 'right' }}
+                  placeholder="منح يدوي من الإدارة"
+                  placeholderTextColor="#4B3A6E"
+                />
+
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <TouchableOpacity
+                    style={{ flex: 1, backgroundColor: '#1E1035', borderRadius: 12, paddingVertical: 12, alignItems: 'center', borderWidth: 1, borderColor: '#2D1B4E' }}
+                    onPress={() => { setShowGrantModal(false); setGrantTargetDriver(null); }}
+                  >
+                    <Text style={{ color: '#9B8EC4', fontWeight: '700' }}>إلغاء</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={{ flex: 2, backgroundColor: '#7C3AED', borderRadius: 12, paddingVertical: 12, alignItems: 'center' }}
+                    onPress={() => {
+                      const count = parseInt(grantCount);
+                      if (!count || count < 1) { Alert.alert('خطأ', 'أدخل عدداً صحيحاً'); return; }
+                      grantDriverFreeRidesMutation.mutate({ driverId: grantTargetDriver.id, count, reason: grantReason });
+                    }}
+                  >
+                    {grantDriverFreeRidesMutation.isPending ? <ActivityIndicator color="#FFFFFF" /> : <Text style={{ color: '#FFFFFF', fontWeight: '800' }}>✨ منح الرحلات</Text>}
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
+
       {/* ─── Edit Payment Method Modal ─── */}
       <Modal visible={!!editingPaymentMethod} transparent animationType="slide" onRequestClose={() => setEditingPaymentMethod(null)}>
         <View style={styles.modalOverlay}>

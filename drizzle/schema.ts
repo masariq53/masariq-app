@@ -691,6 +691,26 @@ export const appSettings = mysqlTable("appSettings", {
 export type AppSetting = typeof appSettings.$inferSelect;
 export type InsertAppSetting = typeof appSettings.$inferInsert;
 
+// ─── Driver Free Rides (رحلات الكابتن المجانية) ─────────────────────────────────
+/**
+ * تتبع الرحلات المجانية للكابتن (بدون خصم عمولة)
+ * يُمنح للكابتن الجديد عند قبول حسابه من الإدارة
+ */
+export const driverFreeRides = mysqlTable("driverFreeRides", {
+  id: int("id").autoincrement().primaryKey(),
+  driverId: int("driverId").notNull().unique(), // كابتن واحد - سجل واحد
+  totalFreeRides: int("totalFreeRides").notNull().default(25), // إجمالي الرحلات المجانية الممنوحة
+  usedFreeRides: int("usedFreeRides").notNull().default(0),   // الرحلات المجانية المستخدمة
+  isActive: boolean("isActive").default(true).notNull(),      // هل العرض نشط
+  grantedBy: int("grantedBy"),                                // من منح العرض (admin id)
+  grantReason: varchar("grantReason", { length: 300 }),       // سبب المنح
+  expiresAt: timestamp("expiresAt"),                          // تاريخ انتهاء الصلاحية (null = لا ينتهي)
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export type DriverFreeRide = typeof driverFreeRides.$inferSelect;
+export type InsertDriverFreeRide = typeof driverFreeRides.$inferInsert;
+
 // ─── Ride Messages (داخل المدينة) ─────────────────────────────────────────────
 /**
  * رسائل الشات بين الراكب والسائق في رحلات داخل المدينة

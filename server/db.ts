@@ -39,6 +39,8 @@ import {
   appSettings,
   rideMessages,
   RideMessage,
+  driverFreeRides,
+  DriverFreeRide,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 
@@ -3819,6 +3821,7 @@ const DEFAULT_SETTINGS: Record<string, { value: string; description: string }> =
   global_free_rides_limit: { value: "0", description: "الحد الأقصى للرحلات المجانية العالمية - 0 = بلا حد" },
   global_free_rides_used: { value: "0", description: "عدد الرحلات المجانية المستخدمة حتى الآن (تلقائي)" },
   promotions_enabled: { value: "true", description: "تفعيل/تعطيل جميع العروض الترحيبية" },
+  driver_free_rides_count: { value: "25", description: "عدد الرحلات المجانية لكل كابتن جديد (0 = معطل)" },
   admin_pin: { value: "1234", description: "رمز PIN للوصول للوحة التحكم من التطبيق" },
 };
 
@@ -4046,6 +4049,142 @@ export async function consumeFreeRide(discountId: number) {
   }
 }
 
+
+// ─── Driver Free Rides Logic ──────────────────────────────────────────────────
+
+/**
+ * منح رحلات مجانية للكابتن الجديد عند قبول حسابه من الإدارة
+ * يُستدعى من endpoint قبول الكابتن
+ */
+export async function grantDriverFreeRides(driverId: number, grantedBy?: number): Promise<number> {
+  const enabled = await getAppSetting("promotions_enabled");
+  if (enabled !== "true") return 0;
+  const countStr = await getAppSetting("driver_free_rides_count");
+  const count = parseInt(countStr ?? "0", 10);
+  if (count <= 0) return 0;
+  const db = await getDb();
+  if (!db) return 0;
+  // تحقق إذا كان الكابتن حصل على عرض مسبقاً
+  const [existing] = await db.select().from(driverFreeRides).where(eq(driverFreeRides.driverId, driverId)).limit(1);
+  if (existing) return existing.totalFreeRides - existing.usedFreeRides; // عنده عرض بالفعل
+  await db.insert(driverFreeRides).values({
+    driverId,
+    totalFreeRides: count,
+    usedFreeRides: 0,
+    isActive: true,
+    grantedBy: grantedBy ?? null,
+    grantReason: "عرض ترحيبي للكابتن الجديد",
+  });
+  return count;
+}
+
+/**
+ * جلب بيانات الرحلات المجانية للكابتن
+ */
+export async function getDriverFreeRidesInfo(driverId: number): Promise<DriverFreeRide | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const [row] = await db.select().from(driverFreeRides).where(eq(driverFreeRides.driverId, driverId)).limit(1);
+  return row ?? null;
+}
+
+/**
+ * تحقق إذا كان للكابتن رحلات مجانية متبقية
+ * يُستدعى عند اكتمال الرحلة لتحديد هل تُخصم العمولة
+ */
+export async function checkDriverHasFreeRide(driverId: number): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  const now = new Date();
+  const [row] = await db.select().from(driverFreeRides)
+    .where(
+      and(
+        eq(driverFreeRides.driverId, driverId),
+        eq(driverFreeRides.isActive, true),
+        or(isNull(driverFreeRides.expiresAt), gt(driverFreeRides.expiresAt, now))
+      )
+    ).limit(1);
+  if (!row) return false;
+  return row.usedFreeRides < row.totalFreeRides;
+}
+
+/**
+ * استهلاك رحلة مجانية واحدة للكابتن بعد اكتمال الرحلة
+ * يُعيد عدد الرحلات المجانية المتبقية
+ */
+export async function consumeDriverFreeRide(driverId: number): Promise<{ remaining: number; total: number }> {
+  const db = await getDb();
+  if (!db) return { remaining: 0, total: 0 };
+  const [row] = await db.select().from(driverFreeRides).where(eq(driverFreeRides.driverId, driverId)).limit(1);
+  if (!row || !row.isActive || row.usedFreeRides >= row.totalFreeRides) return { remaining: 0, total: 0 };
+  const newUsed = row.usedFreeRides + 1;
+  const remaining = row.totalFreeRides - newUsed;
+  await db.update(driverFreeRides)
+    .set({ usedFreeRides: newUsed, isActive: remaining > 0 ? true : false })
+    .where(eq(driverFreeRides.driverId, driverId));
+  return { remaining, total: row.totalFreeRides };
+}
+
+/**
+ * جلب سجل جميع الكباتنة وعروضهم (للوحة التحكم)
+ */
+export async function getAllDriverFreeRides(limit = 50, offset = 0) {
+  const db = await getDb();
+  if (!db) return [];
+  const rows = await db
+    .select({
+      id: driverFreeRides.id,
+      driverId: driverFreeRides.driverId,
+      driverName: drivers.name,
+      driverPhone: drivers.phone,
+      totalFreeRides: driverFreeRides.totalFreeRides,
+      usedFreeRides: driverFreeRides.usedFreeRides,
+      isActive: driverFreeRides.isActive,
+      grantReason: driverFreeRides.grantReason,
+      expiresAt: driverFreeRides.expiresAt,
+      createdAt: driverFreeRides.createdAt,
+    })
+    .from(driverFreeRides)
+    .leftJoin(drivers, eq(driverFreeRides.driverId, drivers.id))
+    .orderBy(desc(driverFreeRides.createdAt))
+    .limit(limit)
+    .offset(offset);
+  return rows;
+}
+
+/**
+ * منح رحلات مجانية يدوياً لكابتن معين من لوحة التحكم
+ */
+export async function grantDriverFreeRidesManual(
+  driverId: number,
+  count: number,
+  reason: string,
+  grantedBy?: number
+): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  const [existing] = await db.select().from(driverFreeRides).where(eq(driverFreeRides.driverId, driverId)).limit(1);
+  if (existing) {
+    // تحديث السجل الموجود
+    await db.update(driverFreeRides)
+      .set({
+        totalFreeRides: existing.totalFreeRides + count,
+        isActive: true,
+        grantReason: reason,
+        grantedBy: grantedBy ?? null,
+      })
+      .where(eq(driverFreeRides.driverId, driverId));
+  } else {
+    await db.insert(driverFreeRides).values({
+      driverId,
+      totalFreeRides: count,
+      usedFreeRides: 0,
+      isActive: true,
+      grantedBy: grantedBy ?? null,
+      grantReason: reason,
+    });
+  }
+}
 
 // ─── Agent Push Token ─────────────────────────────────────────────────────────
 

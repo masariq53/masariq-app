@@ -162,6 +162,12 @@ import {
   saveAgentPushToken,
   getAgentPushToken,
   sendPushNotification,
+  grantDriverFreeRides,
+  getDriverFreeRidesInfo,
+  checkDriverHasFreeRide,
+  consumeDriverFreeRide,
+  getAllDriverFreeRides,
+  grantDriverFreeRidesManual,
 } from "./db";
 import { storagePut } from "./storage";
 import { transcribeAudio } from "./_core/voiceTranscription";
@@ -787,8 +793,43 @@ export const appRouter = router({
                 await db.update(driversTable)
                   .set({ totalRides: sqlOp`totalRides + 1`, isAvailable: true })
                   .where(eqOp(driversTable.id, ride.driverId));
-                // استقطاع 10% عمولة الشركة من محفظة السائق
+                // فحص إذا كان للكابتن رحلات مجانية متبقية
+                let driverHasFreeRide = false;
+                let freeRideRemaining = 0;
+                let freeRideTotal = 0;
                 if (ride.fare && Number(ride.fare) > 0) {
+                  try {
+                    driverHasFreeRide = await checkDriverHasFreeRide(ride.driverId);
+                    if (driverHasFreeRide) {
+                      const result = await consumeDriverFreeRide(ride.driverId);
+                      freeRideRemaining = result.remaining;
+                      freeRideTotal = result.total;
+                      // إشعار الكابتن بعدد الرحلات المجانية المتبقية
+                      const driverToken = await getDriverPushToken(ride.driverId);
+                      if (driverToken && driverToken.startsWith("ExponentPushToken[")) {
+                        const msg = freeRideRemaining > 0
+                          ? `هذه رحلة مجانية ✔️ باقي لك ${freeRideRemaining} من ${freeRideTotal} رحلة مجانية`
+                          : `انتهت رحلاتك المجانية ❤️ شكراً لثقتك بمسار!`;
+                        fetch("https://exp.host/--/api/v2/push/send", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json", "Accept": "application/json" },
+                          body: JSON.stringify({
+                            to: driverToken,
+                            sound: "default",
+                            title: "✨ رحلة مجانية!",
+                            body: msg,
+                            data: { type: "free_ride_used", remaining: freeRideRemaining, total: freeRideTotal },
+                            priority: "high",
+                          }),
+                        }).catch(() => {});
+                      }
+                    }
+                  } catch (e) {
+                    console.warn("[FreeRide] Failed to check/consume free ride:", e);
+                  }
+                }
+                // استقطاع 10% عمولة الشركة من محفظة السائق (فقط إذا لم تكن رحلة مجانية)
+                if (ride.fare && Number(ride.fare) > 0 && !driverHasFreeRide) {
                   try {
                     const { deductDriverCommission } = await import("./db");
                     await deductDriverCommission(ride.driverId, ride.id, Number(ride.fare));
@@ -2107,7 +2148,19 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         await updateDriverRegistrationStatus(input.driverId, input.status, input.rejectionReason);
 
-        // Get driver info and log notification (in production: send SMS/push)
+        // منح العروض الترحيبية عند قبول الكابتن
+        let welcomeBonusAmount = 0;
+        let freeRidesGranted = 0;
+        if (input.status === "approved") {
+          try {
+            welcomeBonusAmount = await applyDriverWelcomeBonus(input.driverId);
+            freeRidesGranted = await grantDriverFreeRides(input.driverId);
+          } catch (e) {
+            console.warn("[reviewDriver] Failed to apply welcome bonus:", e);
+          }
+        }
+
+        // Get driver info and send Push notification
         try {
           const db = await (await import("./db")).getDb();
           if (db) {
@@ -2116,9 +2169,18 @@ export const appRouter = router({
             const result = await db.select().from(driversTable).where(eq(driversTable.id, input.driverId)).limit(1);
             if (result.length > 0) {
               const d = result[0]!;
+              // بناء رسالة القبول مع تفاصيل العروض
+              let approvedMsg = `مبروك! تم قبول طلبك كسائق في مسار. يمكنك الآن البدء باستقبال الرحلات.`;
+              if (welcomeBonusAmount > 0 && freeRidesGranted > 0) {
+                approvedMsg += ` هديتك: رصيد ${welcomeBonusAmount.toLocaleString()} دينار + ${freeRidesGranted} رحلة مجانية بدون عمولة! اضغط على "عروضي" لمعرفة التفاصيل.`;
+              } else if (freeRidesGranted > 0) {
+                approvedMsg += ` هديتك: ${freeRidesGranted} رحلة مجانية بدون عمولة! اضغط على "عروضي" لمعرفة التفاصيل.`;
+              } else if (welcomeBonusAmount > 0) {
+                approvedMsg += ` هديتك: رصيد ${welcomeBonusAmount.toLocaleString()} دينار في محفظتك!`;
+              }
               const statusMsg = input.status === "approved"
-                ? `مبروك! تم قبول طلبك كسائق في مسار. يمكنك الآن البدء باستقبال الرحلات.`
-                : `نأسف لعدم قبول طلبك. ${input.rejectionReason ?? "يرجى مراجعة البيانات وإعادة التقديم."}` ;
+                ? approvedMsg
+                : `نأسف لعدم قبول طلبك. ${input.rejectionReason ?? "يرجى مراجعة البيانات وإعادة التقديم."}`;
               // Send real Push Notification to driver
               const driverPushToken = await getDriverPushToken(input.driverId);
               if (driverPushToken && driverPushToken.startsWith("ExponentPushToken[")) {
@@ -2130,7 +2192,7 @@ export const appRouter = router({
                     sound: "default",
                     title: input.status === "approved" ? "✅ تم قبول طلبك كسائق!" : "❌ لم يتم قبول طلبك",
                     body: statusMsg,
-                    data: { type: "driver_review", status: input.status, driverId: input.driverId },
+                    data: { type: "driver_review", status: input.status, driverId: input.driverId, freeRidesGranted, welcomeBonusAmount },
                     priority: "high",
                   }),
                 }).catch((err) => console.warn("[Push] Failed to notify driver of review:", err));
@@ -3866,6 +3928,38 @@ export const appRouter = router({
     deactivate: publicProcedure
       .input(z.object({ discountId: z.number() }))
       .mutation(async ({ input }) => deactivateUserDiscount(input.discountId)),
+    // جلب بيانات الرحلات المجانية للكابتن
+    getDriverFreeRides: publicProcedure
+      .input(z.object({ driverId: z.number() }))
+      .query(async ({ input }) => {
+        const info = await getDriverFreeRidesInfo(input.driverId);
+        if (!info) return null;
+        return {
+          totalFreeRides: info.totalFreeRides,
+          usedFreeRides: info.usedFreeRides,
+          remaining: info.totalFreeRides - info.usedFreeRides,
+          isActive: info.isActive,
+          grantReason: info.grantReason,
+          expiresAt: info.expiresAt,
+          createdAt: info.createdAt,
+        };
+      }),
+    // جلب سجل جميع الكباتنة وعروضهم (لوحة التحكم)
+    getAllDriverFreeRides: publicProcedure
+      .input(z.object({ limit: z.number().default(50), offset: z.number().default(0) }).optional())
+      .query(async ({ input }) => getAllDriverFreeRides(input?.limit ?? 50, input?.offset ?? 0)),
+    // منح رحلات مجانية يدوياً لكابتن معين (من لوحة التحكم)
+    grantDriverFreeRides: publicProcedure
+      .input(z.object({
+        driverId: z.number(),
+        count: z.number().min(1).max(1000),
+        reason: z.string().default("منح يدوي من الإدارة"),
+        grantedBy: z.number().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        await grantDriverFreeRidesManual(input.driverId, input.count, input.reason, input.grantedBy);
+        return { success: true, message: `تم منح ${input.count} رحلة مجانية للكابتن بنجاح` };
+      }),
     // جلب الخصم النشط للراكب (لعرضه في شاشة التأكيد)
     getMyDiscount: publicProcedure
       .input(z.object({

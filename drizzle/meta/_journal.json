@@ -253,6 +253,13 @@
       "when": 1776669657227,
       "tag": "0035_sharp_sprite",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "5",
+      "when": 1776671748828,
+      "tag": "0036_stormy_bruce_banner",
+      "breakpoints": true
     }
   ]
 }
