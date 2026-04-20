@@ -6,12 +6,7 @@
  * Fallback: Nominatim (OpenStreetMap)
  */
 
-import Constants from "expo-constants";
-
-const GOOGLE_MAPS_API_KEY: string =
-  (Constants.expoConfig?.ios?.config as any)?.googleMapsApiKey ||
-  (Constants.expoConfig?.android?.config as any)?.googleMaps?.apiKey ||
-  "";
+import { GOOGLE_MAPS_API_KEY } from "./config";
 
 export type PlaceResult = {
   id: string;

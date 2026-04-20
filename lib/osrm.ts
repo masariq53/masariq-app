@@ -6,13 +6,7 @@
  * Works on Expo Go iOS/Android — no server dependency.
  */
 
-import Constants from "expo-constants";
-
-// Google Maps API Key من app.config.ts
-const GOOGLE_MAPS_API_KEY: string =
-  (Constants.expoConfig?.ios?.config as any)?.googleMapsApiKey ||
-  (Constants.expoConfig?.android?.config as any)?.googleMaps?.apiKey ||
-  "";
+import { GOOGLE_MAPS_API_KEY } from "./config";
 
 // Mapbox token — fallback إذا فشل Google
 const MAPBOX_TOKEN = "pk.eyJ1IjoibXVzdGFmYWlxMSIsImEiOiJjbW56NmpwcXcwOXprMnFzZDl1eTFjZWd0In0.nC_HXss0ue9QkBeyo5ZmQA";
