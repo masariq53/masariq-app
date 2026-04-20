@@ -175,16 +175,20 @@ export default function CaptainActiveTripScreen() {
     }
   }, [ride?.status]);
 
-  // تمركز الخريطة عند أول تحميل 
+  // تمركز الخريطة عند أول تحميل - 3D Waze-like 
   useEffect(() => {
     if (ride && mapRef.current && firstLoadRef.current) {
       firstLoadRef.current = false;
-      mapRef.current.animateToRegion({
-        latitude: pickupCoord.latitude,
-        longitude: pickupCoord.longitude,
-        latitudeDelta: 0.05,
-        longitudeDelta: 0.05,
-      }, 800);
+      // استخدام animateCamera مع pitch:60 لتجربة 3D مثل Waze
+      setTimeout(() => {
+        mapRef.current?.animateCamera({
+          center: { latitude: pickupCoord.latitude, longitude: pickupCoord.longitude },
+          heading: heading ?? 0,
+          pitch: 60,
+          zoom: 17,
+          altitude: 300,
+        }, { duration: 1500 });
+      }, 500);
     }
   }, [ride?.id]);
 
@@ -231,27 +235,30 @@ export default function CaptainActiveTripScreen() {
       // المسار الأزرق: من موقع الكابتن الحالي → موقع الراكب
       fetchRoute(driverPos, realPickup, true);
       voiceNav.start(ride.pickupAddress || "موقع الراكب");
-      // تمركز الخريطة على المسار بين الكابتن والراكب
-      if (mapRef.current) {
-        mapRef.current.animateToRegion({
-          latitude: (driverPos.latitude + realPickup.latitude) / 2,
-          longitude: (driverPos.longitude + realPickup.longitude) / 2,
-          latitudeDelta: Math.abs(driverPos.latitude - realPickup.latitude) * 3 + 0.02,
-          longitudeDelta: Math.abs(driverPos.longitude - realPickup.longitude) * 3 + 0.02,
-        }, 1000);
-      }
+      // استخدام animateCamera مع 3D عند بدء المرحلة
+      setTimeout(() => {
+        mapRef.current?.animateCamera({
+          center: driverPos,
+          heading: heading ?? 0,
+          pitch: 60,
+          zoom: 17,
+          altitude: 300,
+        }, { duration: 1000 });
+      }, 300);
     } else if (phase === "in_trip") {
-      // المسار الذهبي: من موقع الراكب → الوجهة
-      fetchRoute(realPickup, realDest, false);
+      // المسار البنفسجي: من موقع الكابتن الحالي → الوجهة (ليس من موقع الراكب)
+      fetchRoute(driverPos, realDest, false);
       voiceNav.start(ride.dropoffAddress || "الوجهة");
-      if (mapRef.current) {
-        mapRef.current.animateToRegion({
-          latitude: (realPickup.latitude + realDest.latitude) / 2,
-          longitude: (realPickup.longitude + realDest.longitude) / 2,
-          latitudeDelta: Math.abs(realPickup.latitude - realDest.latitude) * 2.5 + 0.04,
-          longitudeDelta: Math.abs(realPickup.longitude - realDest.longitude) * 2.5 + 0.04,
-        }, 1000);
-      }
+      // استخدام animateCamera مع 3D عند بدء الرحلة
+      setTimeout(() => {
+        mapRef.current?.animateCamera({
+          center: driverPos,
+          heading: heading ?? 0,
+          pitch: 60,
+          zoom: 17,
+          altitude: 300,
+        }, { duration: 1000 });
+      }, 300);
     }
   }, [phase, ride?.id, ride?.pickupLat, ride?.pickupLng, coords.latitude, coords.longitude]);
 
@@ -290,18 +297,18 @@ export default function CaptainActiveTripScreen() {
     }
   }, [coords.latitude, coords.longitude, isRealLocation]);
 
-  // تتبع الكابتن على الخريطة 
+  // تتبع الكابتن على الخريطة - 3D مثل Waze 
   useEffect(() => {
     if (!isFollowingDriver || !mapRef.current) return;
     const displayCoord = snappedCoords ?? { latitude: coords.latitude, longitude: coords.longitude };
     mapRef.current.animateCamera({
       center: displayCoord,
       heading: heading ?? 0,
-      pitch: 45,
+      pitch: 60,        // 3D tilt مثل Waze
       zoom: 17,
-      altitude: 500,
-    }, { duration: 800 });
-  }, [coords.latitude, coords.longitude, snappedCoords, isFollowingDriver]);
+      altitude: 300,
+    }, { duration: 500 });
+  }, [coords.latitude, coords.longitude, snappedCoords, heading, isFollowingDriver]);
 
   // ETA ديناميكي كل 30 ثانية 
   useEffect(() => {
@@ -352,7 +359,13 @@ export default function CaptainActiveTripScreen() {
       voiceNav.announceArrival("موقع الراكب");
       if (etaTimerRef.current) clearInterval(etaTimerRef.current);
       setEtaMin(null);
-      mapRef.current?.animateToRegion({ ...pickupCoord, latitudeDelta: 0.01, longitudeDelta: 0.01 }, 800);
+      mapRef.current?.animateCamera({
+        center: pickupCoord,
+        heading: heading ?? 0,
+        pitch: 60,
+        zoom: 18,
+        altitude: 200,
+      }, { duration: 800 });
       updateStatus.mutate(
         { rideId: actualRideId, status: "driver_arrived" },
         {
@@ -622,8 +635,9 @@ export default function CaptainActiveTripScreen() {
             mapRef.current?.animateCamera({
               center: displayCoord,
               heading: heading ?? 0,
-              pitch: 45,
+              pitch: 60,
               zoom: 17,
+              altitude: 300,
             }, { duration: 600 });
           }}
         >
