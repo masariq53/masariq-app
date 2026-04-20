@@ -138,18 +138,29 @@ export default function CaptainActiveTripScreen() {
     );
   }, [isRealLocation, coords.latitude, coords.longitude, isFollowingDriver]);
 
-  // جلب مسار الراكب → الوجهة (ذهبي) مرة واحدة
+  // جلب مسار الراكب → الوجهة (ذهبي) - يُعاد جلبه عند بدء الرحلة أيضاً
+  const dropoffRouteFetchedRef = useRef(false);
   useEffect(() => {
     if (!ride) return;
+    // جلب عند أول تحميل أو عند بدء الرحلة
+    if (dropoffRouteFetchedRef.current && phase !== "in_trip") return;
     const pickup: LatLng = { latitude: ride.pickupLat, longitude: ride.pickupLng };
     const dropoff: LatLng = { latitude: ride.dropoffLat, longitude: ride.dropoffLng };
     setIsLoadingRoute(true);
     fetchOsrmRoute(pickup, dropoff).then((res) => {
       if (res) {
         setRouteToDropoff(res);
+        dropoffRouteFetchedRef.current = true;
+        // إذا كنا في مرحلة الرحلة، فعّل الملاحة الصوتية فوراً
+        if (phase === "in_trip" && res.steps?.length) {
+          voiceNav.setSteps(res.steps);
+          voiceNav.start(ride.dropoffAddress || "الوجهة");
+          setCurrentInstruction(res.steps[0].instruction);
+          setDistanceToNext(res.steps[0].distanceM);
+        }
       }
     }).finally(() => setIsLoadingRoute(false));
-  }, [ride?.id]);
+  }, [ride?.id, phase === "in_trip"]);  // إعادة الجلب عند الانتقال لـ in_trip
 
   // جلب/تحديث مسار السائق → الراكب (أزرق) + تفعيل الملاحة الصوتية
   useEffect(() => {
@@ -192,7 +203,7 @@ export default function CaptainActiveTripScreen() {
     if (phase === "pickup") {
       voiceNav.start(ride.pickupAddress || "موقع الراكب");
     } else if (phase === "in_trip") {
-      // عند بدء الرحلة: استخدم مسار الوجهة
+      // عند بدء الرحلة: إذا المسار جاهز فعّله، وإلا سيُفعَّل في useEffect الجلب
       if (routeToDropoff?.steps?.length) {
         voiceNav.setSteps(routeToDropoff.steps);
         voiceNav.start(ride.dropoffAddress || "الوجهة");
@@ -201,7 +212,17 @@ export default function CaptainActiveTripScreen() {
           setDistanceToNext(routeToDropoff.steps[0].distanceM);
         }
       } else {
+        // المسار لم يصل بعد - سيُفعَّل تلقائياً عند وصوله
         voiceNav.start(ride.dropoffAddress || "الوجهة");
+        // إعادة ضبط الكاميرا لتشمل المسار
+        if (mapRef.current) {
+          mapRef.current.animateToRegion({
+            latitude: (ride.pickupLat + ride.dropoffLat) / 2,
+            longitude: (ride.pickupLng + ride.dropoffLng) / 2,
+            latitudeDelta: Math.abs(ride.pickupLat - ride.dropoffLat) * 2 + 0.02,
+            longitudeDelta: Math.abs(ride.pickupLng - ride.dropoffLng) * 2 + 0.02,
+          }, 1000);
+        }
       }
     }
   }, [phase, ride?.id]);

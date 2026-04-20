@@ -25,6 +25,7 @@ import { usePassenger } from "@/lib/passenger-context";
 import { useLocation } from "@/hooks/use-location";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { fetchOsrmRoute } from "@/lib/osrm";
+import { searchGooglePlaces, reverseGeocodeGoogle, type PlaceResult } from "@/lib/places";
 import { formatIQD } from "@/lib/utils";
 import { useAudioRecorder, useAudioRecorderState, RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync } from "expo-audio";
 import * as FileSystem from "expo-file-system/legacy";
@@ -45,23 +46,8 @@ const rideTypes = [
   { id: "women", icon: "👩", label: "سائقة", desc: "للسيدات فقط", multiplier: 1.2, capacity: "4" },
 ];
 
-type SearchResult = {
-  place_id: string;
-  display_name: string;
-  lat: string;
-  lon: string;
-  address?: {
-    road?: string;
-    neighbourhood?: string;
-    suburb?: string;
-    city?: string;
-    town?: string;
-    village?: string;
-    state?: string;
-    country?: string;
-    country_code?: string;
-  };
-};
+// نوع نتائج البحث الموحّد (Google Places)
+type SearchResult = PlaceResult;
 
 type SavedAddress = {
   id: string;
@@ -72,54 +58,6 @@ type SavedAddress = {
   lat?: number;
   lng?: number;
 };
-
-async function searchNominatim(
-  query: string,
-  userLat?: number,
-  userLng?: number
-): Promise<SearchResult[]> {
-  if (!query || query.trim().length < 2) return [];
-  try {
-    const encoded = encodeURIComponent(query);
-    // إذا توفر موقع المستخدم، أضف viewbox حول موقعه (نطاق ~50كم) لإعطاء أولوية للنتائج القريبة
-    let proximityParams = "";
-    // حدود العراق الجغرافية
-    const iraqBounds = "38.7945,29.0617,48.5756,37.3743"; // minLng,minLat,maxLng,maxLat
-    if (userLat && userLng) {
-      // نطاق أضيق حول المستخدم لإعطاء الأولوية للمدينة الحالية
-      const delta = 0.3; // ~33كم
-      const minLng = (userLng - delta).toFixed(4);
-      const minLat = (userLat - delta).toFixed(4);
-      const maxLng = (userLng + delta).toFixed(4);
-      const maxLat = (userLat + delta).toFixed(4);
-      proximityParams = `&viewbox=${minLng},${minLat},${maxLng},${maxLat}&bounded=0`;
-    }
-    // countrycodes=iq يضمن أن النتائج داخل العراق فقط
-    // إذا توفر موقع المستخدم نستخدم viewbox أضيق حوله لإعطاء أولوية للمدينة الحالية
-    const viewboxParam = proximityParams || `&viewbox=${iraqBounds}&bounded=1`;
-    const url = `https://nominatim.openstreetmap.org/search?q=${encoded}&format=json&limit=8&addressdetails=1&accept-language=ar&countrycodes=iq${viewboxParam}`;
-    const res = await fetch(url, { headers: { "User-Agent": "MasarApp/1.0" } });
-    if (!res.ok) return [];
-    return await res.json();
-  } catch {
-    return [];
-  }
-}
-
-async function reverseGeocodeNominatim(lat: number, lon: number): Promise<string> {
-  try {
-    const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=ar`;
-    const res = await fetch(url, { headers: { "User-Agent": "MasarApp/1.0" } });
-    if (!res.ok) return "";
-    const data = await res.json();
-    const addr = data.address;
-    if (!addr) return data.display_name ?? "";
-    const parts = [addr.road, addr.neighbourhood || addr.suburb, addr.city || addr.town || addr.village].filter(Boolean);
-    return parts.length > 0 ? parts.join("، ") : (data.display_name ?? "");
-  } catch {
-    return "";
-  }
-}
 
 function shortenAddress(displayName: string): string {
   return displayName.split(",").slice(0, 3).join("،").trim();
@@ -205,14 +143,14 @@ export default function BookRideScreen() {
   const saveFavoriteAddress = async (type: "home" | "work", address: string) => {
     if (!address.trim()) return;
     try {
-      const results = await searchNominatim(address, coords.latitude, coords.longitude);
+      const results = await searchGooglePlaces(address, coords.latitude, coords.longitude);
       if (!results.length) { Alert.alert("تنبيه", "لم يتم العثور على العنوان، جرب كتابة اسم أوضح"); return; }
       const first = results[0];
       const raw = await AsyncStorage.getItem("@masar_saved_addresses");
       let all: SavedAddress[] = raw ? JSON.parse(raw) : [];
       const icon = type === "home" ? "🏠" : "🏢";
       const label = type === "home" ? "البيت" : "العمل";
-      const updated: SavedAddress = { id: type, type, label, address: shortenAddress(first.display_name), icon, lat: parseFloat(first.lat), lng: parseFloat(first.lon) };
+      const updated: SavedAddress = { id: type, type, label, address: first.name || first.address, icon, lat: first.latitude, lng: first.longitude };
       all = all.filter((a) => a.id !== type);
       all.unshift(updated);
       await AsyncStorage.setItem("@masar_saved_addresses", JSON.stringify(all));
@@ -278,7 +216,7 @@ export default function BookRideScreen() {
         800
       );
     }
-    reverseGeocodeNominatim(coords.latitude, coords.longitude).then((address) => {
+    reverseGeocodeGoogle(coords.latitude, coords.longitude).then((address) => {
       if (address) {
         setFrom(address);
       } else {
@@ -406,15 +344,15 @@ export default function BookRideScreen() {
     }
     setIsSearching(true);
     searchTimerRef.current = setTimeout(async () => {
-      const results = await searchNominatim(text, coords.latitude, coords.longitude);
+      const results = await searchGooglePlaces(text, coords.latitude, coords.longitude);
       setSearchResults(results);
       setIsSearching(false);
-    }, 600);
+    }, 500);
    }, [coords.latitude, coords.longitude]);
   const handleSelectSearchResult = (result: SearchResult) => {
-    const lat = parseFloat(result.lat);
-    const lon = parseFloat(result.lon);
-    const shortName = shortenAddress(result.display_name);
+    const lat = result.latitude;
+    const lon = result.longitude;
+    const shortName = result.name || result.address;
     setDropPin({ latitude: lat, longitude: lon });
     setTo(shortName);
     setToInput(shortName);
@@ -441,7 +379,7 @@ export default function BookRideScreen() {
     setTo("جارٍ تحديد العنوان...");
     setToInput("");
     setShowSearch(false);
-    const address = await reverseGeocodeNominatim(coord.latitude, coord.longitude);
+    const address = await reverseGeocodeGoogle(coord.latitude, coord.longitude);
     if (address) {
       setTo(address);
       setToInput(address);
@@ -476,16 +414,16 @@ export default function BookRideScreen() {
     }
     setIsPickupSearching(true);
     pickupSearchTimerRef.current = setTimeout(async () => {
-      const results = await searchNominatim(text, coords.latitude, coords.longitude);
+      const results = await searchGooglePlaces(text, coords.latitude, coords.longitude);
       setPickupSearchResults(results);
       setIsPickupSearching(false);
-    }, 600);
+    }, 500);
   }, [coords.latitude, coords.longitude]);
 
   const handleSelectPickupResult = (result: SearchResult) => {
-    const lat = parseFloat(result.lat);
-    const lon = parseFloat(result.lon);
-    const shortName = shortenAddress(result.display_name);
+    const lat = result.latitude;
+    const lon = result.longitude;
+    const shortName = result.name || result.address;
     setPickupPin({ latitude: lat, longitude: lon });
     setFrom(shortName);
     setPickupInput(shortName);
@@ -516,7 +454,7 @@ export default function BookRideScreen() {
     // سيتم تحديث الموقع تلقائياً من useEffect بعد إعادة تعيين isPickupManual = false
     if (isRealLocation) {
       setPickupPin({ latitude: coords.latitude, longitude: coords.longitude });
-      reverseGeocodeNominatim(coords.latitude, coords.longitude).then((address) => {
+      reverseGeocodeGoogle(coords.latitude, coords.longitude).then((address) => {
         if (address) setFrom(address);
         else setFrom("موقعي الحالي");
       });
@@ -771,23 +709,21 @@ export default function BookRideScreen() {
             )}
 
             {!isSearching && searchResults.length > 0 && (
-              <FlatList
+                <FlatList
                 data={searchResults}
-                keyExtractor={(item) => item.place_id}
+                keyExtractor={(item) => item.id}
                 scrollEnabled={false}
                 renderItem={({ item }) => {
-                  const itemLat = parseFloat(item.lat);
-                  const itemLng = parseFloat(item.lon);
                   const distKm = isRealLocation
-                    ? calcDistanceKm(coords.latitude, coords.longitude, itemLat, itemLng)
+                    ? calcDistanceKm(coords.latitude, coords.longitude, item.latitude, item.longitude)
                     : null;
                   return (
                     <TouchableOpacity style={styles.searchResultItem} onPress={() => handleSelectSearchResult(item)}>
                       <Text style={styles.searchResultIcon}>📍</Text>
                       <View style={styles.searchResultInfo}>
-                        <Text style={styles.searchResultName} numberOfLines={1}>{shortenAddress(item.display_name)}</Text>
+                        <Text style={styles.searchResultName} numberOfLines={1}>{item.name}</Text>
                         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                          <Text style={styles.searchResultAddr} numberOfLines={1}>{item.address?.city || item.address?.town || item.address?.state || item.address?.country || ""}</Text>
+                          <Text style={styles.searchResultAddr} numberOfLines={1}>{item.address}</Text>
                           {distKm !== null && (
                             <Text style={styles.searchResultDist}>{distKm} كم</Text>
                           )}
@@ -1002,16 +938,14 @@ export default function BookRideScreen() {
               <ScrollView style={{ maxHeight: 200 }} keyboardShouldPersistTaps="handled">
                 {pickupSearchResults.map((item) => (
                   <TouchableOpacity
-                    key={item.place_id}
+                    key={item.id}
                     style={styles.searchResultItem}
                     onPress={() => handleSelectPickupResult(item)}
                   >
                     <Text style={styles.searchResultIcon}>📍</Text>
                     <View style={styles.searchResultInfo}>
-                      <Text style={styles.searchResultName} numberOfLines={1}>{shortenAddress(item.display_name)}</Text>
-                      <Text style={styles.searchResultAddr} numberOfLines={1}>
-                        {item.address?.city || item.address?.town || item.address?.state || ""}
-                      </Text>
+                      <Text style={styles.searchResultName} numberOfLines={1}>{item.name}</Text>
+                      <Text style={styles.searchResultAddr} numberOfLines={1}>{item.address}</Text>
                     </View>
                   </TouchableOpacity>
                 ))}

@@ -122,7 +122,6 @@ const config: ExpoConfig = {
         microphonePermission: "Allow $(PRODUCT_NAME) to access your microphone.",
       },
     ],
-    "expo-speech",
     [
       "expo-video",
       {
