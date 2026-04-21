@@ -34,6 +34,8 @@ export const API_BASE_URL = env.apiBaseUrl;
 const DEV_API_URL = "https://8081-i6699qlj6q2ppdna25bg3-c2de76de.us2.manus.computer";
 // الـ domain الثابت للمشروع - يُستخدم عند النشر الرسمي
 const PRODUCTION_API_URL = "https://mosulride-jlhuqvse.manus.space";
+// سيرفر Hetzner الخاص - مستقر وسريع
+const HETZNER_API_URL = "http://178.104.250.204";
 
 export function getApiBaseUrl(): string {
   // On web, use relative path so requests go through Metro proxy (/api -> port 3000)
@@ -42,8 +44,8 @@ export function getApiBaseUrl(): string {
   }
 
   // على الأجهزة الحقيقية (iOS/Android):
-  // استخدام الـ domain الثابت دائماً - لا يتغير مع تغيير الـ sandbox
-  return PRODUCTION_API_URL;
+  // استخدام سيرفر Hetzner الخاص - مستقر وسريع ولا يتغير
+  return HETZNER_API_URL;
 }
 
 export const SESSION_TOKEN_KEY = "app_session_token";
